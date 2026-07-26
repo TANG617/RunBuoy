@@ -44,11 +44,10 @@ xcodebuild \
 
 ## Signing and Apple capabilities
 
-Replace the sample bundle IDs and app-group identifier with identifiers owned
-by the development team. Enable Push Notifications, the app group, and Live
-Activities for the App ID. Debug uses the development APNs environment;
-Release uses production. Provisioning profiles must contain the matching
-entitlements.
+Replace the sample bundle IDs with identifiers owned by the development team.
+Enable Push Notifications and Live Activities for the App ID. Debug uses the
+development APNs environment; Release uses production. Provisioning profiles
+must contain the matching entitlements. No App Group is required by the MVP.
 
 The implementation follows Apple’s current documentation for
 [ActivityKit](https://developer.apple.com/documentation/activitykit/),

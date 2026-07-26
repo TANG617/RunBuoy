@@ -11,7 +11,7 @@ struct KeychainDeviceIdentityStore: DeviceIdentityStoring {
     private let service: String
     private let account = "device-identity"
 
-    init(service: String = "dev.runbuoy.ios") {
+    init(service: String = "dev.runbuoy.app") {
         self.service = service
     }
 
