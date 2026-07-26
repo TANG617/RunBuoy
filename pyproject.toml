@@ -1,0 +1,27 @@
+[project]
+name = "runbuoy-workspace"
+version = "0.1.0"
+description = "Development tooling for the RunBuoy monorepo"
+requires-python = ">=3.12"
+
+[dependency-groups]
+dev = [
+  "jsonschema>=4.23",
+  "mypy>=1.17",
+  "openapi-spec-validator>=0.7.2",
+  "pytest>=8.4",
+  "pyyaml>=6.0.2",
+  "ruff>=0.12",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["packages/protocol/tests"]
+addopts = "-ra"
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "S"]
+ignore = ["S101"]
