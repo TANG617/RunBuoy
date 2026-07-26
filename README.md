@@ -1,316 +1,279 @@
-# rzr
+# RunBuoy
 
-**`rzr` is a razor-thin remote around any terminal process.**
+**Keep every run in sight.**
 
-It launches a command inside `tmux`, serves a tiny local web UI, and gives you a phone-friendly remote that can:
-
-- watch a live terminal session
-- paste input into it
-- send terminal keys like `Enter`, `Tab`, `Ctrl+C`, arrows, and `Esc`
-- let multiple devices observe the same session at once
-
-Use it to check in on `codex`, `claude`, shells, REPLs, and other TTY-first tools from your phone.
-
-<p align="center">
-  <img src="https://raw.githubusercontent.com/sethwebster/rzr/main/assets/rzr-demo.gif" alt="Animated terminal-style demo of rzr launching a remote codex session" width="960">
-</p>
-
----
-
-## Why it exists
-
-Most “remote terminal” tools get complicated fast.
-
-`rzr` stays small on purpose:
-
-- **`tmux` handles terminal reality** — real TTY behavior, durable sessions, reconnectability
-- **`rzr` handles remote access** — a tiny web server, tokenized URL access, optional public tunnel, optional password gate
-- **your process stays normal** — you still run the tool you already use
-
-That makes it useful for:
-
-- checking a long-running coding agent from your phone
-- reconnecting to a CLI after your laptop sleeps or your browser disconnects
-- exposing an existing `tmux` session without changing how you work
-- letting another device observe the same live terminal
-
----
-
-## Quickstart
-
-### Requirements
-
-- `bun`
-- `node` 20+
-- `tmux`
-
-Optional for public internet access:
-
-- `cloudflared`
-- `ngrok`
-- or `npx localtunnel` as fallback
-
-### Run from npm
+RunBuoy sends safe, read-only status for commands, builds, experiments, and
+AI agent runs from a Mac or Linux machine to a native iPhone app, Lock Screen
+Live Activity, and Dynamic Island.
 
 ```bash
-npx @sethwebster/rzr run -- codex
+runbuoy run -- python3 experiment.py
 ```
 
-### Run from source
+RunBuoy is not a remote terminal, SSH client, mobile tmux client, remote
+operations console, or phone-based agent approval tool.
+
+## One-way by design
+
+```mermaid
+flowchart LR
+  S["Shell / Codex"] --> C["runbuoy CLI + local Worker"]
+  C -->|"outbound HTTPS only"| A["RunBuoy Server"]
+  A --> P["APNs + Read API"]
+  P --> I["Native iOS app / Live Activity"]
+```
+
+Execution data flows only `Machine → Server → iPhone`. iPhone can pair,
+register its own notification tokens, read Runs/Machines/Messages, change
+local receiving preferences, and remove a receiving subscription. It cannot
+start, cancel, retry, approve, signal, attach, type into, or otherwise control
+a Machine. There is no remote command queue, Machine inbox, WebSocket control
+channel, terminal stream, public terminal URL, or tunnel.
+
+## Components
+
+- `cli`: Python 3.12 Typer CLI, tmux-owned Worker, PTY/process groups, local
+  SQLite outbox, Unix event socket, progress adapters, and local-only controls
+- `server`: FastAPI/SQLAlchemy/Alembic projection service, scoped credentials,
+  pairing, webhooks, transactional push outbox, and mock/production APNs
+- `apps/ios`: native SwiftUI iOS 18 app plus WidgetKit/ActivityKit extension
+- `packages/protocol`: OpenAPI, JSON Schema, and cross-platform fixtures
+- `skills/runbuoy`: explicit `$runbuoy` Codex skill
+- `infra`: API, worker, and PostgreSQL Docker Compose environment
+
+## Quick start
+
+### 1. Start a local mock server
 
 ```bash
-git clone https://github.com/sethwebster/rzr.git
-cd rzr
-bun install
-./rzr run -- codex
+cp infra/.env.example infra/.env
+docker compose --env-file infra/.env -f infra/docker-compose.yml up --build
 ```
 
-`rzr` will print URLs like:
+Mock APNs records exact payloads and requires no Apple credentials.
+
+### 2. Install the CLI
+
+```bash
+uv tool install ./cli
+runbuoy doctor
+runbuoy capabilities --json
+```
+
+RunBuoy supports macOS and Linux. `tmux` is required for durable Runs.
+
+### 3. Bootstrap iPhone and pair
+
+Build the native app in `apps/ios`, set the Server HTTPS URL, bootstrap the
+installation, and choose **Pair New Machine**. On the Machine:
+
+```bash
+runbuoy pair
+```
+
+Scan the short-lived QR code. The QR has a five-minute, single-use challenge
+and no long-lived token. One iPhone installation can pair multiple Machines.
+
+### 4. Run or notify
+
+```bash
+runbuoy run -- python3 experiment.py
+
+runbuoy notify \
+  --title "Build completed" \
+  --body "Release build succeeded" \
+  --level success
+```
+
+The default remote payload contains a safe title such as
+`python · experiment.py`, structured status, progress, safe messages,
+timestamps, and exit code. Full argv, cwd, environment, source, stdout,
+stderr, terminal frames, input, and credentials stay local.
+
+## Progress
+
+RunBuoy never fabricates percentage or ETA.
+
+Structured progress:
+
+```python
+from runbuoy import progress
+
+progress(
+    current=37,
+    total=100,
+    phase="processing",
+    message="Processing item 37",
+)
+```
+
+```bash
+runbuoy emit progress \
+  --current 37 \
+  --total 100 \
+  --phase processing \
+  --message "Processing item 37"
+```
+
+Line progress:
+
+```bash
+runbuoy run \
+  --progress lines \
+  --total 100 \
+  --match '^Hello World$' \
+  -- python3 script.py
+```
+
+Regex progress:
+
+```bash
+runbuoy run \
+  --title "Gurobi Experiment" \
+  --progress regex \
+  --pattern '^PROGRESS: ([0-9]+)/([0-9]+)$' \
+  -- python3 experiment.py
+```
+
+Without an explicit source, the Live Activity shows indeterminate state,
+elapsed time, phase, and last update—never a synthetic percent.
+
+## Local-only commands
+
+These commands read or control only local files, tmux, the recorded process
+group, or a mode-restricted Unix socket:
+
+```bash
+runbuoy list
+runbuoy status <run-id>
+runbuoy logs <run-id>
+runbuoy attach <run-id>
+runbuoy cancel <run-id>
+```
+
+No Server or iOS endpoint can invoke them.
+
+Other commands:
+
+```bash
+runbuoy pair
+runbuoy notify
+runbuoy emit progress
+runbuoy emit phase
+runbuoy emit message
+runbuoy emit attention
+runbuoy doctor
+runbuoy config
+runbuoy capabilities --json
+```
+
+## Explicit safe log tail
+
+Full logs remain local. A bounded, redacted tail is opt-in:
+
+```bash
+runbuoy run --share-log-tail 20 -- command
+```
+
+The limit is 1–100 lines. ANSI is stripped, line and payload sizes are
+bounded, credential patterns are redacted, iOS labels the uploaded excerpt,
+and Server retention is at most 24 hours. This is not a terminal stream.
+
+## Webhooks
+
+Revocable webhook credentials use the Authorization header:
+
+```bash
+curl -X POST "$RUNBUOY_URL/v1/hooks/$HOOK_ID/notifications" \
+  -H "Authorization: Bearer $RUNBUOY_HOOK_SECRET" \
+  -H "Content-Type: application/json" \
+  -d '{"title":"Build completed","body":"Release build succeeded","level":"success"}'
+```
+
+External Run upsert and event paths are:
 
 ```text
-http://localhost:4317/?token=...
-http://192.168.1.20:4317/?token=...
+PUT  /v1/hooks/{hook_id}/runs/{external_run_id}
+POST /v1/hooks/{hook_id}/runs/{external_run_id}/events
 ```
 
-Open one on your phone.
+Long-lived secrets never appear in URLs. iOS renders a safe Markdown subset
+without HTML, JavaScript, executable schemes, or WebView.
 
-## Mobile app development
+## Live Activity policy
 
-For the Expo mobile app in `apps/mobile`, use the repo-local Expo CLI via Bun scripts:
+- A Run still active after five seconds may start a Live Activity.
+- Short success is history-only; short failure receives a normal alert.
+- Each Device gets at most two active activities, prioritized by attention,
+  failure/warning, then recency.
+- Ordinary progress is coalesced to at most one update every three seconds and
+  less than 1% changes are suppressed.
+- Phase, attention, terminal success, and failure update immediately.
+- Heartbeats update health but do not directly cause a push.
+- APNs 410 invalidates the token; retry is bounded.
+
+Production APNs uses HTTP/2, TLS, ES256 provider tokens, current rotating
+ActivityKit tokens, and Apple-specified headers/payloads. See
+[`docs/apns-setup.md`](docs/apns-setup.md).
+
+## Native iOS
+
+The iOS 18 app is Swift/SwiftUI with ActivityKit, WidgetKit,
+UserNotifications, URLSession, Keychain, local cache, and QR scanning. It has
+no React Native, Expo, JavaScript runtime, WebView, terminal/SSH/PTY library,
+persistent WebSocket, background polling, mutation App Intent, or notification
+action.
+
+Build without signing:
 
 ```bash
-bun run mobile:start
-bun run mobile:ios
-bun run mobile:ios:device
-bun run mobile:android
+xcodebuild \
+  -project apps/ios/RunBuoy.xcodeproj \
+  -scheme RunBuoy \
+  -destination 'generic/platform=iOS Simulator' \
+  CODE_SIGNING_ALLOWED=NO \
+  build
 ```
 
-Do **not** use `npx expo@latest ...` in this workspace. In this monorepo it can fail after native build with a misleading `Failed to resolve react-native` error because the temporary npx-installed Expo CLI resolves `react-native` from the wrong context.
+Signing and physical-device steps are in
+[`docs/ios-signing.md`](docs/ios-signing.md).
 
----
-
-## Install
-
-### Use without installing
+## Development and tests
 
 ```bash
-npx @sethwebster/rzr run -- codex
+uv sync --group dev
+uv run pytest packages/protocol/tests
+uv run python scripts/check_read_only_boundary.py
+
+(cd cli && uv sync --all-groups && uv run pytest)
+(cd server && uv sync --all-extras && uv run pytest)
+
+./scripts/e2e_smoke.sh
 ```
 
-### Install globally
-
-```bash
-npm install -g @sethwebster/rzr
-rzr run -- codex
-```
-
-### Run from this repo
-
-```bash
-./rzr run -- codex
-```
-
-`rzr` has **no npm runtime dependencies**.
-
----
-
-## Common examples
-
-### Start a new wrapped session
-
-```bash
-rzr run -- codex
-```
-
-### Start a named session
-
-```bash
-rzr run --name claude -- claude
-```
-
-### Start in a specific project directory
-
-```bash
-rzr run --name codex --cwd /path/to/repo -- codex
-```
-
-### Start a shell instead of an app
-
-```bash
-rzr run --cwd /path/to/repo -- /bin/zsh
-```
-
-### Expose an existing `tmux` session
-
-```bash
-rzr attach claude
-```
-
-### Read-only remote view
-
-```bash
-rzr run --readonly -- codex
-```
-
-### Add a public tunnel
-
-```bash
-rzr run --tunnel -- codex
-```
-
-### Request a named tunnel
-
-```bash
-rzr run --tunnel --tunnel-name my-remote -- codex
-```
-
-### Add a password gate
-
-```bash
-rzr run --password secret -- codex
-rzr attach claude --password secret
-```
-
-### List `tmux` sessions
-
-```bash
-rzr list
-```
-
----
-
-## Command reference
-
-### `rzr run`
-
-Launch a new command inside `tmux` and expose it through the web UI.
-
-```bash
-rzr run [--name NAME] [--port PORT] [--host HOST] [--cwd PATH] [--readonly] [--tunnel] [--tunnel-name VALUE] [--password VALUE] -- <command...>
-```
-
-Options:
-
-- `--name NAME` — tmux session name to create
-- `--port PORT` — local web server port, default `4317`
-- `--host HOST` — bind host, default `0.0.0.0`
-- `--cwd PATH` — working directory for the launched command
-- `--readonly` — disable remote input
-- `--tunnel` — create a public tunnel
-- `--tunnel-name VALUE` — request a provider-specific tunnel name
-- `--password VALUE` — require a password before exposing the live session
-- `-- <command...>` — the command to run inside `tmux`
-
-### `rzr attach`
-
-Expose an existing `tmux` session.
-
-```bash
-rzr attach <tmux-session> [--port PORT] [--host HOST] [--readonly] [--tunnel] [--tunnel-name VALUE] [--password VALUE]
-```
-
-### `rzr list`
-
-List local `tmux` sessions.
-
-```bash
-rzr list
-```
-
----
-
-## Tunnel behavior
-
-When you use `--tunnel`, provider order is:
-
-1. installed `cloudflared`
-2. installed `ngrok`
-3. `npx localtunnel`
-
-`--tunnel-name` behavior depends on provider:
-
-- **Cloudflare**: if authenticated and the value looks like a hostname on a Cloudflare-managed zone, `rzr` tries a stable named tunnel first; otherwise it is used as Quick Tunnel metadata/label
-- **ngrok**: passes the value as the tunnel name
-- **localtunnel**: requests the value as the public subdomain
-
-The selected tunnel is torn down when `rzr` exits.
-
----
-
-## Security model
-
-`rzr` uses two possible gates:
-
-1. a **URL token** in the query string
-2. an optional **password** from `--password`
-
-Notes:
-
-- clients always need the tokenized URL
-- if `--password` is enabled, clients must also enter the password before the UI and API are exposed
-- the password is passed on the command line, so it will appear in **shell history** and **process listings**
-- if you expose a public tunnel, treat that URL like a secret
-
-If you need stronger secret handling than a CLI flag, don’t rely on `--password` alone.
-
----
-
-## Session behavior
-
-- `rzr run` creates a `tmux` session for the target command
-- the target process keeps running inside `tmux` even if the browser disconnects
-- you can reconnect later with `rzr attach <session>`
-- pressing `Ctrl+C` in the host terminal warns that the `tmux` session will keep running, then lets you keep it, kill it, or continue serving
-
-This project intentionally standardizes on `tmux`.
-
-If you need “observe an arbitrary existing process that was **not** launched in `tmux`,” that requires OS-specific session snooping and is out of scope here.
-
----
-
-## Development
-
-This repo is organized as a small Bun workspace monorepo. The published package lives in `packages/rzr`.
-
-The Expo mobile companion lives in `apps/mobile`.
-
-Run the test suite:
-
-```bash
-bun test
-```
-
-Start the mobile app:
-
-```bash
-bun run mobile:start
-```
-
-Useful mobile workspace commands:
-
-```bash
-bun run mobile:ios
-bun run mobile:ios:device
-bun run mobile:android
-bun run mobile:web
-bun run mobile:typecheck
-bun run mobile:lint
-```
-
-Regenerate the README demo asset:
-
-```bash
-python3 scripts/generate_readme_gif.py
-```
-
-Show CLI help:
-
-```bash
-rzr --help
-```
-
----
-
-## License
-
-MIT
+CI runs protocol/security, Ruff/mypy, Server tests with PostgreSQL, CLI tests
+on Linux and macOS with tmux, unsigned iOS build/tests, and mock-APNs E2E.
+See [`docs/development.md`](docs/development.md).
+
+## Documentation
+
+- [Product requirements](docs/PRD.md)
+- [Architecture](docs/architecture.md)
+- [Protocol](docs/protocol.md)
+- [Security](docs/security.md) and [threat model](docs/threat-model.md)
+- [Self-hosting](docs/self-hosting.md)
+- [APNs setup](docs/apns-setup.md)
+- [Code provenance](docs/code-provenance.md)
+
+## Current limitations
+
+- macOS and Linux only; Windows is not an MVP target.
+- Anonymous workspaces only; there are no email accounts or teams.
+- APNs production delivery requires external Apple credentials and a physical
+  signed device and is not exercised by CI.
+- Push delivery is best effort; offline Runs remain locally durable and later
+  converge.
+- Safe log-tail sharing is intentionally bounded rather than real-time.
+
+RunBuoy retains the upstream MIT license and history. See
+[`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).
