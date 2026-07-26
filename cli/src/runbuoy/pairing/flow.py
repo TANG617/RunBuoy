@@ -30,8 +30,11 @@ def pair_machine(
 ) -> tuple[dict[str, Any], str]:
     client = RemoteClient(config, credentials)
     try:
+        if config.machine_id is None:
+            raise ValueError("machine identity must be persisted before pairing")
         created = client.create_pairing(
             {
+                "machine_id": config.machine_id,
                 "display_name": config.machine_name,
                 "platform": platform.system().lower(),
                 "architecture": platform.machine(),

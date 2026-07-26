@@ -9,6 +9,7 @@ from typing import Any, cast
 
 from pydantic import BaseModel, Field, HttpUrl
 
+from runbuoy.ids import uuid7
 from runbuoy.paths import AppPaths
 
 
@@ -32,6 +33,15 @@ def save_config(paths: AppPaths, config: Config) -> None:
     paths.ensure()
     paths.config_file.write_text(config.model_dump_json(indent=2), encoding="utf-8")
     paths.config_file.chmod(0o600)
+
+
+def ensure_machine_identity(paths: AppPaths, config: Config) -> Config:
+    """Persist one stable ID before pairing or creating local Runs."""
+    if config.machine_id is not None:
+        return config
+    updated = config.model_copy(update={"machine_id": f"machine_{uuid7().hex}"})
+    save_config(paths, updated)
+    return updated
 
 
 class CredentialStore:

@@ -53,7 +53,11 @@ def test_pair_json_never_prints_exchange_secret(
         def __init__(self, _config: object, _credentials: object) -> None:
             pass
 
-        def create_pairing(self, _payload: object) -> dict[str, str]:
+        def create_pairing(self, payload: object) -> dict[str, str]:
+            assert isinstance(payload, dict)
+            machine_id = payload.get("machine_id")
+            assert isinstance(machine_id, str)
+            assert machine_id.startswith("machine_")
             return {
                 "pairing_session_id": "pair-safe",
                 "challenge": "challenge-safe-value",
@@ -72,6 +76,8 @@ def test_pair_json_never_prints_exchange_secret(
     assert "token-NEVER-PRINT" not in result.stdout
     assert "exchange_secret" not in result.stdout
     assert json.loads(result.stdout)["state"] == "pending"
+    config = json.loads((tmp_path / "config" / "config.json").read_text())
+    assert config["machine_id"].startswith("machine_")
 
 
 @pytest.mark.tmux

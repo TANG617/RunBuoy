@@ -16,7 +16,14 @@ from rich.console import Console
 from rich.table import Table
 
 from runbuoy import __version__, sdk
-from runbuoy.config import Config, CredentialStore, ephemeral_token, load_config, save_config
+from runbuoy.config import (
+    Config,
+    CredentialStore,
+    ensure_machine_identity,
+    ephemeral_token,
+    load_config,
+    save_config,
+)
 from runbuoy.executors.tmux import TmuxExecutor
 from runbuoy.ids import uuid7
 from runbuoy.models import ProgressMode, RunManifest
@@ -102,11 +109,10 @@ def run_command(
         raise typer.BadParameter("--pattern is required for regex progress")
     if total is not None and total <= 0:
         raise typer.BadParameter("--total must be greater than zero")
+    config = ensure_machine_identity(paths, config)
     machine_id = config.machine_id
-    if machine_id is None:
-        machine_id = f"machine_{uuid7().hex}"
-        config = config.model_copy(update={"machine_id": machine_id})
-        save_config(paths, config)
+    if machine_id is None:  # pragma: no cover - guaranteed by ensure_machine_identity
+        raise RuntimeError("machine identity initialization failed")
     run_id = str(uuid7())
     run_dir = paths.run_dir(run_id)
     manifest_path = run_dir / "manifest.json"
@@ -319,6 +325,7 @@ def pair(
     json_output: bool = typer.Option(False, "--json"),
 ) -> None:
     paths, config, credentials, _queue = _context()
+    config = ensure_machine_identity(paths, config)
 
     def show_created(created: dict[str, Any], qr_value: str) -> None:
         if json_output:

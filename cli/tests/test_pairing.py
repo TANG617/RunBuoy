@@ -24,6 +24,7 @@ def test_qr_is_safe_canonical_and_shown_before_first_poll(monkeypatch: Any) -> N
 
         def create_pairing(self, payload: dict[str, Any]) -> dict[str, Any]:
             assert "machine" not in payload
+            assert payload["machine_id"] == "machine-stable"
             return {
                 "pairing_session_id": "pair/id",
                 "challenge": "challenge + /",
@@ -59,7 +60,7 @@ def test_qr_is_safe_canonical_and_shown_before_first_poll(monkeypatch: Any) -> N
         assert "never-in-qr" not in qr
 
     result, _qr = flow.pair_machine(
-        Config(machine_name="Mac Studio / Lab"),
+        Config(machine_id="machine-stable", machine_name="Mac Studio / Lab"),
         credentials,  # type: ignore[arg-type]
         on_created=created,
     )
