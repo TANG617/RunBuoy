@@ -137,7 +137,11 @@ private final class URLProtocolStub: URLProtocol {
 
     override func startLoading() {
         do {
-            let result = try Self.handler?(request) ?? (500, Data())
+            var capturedRequest = request
+            if capturedRequest.httpBody == nil, let stream = capturedRequest.httpBodyStream {
+                capturedRequest.httpBody = try Self.readBody(from: stream)
+            }
+            let result = try Self.handler?(capturedRequest) ?? (500, Data())
             let response = HTTPURLResponse(
                 url: request.url!,
                 statusCode: result.0,
@@ -153,4 +157,23 @@ private final class URLProtocolStub: URLProtocol {
     }
 
     override func stopLoading() {}
+
+    private static func readBody(from stream: InputStream) throws -> Data {
+        stream.open()
+        defer { stream.close() }
+
+        var body = Data()
+        var buffer = [UInt8](repeating: 0, count: 4_096)
+        while true {
+            let count = stream.read(&buffer, maxLength: buffer.count)
+            if count < 0 {
+                throw stream.streamError ?? URLError(.cannotDecodeContentData)
+            }
+            if count == 0 {
+                break
+            }
+            body.append(contentsOf: buffer.prefix(count))
+        }
+        return body
+    }
 }
