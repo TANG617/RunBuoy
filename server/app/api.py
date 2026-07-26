@@ -118,6 +118,8 @@ def bootstrap_device(
     now = utcnow()
     if device is None:
         workspace = Workspace(id=new_id("wsp"))
+        session.add(workspace)
+        session.flush()
         device = Device(
             id=new_id("dev"),
             workspace_id=workspace.id,
@@ -125,7 +127,8 @@ def bootstrap_device(
             app_version=body.app_version,
             os_version=body.os_version,
         )
-        session.add_all([workspace, device])
+        session.add(device)
+        session.flush()
     else:
         device.app_version = body.app_version
         device.os_version = body.os_version
@@ -143,6 +146,9 @@ def bootstrap_device(
             scopes=" ".join(sorted(DEVICE_SCOPES)),
         )
     )
+    # Materialize the workspace/device first so PostgreSQL can enforce the audit
+    # log foreign key even though AuditLog intentionally has no ORM relationship.
+    session.flush()
     session.add(
         AuditLog(
             id=new_id("aud"),

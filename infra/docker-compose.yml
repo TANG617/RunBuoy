@@ -13,14 +13,26 @@ services:
       timeout: 3s
       retries: 10
 
+  migrate:
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile.api
+    command: ["alembic", "upgrade", "head"]
+    env_file: ${RUNBUOY_ENV_FILE:-.env.example}
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: "no"
+
   api:
     build:
       context: ..
       dockerfile: infra/Dockerfile.api
     env_file: ${RUNBUOY_ENV_FILE:-.env.example}
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
     depends_on:
-      db:
-        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     ports:
       - "8000:8000"
     restart: unless-stopped
@@ -31,8 +43,8 @@ services:
       dockerfile: infra/Dockerfile.worker
     env_file: ${RUNBUOY_ENV_FILE:-.env.example}
     depends_on:
-      db:
-        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     restart: unless-stopped
 
 volumes:
