@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "RunBuoy Live Activity Content State",
+  "type": "object",
+  "required": [
+    "sequence",
+    "executionStatus",
+    "healthStatus",
+    "attentionStatus",
+    "progressKind",
+    "startedAt",
+    "updatedAt"
+  ],
+  "properties": {
+    "sequence": { "type": "integer", "minimum": 1 },
+    "executionStatus": {
+      "enum": [
+        "CREATED",
+        "STARTING",
+        "RUNNING",
+        "SUCCEEDED",
+        "FAILED",
+        "CANCELLED",
+        "LOST"
+      ]
+    },
+    "healthStatus": { "enum": ["HEALTHY", "STALE", "OFFLINE"] },
+    "attentionStatus": {
+      "enum": ["NONE", "INFORMATION", "WARNING", "ACTION_REQUIRED"]
+    },
+    "progressKind": { "enum": ["determinate", "indeterminate"] },
+    "progress": { "type": ["number", "null"], "minimum": 0, "maximum": 1 },
+    "phase": { "type": ["string", "null"], "maxLength": 120 },
+    "message": { "type": ["string", "null"], "maxLength": 500 },
+    "startedAt": { "type": "string", "format": "date-time" },
+    "updatedAt": { "type": "string", "format": "date-time" },
+    "estimatedEndAt": { "type": ["string", "null"], "format": "date-time" },
+    "exitCode": { "type": ["integer", "null"] }
+  },
+  "additionalProperties": true
+}

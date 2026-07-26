@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "RunBuoy Progress",
+  "oneOf": [
+    {
+      "type": "object",
+      "required": ["kind", "source"],
+      "properties": {
+        "kind": { "const": "indeterminate" },
+        "source": {
+          "enum": ["explicit", "adapter", "regex", "lines", "unknown"]
+        },
+        "phase": { "type": ["string", "null"], "maxLength": 120 },
+        "message": { "type": ["string", "null"], "maxLength": 500 }
+      },
+      "additionalProperties": true
+    },
+    {
+      "type": "object",
+      "required": ["kind", "current", "total", "fraction", "source"],
+      "properties": {
+        "kind": { "const": "determinate" },
+        "current": { "type": "number", "minimum": 0 },
+        "total": { "type": "number", "exclusiveMinimum": 0 },
+        "fraction": { "type": "number", "minimum": 0, "maximum": 1 },
+        "unit": { "type": ["string", "null"], "maxLength": 40 },
+        "source": {
+          "enum": ["explicit", "adapter", "regex", "lines"]
+        },
+        "phase": { "type": ["string", "null"], "maxLength": 120 },
+        "message": { "type": ["string", "null"], "maxLength": 500 }
+      },
+      "additionalProperties": true
+    }
+  ]
+}

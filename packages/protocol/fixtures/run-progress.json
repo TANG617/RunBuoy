@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "event_id": "0190f2a0-b001-7abc-8def-0123456789ab",
+  "run_id": "0190f2a0-a001-7abc-8def-0123456789ab",
+  "machine_id": "machine_mac_studio",
+  "seq": 42,
+  "type": "run.progress",
+  "occurred_at": "2026-07-26T19:45:22.184Z",
+  "payload": {
+    "progress": {
+      "kind": "determinate",
+      "current": 37,
+      "total": 100,
+      "fraction": 0.37,
+      "unit": "items",
+      "source": "explicit",
+      "phase": "processing",
+      "message": "Processing item 37"
+    },
+    "phase": "processing",
+    "message": "Processing item 37"
+  }
+}
