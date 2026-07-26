@@ -63,9 +63,7 @@ def test_sequence_is_positive_and_monotonic() -> None:
         load_json(FIXTURES_DIR / "run-progress.json"),
         load_json(FIXTURES_DIR / "run-succeeded.json"),
     ]
-    assert [event["seq"] for event in events] == sorted(
-        {event["seq"] for event in events}
-    )
+    assert [event["seq"] for event in events] == sorted({event["seq"] for event in events})
     invalid = events[0] | {"seq": 0}
     assert list(event_validator().iter_errors(invalid))
 

@@ -87,6 +87,13 @@ def recursive_keys(value: Any) -> set[str]:
     return set()
 
 
+def contains_dependency_name(source: str, dependency: str) -> bool:
+    """Match dependency tokens without flagging words such as exposing/EmptyBody."""
+    tokens = [re.escape(token) for token in re.split(r"[\s_-]+", dependency)]
+    pattern = r"(?<![a-z0-9])" + r"[\s_-]+".join(tokens) + r"(?![a-z0-9])"
+    return re.search(pattern, source, re.I) is not None
+
+
 def main() -> int:
     failures: list[str] = []
 
@@ -118,17 +125,18 @@ def main() -> int:
     for path, source in text_files("apps/ios", ios_suffixes):
         lowered = source.lower()
         for dependency in FORBIDDEN_IOS_DEPENDENCIES:
-            if dependency in lowered:
+            if contains_dependency_name(lowered, dependency):
                 failures.append(
                     f"Forbidden iOS dependency/API '{dependency}': {path.relative_to(ROOT)}"
                 )
         if path.suffix.lower() == ".swift":
             for label in FORBIDDEN_IOS_UI:
                 if label in lowered:
-                    failures.append(
-                        f"Forbidden mutation UI '{label}': {path.relative_to(ROOT)}"
-                    )
-            if re.search(r"\b(import|class|struct)\s+.*(?:terminal|ssh|pty)", source, re.I):
+                    failures.append(f"Forbidden mutation UI '{label}': {path.relative_to(ROOT)}")
+            if re.search(
+                r"\b(?:import|class|struct)\s+\w*(?:Terminal|SSH|PTY)\w*",
+                source,
+            ):
                 failures.append(f"Terminal/SSH type found: {path.relative_to(ROOT)}")
 
     fixture_path = ROOT / "packages/protocol/fixtures/default-upload.json"
