@@ -2,29 +2,164 @@ name: CI
 
 on:
   push:
-    branches:
-      - "**"
+    branches: ["**"]
   pull_request:
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  test:
+  protocol-and-security:
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        node-version:
-          - 20
-          - 22
-          - 24
-
     steps:
-      - name: Check out repository
-        uses: actions/checkout@v4
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
         with:
-          node-version: ${{ matrix.node-version }}
+          python-version: "3.12"
+          enable-cache: true
+      - run: uv sync --group dev
+      - run: uv run python scripts/generate_protocol_fixtures.py --check
+      - run: uv run pytest packages/protocol/tests
+      - run: uv run python scripts/check_read_only_boundary.py
+      - run: uvx openapi-spec-validator packages/protocol/openapi.yaml
+      - name: License and provenance
+        run: test -s LICENSE && test -s THIRD_PARTY_NOTICES.md && test -s docs/code-provenance.md
 
-      - name: Run test suite
-        run: npm test
+  python-lint-typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+          enable-cache: true
+      - name: Root checks
+        run: |
+          uv sync --group dev
+          uv run ruff check packages/protocol/tests scripts
+          uv run ruff format --check packages/protocol/tests scripts
+      - name: CLI checks
+        working-directory: cli
+        run: |
+          uv sync --all-groups
+          uv run ruff check .
+          uv run ruff format --check .
+          uv run mypy src
+      - name: Server checks
+        working-directory: server
+        run: |
+          uv sync --all-extras
+          uv run ruff check .
+          uv run ruff format --check .
+          uv run mypy app worker
+      - name: Python SDK checks
+        working-directory: packages/sdk-python
+        run: |
+          uv sync --all-groups
+          uv run ruff check .
+          uv run ruff format --check .
+          uv run mypy src
+          uv run pytest
+
+  server-tests:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: runbuoy
+          POSTGRES_PASSWORD: runbuoy_ci
+          POSTGRES_DB: runbuoy
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U runbuoy"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql+psycopg://runbuoy:runbuoy_ci@localhost:5432/runbuoy
+      APNS_MODE: mock
+      CREDENTIAL_PEPPER: ci-only-pepper
+      TOKEN_ENCRYPTION_KEY: 9G0Q7EN-bipfrNClR7aoX_E6IlWzzKwriC2aUn7-G_0=
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+          enable-cache: true
+      - working-directory: server
+        run: uv sync --all-extras
+      - working-directory: server
+        run: uv run alembic upgrade head
+      - working-directory: server
+        run: uv run pytest
+
+  cli-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y tmux
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+          enable-cache: true
+      - working-directory: cli
+        run: |
+          uv sync --all-groups
+          uv run pytest
+
+  cli-macos:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - run: brew install tmux
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+          enable-cache: true
+      - working-directory: cli
+        run: |
+          uv sync --all-groups
+          uv run pytest
+
+  ios-build:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build app and widget without signing
+        run: >-
+          xcodebuild
+          -project apps/ios/RunBuoy.xcodeproj
+          -scheme RunBuoy
+          -destination 'generic/platform=iOS Simulator'
+          CODE_SIGNING_ALLOWED=NO
+          build
+      - name: Run iOS unit tests
+        run: >-
+          xcodebuild
+          -project apps/ios/RunBuoy.xcodeproj
+          -scheme RunBuoy
+          -destination 'platform=iOS Simulator,name=iPhone 16 Pro,OS=latest'
+          CODE_SIGNING_ALLOWED=NO
+          test
+
+  e2e-mock-apns:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y tmux
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+          enable-cache: true
+      - run: docker compose --env-file infra/.env.example -f infra/docker-compose.yml up -d --build
+      - run: ./scripts/e2e_smoke.sh
+      - if: always()
+        run: docker compose --env-file infra/.env.example -f infra/docker-compose.yml logs
+      - if: always()
+        run: docker compose --env-file infra/.env.example -f infra/docker-compose.yml down -v

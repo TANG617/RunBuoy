@@ -1,0 +1,216 @@
+openapi: 3.1.0
+info:
+  title: RunBuoy API
+  version: 1.0.0
+  description: >-
+    One-way synchronization API. Machines may write safe execution events;
+    devices may read projections and manage only their own receiving plane.
+servers:
+  - url: https://api.example.runbuoy.dev
+paths:
+  /v1/devices/bootstrap:
+    post:
+      operationId: bootstrapDevice
+      responses:
+        "201":
+          description: Anonymous workspace and scoped device credential
+  /v1/devices/{device_id}/notification-token:
+    put:
+      operationId: registerNotificationToken
+      security: [{ bearerAuth: [] }]
+      parameters: [{ $ref: "#/components/parameters/DeviceId" }]
+      responses: { "204": { description: Token registered } }
+  /v1/devices/{device_id}/push-to-start-token:
+    put:
+      operationId: registerPushToStartToken
+      security: [{ bearerAuth: [] }]
+      parameters: [{ $ref: "#/components/parameters/DeviceId" }]
+      responses: { "204": { description: Token registered } }
+  /v1/devices/{device_id}/activity-sync:
+    post:
+      operationId: syncDeviceActivities
+      security: [{ bearerAuth: [] }]
+      parameters: [{ $ref: "#/components/parameters/DeviceId" }]
+      responses: { "204": { description: Activities reconciled } }
+  /v1/live-activities/{activity_id}/update-token:
+    put:
+      operationId: registerActivityUpdateToken
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: activity_id
+          in: path
+          required: true
+          schema: { type: string }
+      responses: { "204": { description: Token registered } }
+  /v1/device-preferences:
+    patch:
+      operationId: updateDevicePreferences
+      security: [{ bearerAuth: [] }]
+      responses: { "200": { description: Preferences updated } }
+  /v1/machine-subscriptions/{subscription_id}:
+    delete:
+      operationId: deleteMachineSubscription
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: subscription_id
+          in: path
+          required: true
+          schema: { type: string }
+      responses: { "204": { description: Subscription removed } }
+  /v1/pairing-sessions:
+    post:
+      operationId: createPairingSession
+      responses: { "201": { description: One-time pairing session } }
+  /v1/pairing-sessions/{session_id}:
+    get:
+      operationId: getPairingSession
+      parameters: [{ $ref: "#/components/parameters/SessionId" }]
+      responses: { "200": { description: Pairing status } }
+  /v1/pairing-sessions/{session_id}/claim:
+    post:
+      operationId: claimPairingSession
+      security: [{ bearerAuth: [] }]
+      parameters: [{ $ref: "#/components/parameters/SessionId" }]
+      responses: { "200": { description: Session claimed } }
+  /v1/pairing-sessions/{session_id}/exchange:
+    post:
+      operationId: exchangePairingSecret
+      parameters: [{ $ref: "#/components/parameters/SessionId" }]
+      responses: { "200": { description: Scoped machine credential } }
+  /v1/runs:
+    get:
+      operationId: listRuns
+      security: [{ bearerAuth: [] }]
+      responses: { "200": { description: Run projections } }
+  /v1/runs/{run_id}:
+    put:
+      operationId: upsertRun
+      security: [{ bearerAuth: [] }]
+      parameters: [{ $ref: "#/components/parameters/RunId" }]
+      responses: { "200": { description: Run projection } }
+    get:
+      operationId: getRun
+      security: [{ bearerAuth: [] }]
+      parameters: [{ $ref: "#/components/parameters/RunId" }]
+      responses: { "200": { description: Run detail and safe feed } }
+  /v1/runs/{run_id}/events:batch:
+    post:
+      operationId: ingestRunEvents
+      security: [{ bearerAuth: [] }]
+      parameters: [{ $ref: "#/components/parameters/RunId" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [events]
+              properties:
+                events:
+                  type: array
+                  minItems: 1
+                  maxItems: 100
+                  items: { $ref: "#/components/schemas/RunEvent" }
+      responses: { "200": { description: Idempotent ingestion result } }
+  /v1/machines:
+    get:
+      operationId: listMachines
+      security: [{ bearerAuth: [] }]
+      responses: { "200": { description: Paired machines } }
+  /v1/notifications:
+    get:
+      operationId: listNotifications
+      security: [{ bearerAuth: [] }]
+      responses: { "200": { description: Rich messages } }
+    post:
+      operationId: createNotification
+      security: [{ bearerAuth: [] }]
+      responses: { "201": { description: Notification accepted } }
+  /v1/hooks/{hook_id}/notifications:
+    post:
+      operationId: createWebhookNotification
+      security: [{ bearerAuth: [] }]
+      parameters: [{ $ref: "#/components/parameters/HookId" }]
+      responses: { "201": { description: Notification accepted } }
+  /v1/hooks/{hook_id}/runs/{external_run_id}:
+    put:
+      operationId: upsertWebhookRun
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { $ref: "#/components/parameters/HookId" }
+        - { $ref: "#/components/parameters/ExternalRunId" }
+      responses: { "200": { description: Webhook Run projection } }
+  /v1/hooks/{hook_id}/runs/{external_run_id}/events:
+    post:
+      operationId: createWebhookRunEvent
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { $ref: "#/components/parameters/HookId" }
+        - { $ref: "#/components/parameters/ExternalRunId" }
+      responses: { "202": { description: Event accepted } }
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+  parameters:
+    DeviceId:
+      name: device_id
+      in: path
+      required: true
+      schema: { type: string }
+    SessionId:
+      name: session_id
+      in: path
+      required: true
+      schema: { type: string }
+    RunId:
+      name: run_id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    HookId:
+      name: hook_id
+      in: path
+      required: true
+      schema: { type: string }
+    ExternalRunId:
+      name: external_run_id
+      in: path
+      required: true
+      schema: { type: string }
+  schemas:
+    RunEvent:
+      type: object
+      required:
+        - schema_version
+        - event_id
+        - run_id
+        - machine_id
+        - seq
+        - type
+        - occurred_at
+        - payload
+      properties:
+        schema_version: { const: 1 }
+        event_id: { type: string, format: uuid }
+        run_id: { type: string, format: uuid }
+        machine_id: { type: string }
+        seq: { type: integer, minimum: 1 }
+        type:
+          enum:
+            - run.created
+            - run.starting
+            - run.started
+            - run.progress
+            - run.phase_changed
+            - run.message
+            - run.attention_required
+            - run.heartbeat
+            - run.succeeded
+            - run.failed
+            - run.cancelled
+            - run.lost
+        occurred_at: { type: string, format: date-time }
+        payload: { type: object, additionalProperties: true }
+      additionalProperties: true

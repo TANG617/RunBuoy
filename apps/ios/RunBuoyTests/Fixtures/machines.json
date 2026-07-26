@@ -1,0 +1,22 @@
+[
+  {
+    "id": "machine_minimal",
+    "display_name": "Minimal Machine",
+    "platform": null,
+    "architecture": null,
+    "cli_version": null,
+    "last_seen_at": null,
+    "paired_at": null
+  },
+  {
+    "id": "machine_full",
+    "display_name": "Mac Studio",
+    "platform": "macOS",
+    "architecture": "arm64",
+    "cli_version": "1.0.0",
+    "last_seen_at": "2026-07-26T19:34:00Z",
+    "paired_at": "2026-07-20T10:00:00Z",
+    "subscription_id": "subscription_1",
+    "is_subscribed": true
+  }
+]

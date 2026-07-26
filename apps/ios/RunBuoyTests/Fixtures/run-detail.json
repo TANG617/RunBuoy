@@ -1,0 +1,64 @@
+{
+  "run": {
+    "id": "018f0d8a-8c0a-7000-8000-000000000001",
+    "machine_id": "machine_mac_studio",
+    "machine_name": "Mac Studio",
+    "title": "Gurobi experiment",
+    "source": "cli",
+    "execution_status": "RUNNING",
+    "health_status": "HEALTHY",
+    "attention_status": "NONE",
+    "progress": {
+      "kind": "determinate",
+      "current": 37,
+      "total": 100,
+      "fraction": 0.37,
+      "unit": "items",
+      "source": "explicit",
+      "estimated_end_at": "2026-07-26T19:40:00.000Z"
+    },
+    "phase": "processing",
+    "safe_message": "Processing item 37",
+    "started_at": "2026-07-26T19:31:00.000Z",
+    "updated_at": "2026-07-26T19:34:00.000Z",
+    "ended_at": null,
+    "exit_code": null,
+    "safe_log_tail": null,
+    "last_seq": 42,
+    "future_snapshot_field": "ignored"
+  },
+  "events": [
+    {
+      "schema_version": 1,
+      "event_id": "018f0d8a-8c0a-7000-8000-000000000011",
+      "run_id": "018f0d8a-8c0a-7000-8000-000000000001",
+      "machine_id": "machine_mac_studio",
+      "seq": 42,
+      "type": "run.progress",
+      "occurred_at": "2026-07-26T19:34:00.000Z",
+      "payload": {
+        "phase": "processing",
+        "message": "Processing item 37",
+        "progress": {
+          "kind": "determinate",
+          "current": 37,
+          "total": 100,
+          "fraction": 0.37,
+          "unit": "items",
+          "source": "explicit"
+        }
+      }
+    },
+    {
+      "schema_version": 1,
+      "event_id": "018f0d8a-8c0a-7000-8000-000000000010",
+      "run_id": "018f0d8a-8c0a-7000-8000-000000000001",
+      "machine_id": "machine_mac_studio",
+      "seq": 1,
+      "type": "run.started",
+      "occurred_at": "2026-07-26T19:31:00.000Z",
+      "payload": {}
+    }
+  ],
+  "future_envelope_field": true
+}

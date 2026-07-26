@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "event_id": "0190f2a0-b003-7abc-8def-0123456789ab",
+  "run_id": "0190f2a0-a003-7abc-8def-0123456789ab",
+  "machine_id": "machine_mac_studio",
+  "seq": 1,
+  "type": "run.created",
+  "occurred_at": "2026-07-26T19:45:00.000Z",
+  "payload": {
+    "title": "python · experiment.py",
+    "source": "cli",
+    "health_status": "HEALTHY",
+    "attention_status": "NONE"
+  }
+}

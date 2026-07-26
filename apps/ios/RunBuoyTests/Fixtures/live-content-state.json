@@ -1,0 +1,17 @@
+{
+  "sequence": 42,
+  "executionStatus": "RUNNING",
+  "healthStatus": "STALE",
+  "attentionStatus": "WARNING",
+  "progressKind": "determinate",
+  "progress": 0.37,
+  "current": 37,
+  "total": 100,
+  "phase": "processing",
+  "message": "Processing item 37",
+  "startedAt": "2026-07-26T19:31:00.000Z",
+  "updatedAt": "2026-07-26T19:34:00.000Z",
+  "estimatedEndAt": "2026-07-26T19:40:00.000Z",
+  "exitCode": null,
+  "futureField": "ignored"
+}

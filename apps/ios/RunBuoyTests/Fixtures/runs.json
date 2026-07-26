@@ -1,0 +1,20 @@
+[
+  {
+    "id": "018f0d8a-8c0a-7000-8000-000000000001",
+    "machine_id": "machine_mac_studio",
+    "machine_name": "Mac Studio",
+    "title": "Gurobi experiment",
+    "execution_status": "FUTURE_STATE",
+    "health_status": "STALE",
+    "attention_status": "WARNING",
+    "progress": {
+      "kind": "indeterminate",
+      "source": "unknown"
+    },
+    "phase": "processing",
+    "safe_message": "Still working",
+    "started_at": "2026-07-26T19:31:00Z",
+    "updated_at": "2026-07-26T19:34:00Z",
+    "last_seq": 9
+  }
+]

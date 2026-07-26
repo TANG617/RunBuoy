@@ -1,0 +1,6 @@
+interface:
+  display_name: "RunBuoy"
+  short_description: "Keep local command runs in sight on iPhone"
+  default_prompt: "Use $runbuoy to monitor this command safely from my iPhone."
+policy:
+  allow_implicit_invocation: false

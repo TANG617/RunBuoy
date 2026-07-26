@@ -1,0 +1,22 @@
+{
+  "sourceLanguage": "en",
+  "strings": {
+    "NSCameraUsageDescription": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Scan a one-time RunBuoy machine pairing code."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "扫描一次性的 RunBuoy 电脑配对码。"
+          }
+        }
+      }
+    }
+  },
+  "version": "1.0"
+}

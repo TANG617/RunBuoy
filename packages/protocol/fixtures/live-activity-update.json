@@ -1,0 +1,21 @@
+{
+  "aps": {
+    "timestamp": 1785075922,
+    "event": "update",
+    "content-state": {
+      "sequence": 42,
+      "executionStatus": "RUNNING",
+      "healthStatus": "HEALTHY",
+      "attentionStatus": "NONE",
+      "progressKind": "determinate",
+      "progress": 0.37,
+      "phase": "processing",
+      "message": "Processing item 37",
+      "startedAt": "2026-07-26T19:40:00.000Z",
+      "updatedAt": "2026-07-26T19:45:22.184Z",
+      "estimatedEndAt": null,
+      "exitCode": null
+    },
+    "stale-date": 1785075982
+  }
+}

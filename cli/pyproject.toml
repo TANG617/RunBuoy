@@ -1,0 +1,55 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "runbuoy"
+version = "0.1.0"
+description = "Read-only command status delivery for RunBuoy"
+requires-python = ">=3.12"
+dependencies = [
+  "httpx>=0.27,<1",
+  "keyring>=25,<26",
+  "pydantic>=2.8,<3",
+  "qrcode>=7.4,<9",
+  "rich>=13.7,<15",
+  "typer>=0.12,<1",
+]
+
+[project.scripts]
+runbuoy = "runbuoy.cli.app:main"
+
+[dependency-groups]
+dev = [
+  "mypy>=1.11,<2",
+  "pytest>=8.3,<9",
+  "pytest-timeout>=2.3,<3",
+  "ruff>=0.6,<1",
+  "types-qrcode>=7.4",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/runbuoy"]
+
+[tool.pytest.ini_options]
+addopts = "-ra"
+testpaths = ["tests"]
+markers = [
+  "tmux: requires the tmux executable and a working local tmux server",
+  "integration: starts local processes",
+]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
+
+[tool.ruff.lint.per-file-ignores]
+"src/runbuoy/cli/app.py" = ["B008"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+packages = ["runbuoy"]

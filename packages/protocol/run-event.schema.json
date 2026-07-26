@@ -1,0 +1,68 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "RunBuoy Run Event",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "event_id",
+    "run_id",
+    "machine_id",
+    "seq",
+    "type",
+    "occurred_at",
+    "payload"
+  ],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "event_id": { "type": "string", "format": "uuid" },
+    "run_id": { "type": "string", "format": "uuid" },
+    "machine_id": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "seq": { "type": "integer", "minimum": 1 },
+    "type": {
+      "enum": [
+        "run.created",
+        "run.starting",
+        "run.started",
+        "run.progress",
+        "run.phase_changed",
+        "run.message",
+        "run.attention_required",
+        "run.heartbeat",
+        "run.succeeded",
+        "run.failed",
+        "run.cancelled",
+        "run.lost"
+      ]
+    },
+    "occurred_at": { "type": "string", "format": "date-time" },
+    "payload": {
+      "type": "object",
+      "properties": {
+        "progress": { "$ref": "./progress.schema.json" },
+        "phase": { "type": ["string", "null"], "maxLength": 120 },
+        "message": { "type": ["string", "null"], "maxLength": 500 },
+        "exit_code": { "type": ["integer", "null"] },
+        "termination_reason": {
+          "type": ["string", "null"],
+          "maxLength": 120
+        },
+        "attention_status": {
+          "enum": [
+            "NONE",
+            "INFORMATION",
+            "WARNING",
+            "ACTION_REQUIRED",
+            null
+          ]
+        },
+        "safe_log_tail": {
+          "type": "array",
+          "maxItems": 100,
+          "items": { "type": "string", "maxLength": 500 }
+        }
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true
+}
