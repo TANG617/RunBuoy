@@ -68,6 +68,7 @@ class ActivityTokenRegistration(TokenRegistration):
 
 
 class MachineMetadata(APIModel):
+    machine_id: str | None = Field(default=None, min_length=1, max_length=128)
     display_name: str = Field(min_length=1, max_length=120)
     hostname: str | None = Field(default=None, max_length=255)
     platform: str | None = Field(default=None, max_length=64)

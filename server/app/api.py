@@ -422,8 +422,11 @@ def claim_pairing_session(
     if not secrets.compare_digest(pairing.challenge, body.challenge):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "pairing challenge mismatch")
     metadata = pairing.requested_machine_metadata
+    machine_id = metadata.get("machine_id") or new_id("mac")
+    if session.get(Machine, machine_id) is not None:
+        raise HTTPException(status.HTTP_409_CONFLICT, "machine ID is already paired")
     machine = Machine(
-        id=new_id("mac"),
+        id=machine_id,
         workspace_id=principal.workspace_id,
         display_name=metadata["display_name"],
         hostname=metadata.get("hostname"),

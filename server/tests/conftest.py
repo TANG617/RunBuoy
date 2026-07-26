@@ -38,6 +38,7 @@ class Harness:
         created = self.client.post(
             "/v1/pairing-sessions",
             json={
+                "machine_id": "machine_stable_test",
                 "display_name": "Test Mac",
                 "hostname": "redacted-host",
                 "platform": "darwin",
@@ -58,6 +59,7 @@ class Harness:
             json={"exchange_secret": pairing["exchange_secret"]},
         )
         assert exchanged.status_code == 200, exchanged.text
+        assert exchanged.json()["machine_id"] == "machine_stable_test"
         return device, {**pairing, **exchanged.json()}
 
     def register_run(self, machine: dict[str, Any], run_id: str) -> None:
