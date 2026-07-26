@@ -112,11 +112,20 @@ struct ActivityRegistration: Codable, Equatable, Sendable {
     let activityID: String
     let runID: String
     let state: String
+    let lastSequence: Int
 
     private enum CodingKeys: String, CodingKey {
         case activityID = "activity_id"
         case runID = "run_id"
         case state
+        case lastSequence = "last_sequence"
+    }
+
+    init(activityID: String, runID: String, state: String, lastSequence: Int = 0) {
+        self.activityID = activityID
+        self.runID = runID
+        self.state = state
+        self.lastSequence = lastSequence
     }
 }
 

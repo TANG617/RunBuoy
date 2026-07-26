@@ -61,6 +61,31 @@ final class APIClientTests: XCTestCase {
         XCTAssertEqual(body["generation"] as? Int, 3)
     }
 
+    func testActivityReconciliationCarriesLifecycleStateAndSequence() async throws {
+        var captured: URLRequest?
+        let api = makeAPI { request in
+            captured = request
+            return (204, Data())
+        }
+
+        try await api.syncActivities([
+            ActivityRegistration(
+                activityID: "activity_1",
+                runID: "018f0d8a-8c0a-7000-8000-000000000001",
+                state: "stale",
+                lastSequence: 42
+            )
+        ])
+
+        XCTAssertEqual(captured?.httpMethod, "POST")
+        XCTAssertEqual(captured?.url?.path, "/v1/devices/device_1/activity-sync")
+        let data = try XCTUnwrap(captured?.httpBody)
+        let body = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        let activities = try XCTUnwrap(body["activities"] as? [[String: Any]])
+        XCTAssertEqual(activities[0]["state"] as? String, "stale")
+        XCTAssertEqual(activities[0]["last_sequence"] as? Int, 42)
+    }
+
     func testDeviceSurfaceContainsOnlyReadAndReceivingPlaneOperations() {
         let endpoints: [DeviceAPIEndpoint] = [
             .bootstrap,

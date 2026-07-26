@@ -73,7 +73,8 @@ final class ActivityTokenCoordinator {
             ActivityRegistration(
                 activityID: $0.id,
                 runID: $0.attributes.runID,
-                state: stateName($0.activityState)
+                state: stateName($0.activityState),
+                lastSequence: $0.content.state.sequence
             )
         }
         try? await api.syncActivities(current)
@@ -85,7 +86,7 @@ final class ActivityTokenCoordinator {
         case .dismissed: "dismissed"
         case .ended: "ended"
         case .stale: "stale"
-        @unknown default: "unknown"
+        @unknown default: "active"
         }
     }
 
