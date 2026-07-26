@@ -28,6 +28,7 @@ def test_qr_is_safe_canonical_and_shown_before_first_poll(monkeypatch: Any) -> N
                 "pairing_session_id": "pair/id",
                 "challenge": "challenge + /",
                 "exchange_secret": "never-in-qr",
+                "bootstrap_token": "never-in-output",
                 "short_code": "123456",
             }
 
@@ -47,6 +48,7 @@ def test_qr_is_safe_canonical_and_shown_before_first_poll(monkeypatch: Any) -> N
     def created(value: dict[str, Any], qr: str) -> None:
         ordering.append("shown")
         assert "exchange_secret" not in value
+        assert "bootstrap_token" not in value
         parsed = urlparse(qr)
         assert parsed.scheme == "runbuoy"
         assert parsed.netloc == "pair"

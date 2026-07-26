@@ -59,6 +59,7 @@ def test_pair_json_never_prints_exchange_secret(
                 "challenge": "challenge-safe-value",
                 "short_code": "123456",
                 "exchange_secret": "rbx-NEVER-PRINT",
+                "api_token": "token-NEVER-PRINT",
             }
 
         def close(self) -> None:
@@ -68,6 +69,7 @@ def test_pair_json_never_prints_exchange_secret(
     result = runner.invoke(app, ["pair", "--json", "--no-wait"])
     assert result.exit_code == 0, result.output
     assert "rbx-NEVER-PRINT" not in result.stdout
+    assert "token-NEVER-PRINT" not in result.stdout
     assert "exchange_secret" not in result.stdout
     assert json.loads(result.stdout)["state"] == "pending"
 

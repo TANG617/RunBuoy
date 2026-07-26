@@ -11,6 +11,15 @@ from runbuoy.config import Config, CredentialStore
 from runbuoy.networking.client import RemoteClient
 
 
+def public_pairing_fields(value: dict[str, Any]) -> dict[str, Any]:
+    """Remove every secret/credential/token-shaped field before user output."""
+    return {
+        key: item
+        for key, item in value.items()
+        if not any(part in key.lower() for part in ("secret", "credential", "token"))
+    }
+
+
 def pair_machine(
     config: Config,
     credentials: CredentialStore,
@@ -44,11 +53,7 @@ def pair_machine(
             }
         )
         qr_value = f"runbuoy://pair/{quote(session_id, safe='')}?{query}"
-        safe_created = {
-            key: value
-            for key, value in created.items()
-            if key not in {"exchange_secret", "machine_credential", "credential"}
-        }
+        safe_created = public_pairing_fields(created)
         if on_created is not None:
             on_created(safe_created, qr_value)
         if not wait:

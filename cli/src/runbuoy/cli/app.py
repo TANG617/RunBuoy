@@ -21,7 +21,7 @@ from runbuoy.executors.tmux import TmuxExecutor
 from runbuoy.ids import uuid7
 from runbuoy.models import ProgressMode, RunManifest
 from runbuoy.networking.client import RemoteClient, flush_pending
-from runbuoy.pairing.flow import pair_machine
+from runbuoy.pairing.flow import pair_machine, public_pairing_fields
 from runbuoy.paths import AppPaths
 from runbuoy.persistence.store import EventQueue
 from runbuoy.security.redaction import safe_message
@@ -345,11 +345,7 @@ def pair(
     if machine_id:
         config = config.model_copy(update={"machine_id": str(machine_id)})
         save_config(paths, config)
-    safe_result = {
-        key: value
-        for key, value in result.items()
-        if key not in {"exchange_secret", "machine_credential", "credential"}
-    }
+    safe_result = public_pairing_fields(result)
     if json_output and not no_wait:
         _json_print({"ok": True, "state": "paired", "pairing": safe_result})
     elif result.get("status") == "paired":
