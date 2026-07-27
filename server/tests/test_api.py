@@ -253,6 +253,7 @@ def test_transactional_outbox_and_delayed_start(harness: Harness) -> None:
         assert outbox is not None
         assert outbox.kind == "LIVE_START"
         assert outbox.status == "pending"
+        assert outbox.priority == 10
         assert outbox.available_at.replace(tzinfo=UTC) >= now + timedelta(seconds=4)
         assert session.get(Run, run_id).last_seq == 1  # type: ignore[union-attr]
 

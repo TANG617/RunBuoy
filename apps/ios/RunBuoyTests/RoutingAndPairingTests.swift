@@ -19,6 +19,19 @@ final class RoutingAndPairingTests: XCTestCase {
         XCTAssertTrue(router.activeRunsPath.isEmpty)
     }
 
+    func testPairDeepLinkOpensConfirmationWithoutClaiming() throws {
+        let router = AppRouter()
+        let url = URL(
+            string: "runbuoy://pair/session_123?challenge=once-only&machine=Mac%20Studio&platform=macOS"
+        )!
+
+        XCTAssertTrue(router.handle(url))
+        XCTAssertEqual(router.selectedTab, .settings)
+        XCTAssertEqual(router.settingsPath, [.pairMachine])
+        XCTAssertEqual(router.pendingPairingCode?.sessionID, "session_123")
+        XCTAssertEqual(router.pendingPairingCode?.challenge, "once-only")
+    }
+
     func testCanonicalPairingURL() throws {
         let code = try PairingCode.decode(
             "runbuoy://pair/session_123?challenge=once-only&machine=Mac%20Studio&platform=macOS"

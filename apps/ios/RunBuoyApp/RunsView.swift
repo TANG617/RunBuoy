@@ -1,14 +1,7 @@
 import SwiftUI
 
-private enum RunListSheet: String, Identifiable {
-    case readOnlyBoundary
-
-    var id: String { rawValue }
-}
-
 struct ActiveRunsView: View {
     @Environment(RunBuoyStore.self) private var store
-    @State private var presentedSheet: RunListSheet?
 
     private var isEmpty: Bool {
         store.activeRunModels.isEmpty
@@ -16,16 +9,6 @@ struct ActiveRunsView: View {
 
     var body: some View {
         List {
-            Section {
-                RunListToolStrip(
-                    isRefreshing: store.state == .loading,
-                    onShowReadOnlyInfo: showReadOnlyInfo,
-                    onRefresh: refresh
-                )
-            }
-            .listRowBackground(Color.clear)
-            .listRowInsets(.init(top: 8, leading: 16, bottom: 8, trailing: 16))
-
             if case .offline(let message) = store.state {
                 OfflineBanner(message: message)
                     .listRowSeparator(.hidden)
@@ -55,16 +38,14 @@ struct ActiveRunsView: View {
         }
         .refreshable { await reload() }
         .task { await loadIfNeeded() }
-        .sheet(item: $presentedSheet) { sheet in
-            switch sheet {
-            case .readOnlyBoundary:
-                ReadOnlyInformationSheet()
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button(action: refresh) {
+                    Label("common.refresh", systemImage: "arrow.clockwise")
+                }
+                .disabled(store.state == .loading)
             }
         }
-    }
-
-    private func showReadOnlyInfo() {
-        presentedSheet = .readOnlyBoundary
     }
 
     private func refresh() {
@@ -153,52 +134,6 @@ struct RunHistoryView: View {
 
     private func reload() async {
         await store.refresh()
-    }
-}
-
-private struct RunListToolStrip: View {
-    let isRefreshing: Bool
-    let onShowReadOnlyInfo: () -> Void
-    let onRefresh: () -> Void
-    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
-
-    var body: some View {
-        GlassEffectContainer(spacing: 12) {
-            HStack(spacing: 12) {
-                if dynamicTypeSize.isAccessibilitySize {
-                    ReadOnlyGlassIcon()
-                } else {
-                    ReadOnlyGlassLabel()
-                }
-
-                Spacer(minLength: 0)
-
-                Button(action: onShowReadOnlyInfo) {
-                    Image(systemName: "info")
-                        .frame(width: 24, height: 24)
-                }
-                .buttonStyle(.glass)
-                .buttonBorderShape(.circle)
-                .accessibilityLabel("runs.read_only_info")
-
-                Button(action: onRefresh) {
-                    Group {
-                        if isRefreshing {
-                            ProgressView()
-                                .controlSize(.small)
-                        } else {
-                            Image(systemName: "arrow.clockwise")
-                        }
-                    }
-                    .frame(width: 24, height: 24)
-                }
-                .buttonStyle(.glassProminent)
-                .buttonBorderShape(.circle)
-                .disabled(isRefreshing)
-                .accessibilityLabel("common.refresh")
-            }
-        }
-        .accessibilityElement(children: .contain)
     }
 }
 
@@ -308,34 +243,6 @@ private struct HistoryEmptyState: View {
             return "exclamationmark.icloud"
         }
         return "clock.arrow.circlepath"
-    }
-}
-
-private struct ReadOnlyInformationSheet: View {
-    @Environment(\.dismiss) private var dismiss
-
-    var body: some View {
-        NavigationStack {
-            List {
-                Section {
-                    Label("runs.read_only_flow", systemImage: "arrow.right")
-                    Label("runs.no_remote_commands", systemImage: "terminal.fill")
-                    Label("runs.full_logs_local", systemImage: "lock.shield.fill")
-                }
-
-                Section("settings.live_activities") {
-                    Label("runs.live_activity_contents", systemImage: "platter.filled.bottom.iphone")
-                }
-            }
-            .navigationTitle("runs.read_only_info")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("common.done", action: dismiss.callAsFunction)
-                }
-            }
-        }
-        .presentationDetents([.medium, .large])
     }
 }
 

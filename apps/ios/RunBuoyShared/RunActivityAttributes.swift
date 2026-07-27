@@ -29,6 +29,7 @@ public struct RunActivityAttributes {
         public let message: String?
         public let startedAt: Date
         public let updatedAt: Date
+        public let endedAt: Date?
         public let estimatedEndAt: Date?
         public let exitCode: Int?
 
@@ -45,6 +46,7 @@ public struct RunActivityAttributes {
             message: String?,
             startedAt: Date,
             updatedAt: Date,
+            endedAt: Date? = nil,
             estimatedEndAt: Date?,
             exitCode: Int?
         ) {
@@ -60,6 +62,7 @@ public struct RunActivityAttributes {
             self.message = message
             self.startedAt = startedAt
             self.updatedAt = updatedAt
+            self.endedAt = endedAt
             self.estimatedEndAt = estimatedEndAt
             self.exitCode = exitCode
         }
@@ -77,6 +80,7 @@ public struct RunActivityAttributes {
             case message
             case startedAt
             case updatedAt
+            case endedAt
             case estimatedEndAt
             case exitCode
         }
@@ -95,6 +99,9 @@ public struct RunActivityAttributes {
             message = try values.decodeIfPresent(String.self, forKey: .message)
             startedAt = try Self.decodeDate(values, key: .startedAt)
             updatedAt = try Self.decodeDate(values, key: .updatedAt)
+            endedAt = try values.contains(.endedAt)
+                ? Self.decodeOptionalDate(values, key: .endedAt)
+                : nil
             estimatedEndAt = try values.contains(.estimatedEndAt)
                 ? Self.decodeOptionalDate(values, key: .estimatedEndAt)
                 : nil
@@ -115,6 +122,7 @@ public struct RunActivityAttributes {
             try values.encodeIfPresent(message, forKey: .message)
             try values.encode(Self.dateFormatter.string(from: startedAt), forKey: .startedAt)
             try values.encode(Self.dateFormatter.string(from: updatedAt), forKey: .updatedAt)
+            try values.encodeIfPresent(endedAt.map(Self.dateFormatter.string(from:)), forKey: .endedAt)
             try values.encodeIfPresent(estimatedEndAt.map(Self.dateFormatter.string(from:)), forKey: .estimatedEndAt)
             try values.encodeIfPresent(exitCode, forKey: .exitCode)
         }

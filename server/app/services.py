@@ -75,7 +75,7 @@ def run_snapshot(run: Run) -> dict[str, Any]:
 
 def live_content_state(run: Run) -> dict[str, Any]:
     progress = run.progress or {}
-    return {
+    content: dict[str, Any] = {
         "sequence": max(run.last_seq, 1),
         "executionStatus": run.execution_status,
         "healthStatus": run.health_status,
@@ -91,6 +91,9 @@ def live_content_state(run: Run) -> dict[str, Any]:
         "estimatedEndAt": progress.get("estimated_end_at"),
         "exitCode": run.exit_code,
     }
+    if run.ended_at is not None:
+        content["endedAt"] = aware(run.ended_at).isoformat()
+    return content
 
 
 def live_payload(
@@ -105,8 +108,10 @@ def live_payload(
     Source: https://developer.apple.com/documentation/activitykit/
     starting-and-updating-live-activities-with-activitykit-push-notifications
     The `timestamp`, `event`, and `content-state` keys are required for the
-    corresponding ActivityKit event. `stale-date` and `dismissal-date` are Unix
-    timestamps. A start also includes `attributes-type` and `attributes`.
+    corresponding ActivityKit event. `stale-date` is a Unix timestamp. A start
+    also includes `attributes-type` and `attributes`. End payloads intentionally
+    use ActivityKit's default dismissal behavior so final state can remain on
+    the Lock Screen for up to four hours.
     """
     current = now or utcnow()
     aps: dict[str, Any] = {
@@ -132,14 +137,6 @@ def live_payload(
                 },
             }
         )
-    if kind == "LIVE_END":
-        minutes = {
-            "SUCCEEDED": 10,
-            "FAILED": 30,
-            "CANCELLED": 10,
-            "LOST": 30,
-        }.get(run.execution_status, 10)
-        aps["dismissal-date"] = int((current + timedelta(minutes=minutes)).timestamp())
     return {"aps": aps}
 
 
@@ -161,7 +158,7 @@ def normal_payload(notification: Notification) -> dict[str, Any]:
 
 def _priority(run: Run, kind: str) -> int:
     if (
-        kind == "LIVE_END"
+        kind in {"LIVE_START", "LIVE_END"}
         or run.attention_status in {"WARNING", "ACTION_REQUIRED"}
         or run.execution_status in {"FAILED", "LOST"}
     ):
@@ -349,9 +346,6 @@ def schedule_run_pushes(
                     available_at=available,
                     coalesce_key=f"live-start:{run.id}:{device.id}",
                 )
-        return
-
-    if event_type == "run.heartbeat":
         return
 
     pending_starts = list(

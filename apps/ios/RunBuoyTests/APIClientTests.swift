@@ -72,6 +72,8 @@ final class APIClientTests: XCTestCase {
             ActivityRegistration(
                 activityID: "activity_1",
                 runID: "018f0d8a-8c0a-7000-8000-000000000001",
+                updateToken: "feedface",
+                tokenGeneration: 3,
                 state: "stale",
                 lastSequence: 42
             )
@@ -82,6 +84,8 @@ final class APIClientTests: XCTestCase {
         let data = try XCTUnwrap(captured?.httpBody)
         let body = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
         let activities = try XCTUnwrap(body["activities"] as? [[String: Any]])
+        XCTAssertEqual(activities[0]["update_token"] as? String, "feedface")
+        XCTAssertEqual(activities[0]["token_generation"] as? Int, 3)
         XCTAssertEqual(activities[0]["state"] as? String, "stale")
         XCTAssertEqual(activities[0]["last_sequence"] as? Int, 42)
     }

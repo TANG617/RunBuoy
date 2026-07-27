@@ -14,6 +14,7 @@ enum AppTab: String, CaseIterable, Identifiable {
 enum AppRoute: Hashable {
     case runDetail(UUID)
     case machine(String)
+    case pairMachine
 }
 
 @MainActor
@@ -24,18 +25,39 @@ final class AppRouter {
     var historyPath: [AppRoute] = []
     var machinesPath: [AppRoute] = []
     var settingsPath: [AppRoute] = []
+    var pendingPairingCode: PairingCode?
 
     func handle(_ url: URL) -> Bool {
-        guard url.scheme?.lowercased() == "runbuoy",
-              url.host?.lowercased() == "runs",
-              let rawID = url.path.split(separator: "/").first,
-              let runID = UUID(uuidString: String(rawID))
-        else {
+        guard url.scheme?.lowercased() == "runbuoy" else {
             return false
         }
-        selectedTab = .activeRuns
-        activeRunsPath = [.runDetail(runID)]
-        return true
+
+        switch url.host?.lowercased() {
+        case "pair":
+            guard let pairingCode = try? PairingCode.decode(url.absoluteString) else {
+                return false
+            }
+            pendingPairingCode = pairingCode
+            selectedTab = .settings
+            settingsPath = [.pairMachine]
+            return true
+        case "runs":
+            guard let rawID = url.path.split(separator: "/").first,
+                  let runID = UUID(uuidString: String(rawID))
+            else {
+                return false
+            }
+            selectedTab = .activeRuns
+            activeRunsPath = [.runDetail(runID)]
+            return true
+        default:
+            return false
+        }
+    }
+
+    func clearPendingPairing() {
+        pendingPairingCode = nil
+        settingsPath = []
     }
 
     func showMachines() {

@@ -54,6 +54,8 @@ def test_qr_is_safe_canonical_and_shown_before_first_poll(monkeypatch: Any) -> N
         assert parsed.scheme == "runbuoy"
         assert parsed.netloc == "pair"
         assert parsed.path == "/pair%2Fid"
+        assert "+" not in parsed.query
+        assert "Mac%20Studio%20%2F%20Lab" in parsed.query
         query = parse_qs(parsed.query)
         assert query["challenge"] == ["challenge + /"]
         assert query["machine"] == ["Mac Studio / Lab"]

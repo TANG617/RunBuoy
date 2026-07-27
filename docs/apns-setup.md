@@ -63,11 +63,11 @@ retried; transient failures use bounded exponential backoff.
 
 ```dotenv
 APNS_MODE=mock
-APNS_MOCK_DIR=/tmp/runbuoy-apns
 ```
 
-Mock mode records headers and exact JSON payloads for Server and E2E tests.
-It requires no Apple credentials and is the only APNs mode used in CI.
+Mock mode records headers, exact JSON payloads, and deterministic HTTP 200
+results in the `push_attempts` database table. It requires no Apple
+credentials and is the only APNs mode used in CI.
 
 ## Physical-device verification
 

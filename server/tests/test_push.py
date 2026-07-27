@@ -103,7 +103,7 @@ def test_exact_live_activity_start_payload_and_headers(harness: Harness) -> None
     }
 
 
-def test_update_end_stale_dismissal_and_priority(harness: Harness) -> None:
+def test_update_end_stale_and_default_dismissal(harness: Harness) -> None:
     run = _live_run(harness)
     now = datetime(2026, 7, 26, 12, 0, tzinfo=UTC)
     update = live_payload(run, "LIVE_UPDATE", now, machine_name="Studio Mac")
@@ -112,9 +112,63 @@ def test_update_end_stale_dismissal_and_priority(harness: Harness) -> None:
     assert "dismissal-date" not in update["aps"]
 
     run.execution_status = "FAILED"
+    run.ended_at = now
     ended = live_payload(run, "LIVE_END", now, machine_name="Studio Mac")
     assert ended["aps"]["event"] == "end"
-    assert ended["aps"]["dismissal-date"] == int((now + timedelta(minutes=30)).timestamp())
+    assert ended["aps"]["content-state"]["endedAt"] == now.isoformat()
+    assert "dismissal-date" not in ended["aps"]
+
+
+def test_heartbeat_enqueues_live_update_with_fresh_timestamp(harness: Harness) -> None:
+    device, machine = harness.pair()
+    run_id = str(uuid.uuid4())
+    harness.register_run(machine, run_id)
+    started_at = datetime.now(UTC) - timedelta(seconds=30)
+    assert (
+        post_events(
+            harness,
+            machine,
+            run_id,
+            [event(run_id, machine["machine_id"], 1, "run.started", at=started_at)],
+        ).status_code
+        == 200
+    )
+    assert (
+        harness.client.put(
+            "/v1/live-activities/activity-heartbeat/update-token",
+            headers=auth(device["credential"]),
+            json={
+                "token": "heartbeat-update-token",
+                "device_id": device["device_id"],
+                "run_id": run_id,
+                "generation": 1,
+            },
+        ).status_code
+        == 204
+    )
+
+    heartbeat_at = started_at + timedelta(seconds=15)
+    assert (
+        post_events(
+            harness,
+            machine,
+            run_id,
+            [event(run_id, machine["machine_id"], 2, "run.heartbeat", at=heartbeat_at)],
+        ).status_code
+        == 200
+    )
+    with harness.session_factory() as session:
+        update = session.scalar(
+            select(PushOutbox).where(
+                PushOutbox.run_id == run_id,
+                PushOutbox.kind == "LIVE_UPDATE",
+            )
+        )
+        assert update is not None
+        assert update.status == "pending"
+        assert (
+            update.desired_payload["aps"]["content-state"]["updatedAt"] == heartbeat_at.isoformat()
+        )
 
 
 def test_outbox_mock_send_records_payload_without_secrets(harness: Harness) -> None:

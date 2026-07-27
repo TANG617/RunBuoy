@@ -111,19 +111,32 @@ struct DevicePreferences: Codable, Equatable, Sendable {
 struct ActivityRegistration: Codable, Equatable, Sendable {
     let activityID: String
     let runID: String
+    let updateToken: String?
+    let tokenGeneration: Int
     let state: String
     let lastSequence: Int
 
     private enum CodingKeys: String, CodingKey {
         case activityID = "activity_id"
         case runID = "run_id"
+        case updateToken = "update_token"
+        case tokenGeneration = "token_generation"
         case state
         case lastSequence = "last_sequence"
     }
 
-    init(activityID: String, runID: String, state: String, lastSequence: Int = 0) {
+    init(
+        activityID: String,
+        runID: String,
+        updateToken: String? = nil,
+        tokenGeneration: Int = 1,
+        state: String,
+        lastSequence: Int = 0
+    ) {
         self.activityID = activityID
         self.runID = runID
+        self.updateToken = updateToken
+        self.tokenGeneration = tokenGeneration
         self.state = state
         self.lastSequence = lastSequence
     }
