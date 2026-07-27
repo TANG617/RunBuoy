@@ -1,90 +1,341 @@
 import SwiftUI
 
-struct RunsView: View {
+private enum RunListSheet: String, Identifiable {
+    case readOnlyBoundary
+
+    var id: String { rawValue }
+}
+
+struct ActiveRunsView: View {
     @Environment(RunBuoyStore.self) private var store
-    @AppStorage("runbuoy.safe-messages-enabled") private var safeMessagesEnabled = true
+    @State private var presentedSheet: RunListSheet?
+
+    private var isEmpty: Bool {
+        store.activeRunModels.isEmpty
+    }
 
     var body: some View {
-        Group {
-            if store.runs.isEmpty && (store.messages.isEmpty || !safeMessagesEnabled) {
-                emptyOrLoading
-            } else {
-                content
+        List {
+            Section {
+                RunListToolStrip(
+                    isRefreshing: store.state == .loading,
+                    onShowReadOnlyInfo: showReadOnlyInfo,
+                    onRefresh: refresh
+                )
+            }
+            .listRowBackground(Color.clear)
+            .listRowInsets(.init(top: 8, leading: 16, bottom: 8, trailing: 16))
+
+            if case .offline(let message) = store.state {
+                OfflineBanner(message: message)
+                    .listRowSeparator(.hidden)
+            }
+
+            if !store.activeRunModels.isEmpty {
+                Section("runs.active") {
+                    ForEach(store.activeRunModels) { model in
+                        NavigationLink(value: AppRoute.runDetail(model.id)) {
+                            RunRow(model: model)
+                        }
+                    }
+                }
+            }
+
+            if isEmpty, store.state == .loading {
+                RunLoadingRows()
             }
         }
-        .navigationTitle("runs.title")
-        .refreshable { await store.refresh() }
-        .task {
-            if store.state == .idle {
-                await store.refresh()
+        .listStyle(.insetGrouped)
+        .navigationTitle("runs.active")
+        .overlay {
+            if isEmpty, store.state != .loading {
+                ActiveRunsEmptyState(state: store.state)
+                    .allowsHitTesting(false)
+            }
+        }
+        .refreshable { await reload() }
+        .task { await loadIfNeeded() }
+        .sheet(item: $presentedSheet) { sheet in
+            switch sheet {
+            case .readOnlyBoundary:
+                ReadOnlyInformationSheet()
             }
         }
     }
 
-    private var content: some View {
+    private func showReadOnlyInfo() {
+        presentedSheet = .readOnlyBoundary
+    }
+
+    private func refresh() {
+        Task { await reload() }
+    }
+
+    private func loadIfNeeded() async {
+        guard store.state == .idle else { return }
+        await store.refresh()
+    }
+
+    private func reload() async {
+        await store.refresh()
+    }
+}
+
+struct RunHistoryView: View {
+    @Environment(RunBuoyStore.self) private var store
+    @AppStorage("runbuoy.safe-messages-enabled") private var safeMessagesEnabled = true
+
+    private var showsMessages: Bool {
+        safeMessagesEnabled && !store.messages.isEmpty
+    }
+
+    private var isEmpty: Bool {
+        store.historyRunModels.isEmpty && !showsMessages
+    }
+
+    var body: some View {
         List {
             if case .offline(let message) = store.state {
                 OfflineBanner(message: message)
                     .listRowSeparator(.hidden)
             }
 
-            if !store.activeRuns.isEmpty {
-                Section("runs.active") {
-                    ForEach(store.activeRuns) { run in
-                        NavigationLink(value: AppRoute.runDetail(run.id)) {
-                            RunRow(run: run)
-                        }
-                    }
-                }
-            }
-
-            if !store.recentRuns.isEmpty {
+            if !store.historyRunModels.isEmpty {
                 Section("runs.recent") {
-                    ForEach(store.recentRuns.prefix(20)) { run in
-                        NavigationLink(value: AppRoute.runDetail(run.id)) {
-                            RunRow(run: run)
+                    ForEach(store.historyRunModels) { model in
+                        NavigationLink(value: AppRoute.runDetail(model.id)) {
+                            RunRow(model: model)
                         }
                     }
                 }
             }
 
-            if safeMessagesEnabled, !store.messages.isEmpty {
+            if showsMessages {
                 Section("runs.messages") {
-                    ForEach(store.messages.prefix(10)) { message in
+                    ForEach(store.messages) { message in
                         RichMessageRow(message: message)
                     }
                 }
             }
+
+            if isEmpty, store.state == .loading {
+                RunLoadingRows()
+            }
         }
         .listStyle(.insetGrouped)
-    }
-
-    @ViewBuilder
-    private var emptyOrLoading: some View {
-        switch store.state {
-        case .loading:
-            List {
-                ForEach(0..<4, id: \.self) { _ in
-                    RunRow(run: PreviewFixtures.placeholderRun)
-                        .redacted(reason: .placeholder)
-                }
-            }
-            .listStyle(.plain)
-            .accessibilityLabel("runs.loading")
-        case .failed(let message):
-            ContentUnavailableView {
-                Label("runs.unavailable", systemImage: "exclamationmark.icloud")
-            } description: {
-                Text(message)
-                Text("runs.pull_to_refresh")
-            }
-        default:
-            ContentUnavailableView {
-                Label("runs.empty", systemImage: "water.waves")
-            } description: {
-                Text("runs.empty_description")
+        .navigationTitle("history.title")
+        .overlay {
+            if isEmpty, store.state != .loading {
+                HistoryEmptyState(state: store.state)
+                    .allowsHitTesting(false)
             }
         }
+        .refreshable { await reload() }
+        .task { await loadIfNeeded() }
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button(action: refresh) {
+                    Label("common.refresh", systemImage: "arrow.clockwise")
+                }
+                .disabled(store.state == .loading)
+            }
+        }
+    }
+
+    private func refresh() {
+        Task { await reload() }
+    }
+
+    private func loadIfNeeded() async {
+        guard store.state == .idle else { return }
+        await store.refresh()
+    }
+
+    private func reload() async {
+        await store.refresh()
+    }
+}
+
+private struct RunListToolStrip: View {
+    let isRefreshing: Bool
+    let onShowReadOnlyInfo: () -> Void
+    let onRefresh: () -> Void
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    var body: some View {
+        GlassEffectContainer(spacing: 12) {
+            HStack(spacing: 12) {
+                if dynamicTypeSize.isAccessibilitySize {
+                    ReadOnlyGlassIcon()
+                } else {
+                    ReadOnlyGlassLabel()
+                }
+
+                Spacer(minLength: 0)
+
+                Button(action: onShowReadOnlyInfo) {
+                    Image(systemName: "info")
+                        .frame(width: 24, height: 24)
+                }
+                .buttonStyle(.glass)
+                .buttonBorderShape(.circle)
+                .accessibilityLabel("runs.read_only_info")
+
+                Button(action: onRefresh) {
+                    Group {
+                        if isRefreshing {
+                            ProgressView()
+                                .controlSize(.small)
+                        } else {
+                            Image(systemName: "arrow.clockwise")
+                        }
+                    }
+                    .frame(width: 24, height: 24)
+                }
+                .buttonStyle(.glassProminent)
+                .buttonBorderShape(.circle)
+                .disabled(isRefreshing)
+                .accessibilityLabel("common.refresh")
+            }
+        }
+        .accessibilityElement(children: .contain)
+    }
+}
+
+private struct RunLoadingRows: View {
+    private enum Placeholder: String, CaseIterable, Identifiable {
+        case first
+        case second
+        case third
+
+        var id: String { rawValue }
+    }
+
+    var body: some View {
+        Section {
+            ForEach(Placeholder.allCases) { _ in
+                RunLoadingRow()
+                    .redacted(reason: .placeholder)
+                    .allowsHitTesting(false)
+            }
+        }
+        .accessibilityLabel("runs.loading")
+    }
+}
+
+private struct RunLoadingRow: View {
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("A run title appears here")
+                    .font(.headline)
+                Spacer()
+                Text("Running")
+                    .font(.caption.weight(.semibold))
+            }
+            Label("Machine", systemImage: "desktopcomputer")
+                .font(.subheadline)
+            ProgressView(value: 0.4)
+            Text("Working")
+                .font(.subheadline.weight(.medium))
+        }
+        .padding(.vertical, 6)
+    }
+}
+
+private struct ActiveRunsEmptyState: View {
+    let state: RunBuoyStore.LoadState
+
+    var body: some View {
+        ContentUnavailableView {
+            Label(title, systemImage: symbol)
+        } description: {
+            Text(description)
+        }
+        .padding()
+    }
+
+    private var title: LocalizedStringKey {
+        if case .failed = state {
+            return "runs.unavailable"
+        }
+        return "runs.active_empty"
+    }
+
+    private var description: LocalizedStringKey {
+        if case .failed = state {
+            return "runs.pull_to_refresh"
+        }
+        return "runs.active_empty_description"
+    }
+
+    private var symbol: String {
+        if case .failed = state {
+            return "exclamationmark.icloud"
+        }
+        return "checkmark.circle"
+    }
+}
+
+private struct HistoryEmptyState: View {
+    let state: RunBuoyStore.LoadState
+
+    var body: some View {
+        ContentUnavailableView {
+            Label(title, systemImage: symbol)
+        } description: {
+            Text(description)
+        }
+        .padding()
+    }
+
+    private var title: LocalizedStringKey {
+        if case .failed = state {
+            return "runs.unavailable"
+        }
+        return "history.empty"
+    }
+
+    private var description: LocalizedStringKey {
+        if case .failed = state {
+            return "runs.pull_to_refresh"
+        }
+        return "history.empty_description"
+    }
+
+    private var symbol: String {
+        if case .failed = state {
+            return "exclamationmark.icloud"
+        }
+        return "clock.arrow.circlepath"
+    }
+}
+
+private struct ReadOnlyInformationSheet: View {
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Section {
+                    Label("runs.read_only_flow", systemImage: "arrow.right")
+                    Label("runs.no_remote_commands", systemImage: "terminal.fill")
+                    Label("runs.full_logs_local", systemImage: "lock.shield.fill")
+                }
+
+                Section("settings.live_activities") {
+                    Label("runs.live_activity_contents", systemImage: "platter.filled.bottom.iphone")
+                }
+            }
+            .navigationTitle("runs.read_only_info")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("common.done", action: dismiss.callAsFunction)
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
     }
 }
 
@@ -139,13 +390,14 @@ struct RichMessageRow: View {
     }
 }
 
-#Preview("Loaded") {
-    NavigationStack { RunsView() }
+#Preview("Active Runs · Light") {
+    NavigationStack { ActiveRunsView() }
         .environment(PreviewFixtures.store())
 }
 
-#Preview("Large type") {
-    NavigationStack { RunsView() }
+#Preview("History · Dark · Large Type") {
+    NavigationStack { RunHistoryView() }
         .environment(PreviewFixtures.store())
+        .preferredColorScheme(.dark)
         .environment(\.dynamicTypeSize, .accessibility3)
 }

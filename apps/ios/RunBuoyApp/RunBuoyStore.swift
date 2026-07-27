@@ -4,6 +4,23 @@ import UIKit
 
 @MainActor
 @Observable
+final class RunSummaryModel: Identifiable {
+    let id: UUID
+    private(set) var snapshot: RunSnapshot
+
+    init(snapshot: RunSnapshot) {
+        id = snapshot.id
+        self.snapshot = snapshot
+    }
+
+    func update(with snapshot: RunSnapshot) {
+        guard self.snapshot != snapshot else { return }
+        self.snapshot = snapshot
+    }
+}
+
+@MainActor
+@Observable
 final class RunBuoyStore {
     enum LoadState: Equatable {
         case idle
@@ -19,11 +36,14 @@ final class RunBuoyStore {
     private(set) var state: LoadState = .idle
     private(set) var lastRefreshAt: Date?
     private(set) var deviceIdentity: DeviceIdentity?
+    private(set) var activeRunModels: [RunSummaryModel] = []
+    private(set) var historyRunModels: [RunSummaryModel] = []
 
     private let api: any RunBuoyAPI
     private let identityStore: any DeviceIdentityStoring
     private let cache: LocalCacheStore
     private let userDefaults: UserDefaults
+    @ObservationIgnored private var runModelsByID: [UUID: RunSummaryModel] = [:]
 
     init(
         api: any RunBuoyAPI,
@@ -43,22 +63,14 @@ final class RunBuoyStore {
             messages = initialSnapshot.messages
             lastRefreshAt = initialSnapshot.savedAt
             state = .loaded
+            reconcileRunModels(with: initialSnapshot.runs)
         }
-    }
-
-    var activeRuns: [RunSnapshot] {
-        runs.filter { $0.executionStatus.isActive }
-            .sorted { $0.updatedAt > $1.updatedAt }
-    }
-
-    var recentRuns: [RunSnapshot] {
-        runs.filter { !$0.executionStatus.isActive }
-            .sorted { $0.updatedAt > $1.updatedAt }
     }
 
     func restoreCache() async {
         guard let snapshot = try? await cache.load() else { return }
         runs = snapshot.runs
+        reconcileRunModels(with: snapshot.runs)
         machines = snapshot.machines
         messages = snapshot.messages
         lastRefreshAt = snapshot.savedAt
@@ -103,6 +115,7 @@ final class RunBuoyStore {
             async let loadedMessages = api.listMessages()
             let result = try await (loadedRuns, loadedMachines, loadedMessages)
             runs = result.0.sorted { $0.updatedAt > $1.updatedAt }
+            reconcileRunModels(with: runs)
             machines = result.1.sorted { $0.lastSeenAt > $1.lastSeenAt }
             messages = result.2.sorted { $0.createdAt > $1.createdAt }
             lastRefreshAt = Date()
@@ -153,8 +166,37 @@ final class RunBuoyStore {
     func clearCache() async throws {
         try await cache.clear()
         runs = []
+        activeRunModels = []
+        historyRunModels = []
+        runModelsByID = [:]
+        machines = []
         messages = []
         lastRefreshAt = nil
         state = .idle
+    }
+
+    private func reconcileRunModels(with snapshots: [RunSnapshot]) {
+        var active: [RunSummaryModel] = []
+        var history: [RunSummaryModel] = []
+        var retainedModels: [UUID: RunSummaryModel] = [:]
+
+        for snapshot in snapshots.sorted(by: { $0.updatedAt > $1.updatedAt }) {
+            let model = runModelsByID[snapshot.id] ?? RunSummaryModel(snapshot: snapshot)
+            model.update(with: snapshot)
+            retainedModels[snapshot.id] = model
+            if snapshot.executionStatus.isActive {
+                active.append(model)
+            } else {
+                history.append(model)
+            }
+        }
+
+        if activeRunModels.map(\.id) != active.map(\.id) {
+            activeRunModels = active
+        }
+        if historyRunModels.map(\.id) != history.map(\.id) {
+            historyRunModels = history
+        }
+        runModelsByID = retainedModels
     }
 }

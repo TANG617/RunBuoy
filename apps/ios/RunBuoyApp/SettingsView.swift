@@ -12,16 +12,14 @@ struct SettingsView: View {
     var body: some View {
         Form {
             Section("settings.connections") {
-                NavigationLink(value: AppRoute.machines) {
+                Button(action: showMachines) {
                     LabeledContent {
                         Text(store.machines.count, format: .number)
                     } label: {
                         Label("settings.machines", systemImage: "desktopcomputer")
                     }
                 }
-                NavigationLink(value: AppRoute.pairMachine) {
-                    Label("settings.pair_machine", systemImage: "qrcode.viewfinder")
-                }
+                .buttonStyle(.plain)
             }
 
             Section("settings.notifications") {
@@ -37,12 +35,7 @@ struct SettingsView: View {
             }
 
             Section("settings.storage") {
-                Button {
-                    Task {
-                        try? await store.clearCache()
-                        cacheMessage = "settings.cache_cleared"
-                    }
-                } label: {
+                Button(action: clearCache) {
                     Label("settings.clear_cache", systemImage: "trash")
                 }
                 if let cacheMessage {
@@ -74,6 +67,17 @@ struct SettingsView: View {
             showSafeMessages: safeMessagesEnabled
         )
         Task { await store.savePreferences(preferences) }
+    }
+
+    private func showMachines() {
+        router.showMachines()
+    }
+
+    private func clearCache() {
+        Task {
+            try? await store.clearCache()
+            cacheMessage = "settings.cache_cleared"
+        }
     }
 }
 

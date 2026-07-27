@@ -7,31 +7,47 @@ struct RunBuoyApp: App {
     @Environment(\.scenePhase) private var scenePhase
 
     @State private var store: RunBuoyStore
-    @State private var router = AppRouter()
+    @State private var router: AppRouter
     @State private var notificationCoordinator = NotificationCoordinator()
     @State private var activityCoordinator: ActivityTokenCoordinator
     @AppStorage("runbuoy.onboarding-complete") private var onboardingComplete = false
+    private let isUIPreviewMode: Bool
 
     init() {
+        let isUIPreviewMode = Self.isUIPreviewLaunch
         let identityStore = KeychainDeviceIdentityStore()
         let api = URLSessionRunBuoyAPI(
             baseURL: AppConfiguration.live.apiBaseURL,
             identityStore: identityStore
         )
-        _store = State(
-            initialValue: RunBuoyStore(
-                api: api,
-                identityStore: identityStore,
-                cache: LocalCacheStore()
+        let router = AppRouter()
+        if let previewTab = Self.uiPreviewTab {
+            router.selectedTab = previewTab
+        }
+        if let previewRunID = Self.uiPreviewRunID {
+            router.selectedTab = .activeRuns
+            router.activeRunsPath = [.runDetail(previewRunID)]
+        }
+        _router = State(initialValue: router)
+        if isUIPreviewMode {
+            _store = State(initialValue: PreviewFixtures.store())
+        } else {
+            _store = State(
+                initialValue: RunBuoyStore(
+                    api: api,
+                    identityStore: identityStore,
+                    cache: LocalCacheStore()
+                )
             )
-        )
+        }
         _activityCoordinator = State(initialValue: ActivityTokenCoordinator(api: api))
+        self.isUIPreviewMode = isUIPreviewMode
     }
 
     var body: some Scene {
         WindowGroup {
             Group {
-                if onboardingComplete {
+                if onboardingComplete || isUIPreviewMode {
                     AppShellView()
                 } else {
                     OnboardingView(
@@ -44,6 +60,7 @@ struct RunBuoyApp: App {
             .environment(router)
             .onOpenURL { _ = router.handle($0) }
             .task {
+                guard !isUIPreviewMode else { return }
                 notificationCoordinator.onRefreshRequested = {
                     Task { await store.refresh() }
                 }
@@ -62,13 +79,13 @@ struct RunBuoyApp: App {
                 }
             }
             .onChange(of: onboardingComplete) { _, completed in
-                if completed {
+                if completed, !isUIPreviewMode {
                     activityCoordinator.start()
                     Task { await store.refresh() }
                 }
             }
             .onChange(of: scenePhase) { _, phase in
-                guard phase == .active, onboardingComplete else { return }
+                guard phase == .active, onboardingComplete, !isUIPreviewMode else { return }
                 activityCoordinator.reconcileCurrentActivities()
                 Task { await store.refresh() }
             }
@@ -82,5 +99,41 @@ struct RunBuoyApp: App {
             identityStore: identityStore
         )
         try await api.registerNotificationToken(token)
+    }
+
+    private static var isUIPreviewLaunch: Bool {
+#if DEBUG
+        ProcessInfo.processInfo.arguments.contains("-runbuoy-ui-preview")
+#else
+        false
+#endif
+    }
+
+    private static var uiPreviewTab: AppTab? {
+#if DEBUG
+        let arguments = ProcessInfo.processInfo.arguments
+        guard let flagIndex = arguments.firstIndex(of: "-runbuoy-ui-preview-tab"),
+              arguments.indices.contains(flagIndex + 1)
+        else {
+            return nil
+        }
+        return AppTab(rawValue: arguments[flagIndex + 1])
+#else
+        nil
+#endif
+    }
+
+    private static var uiPreviewRunID: UUID? {
+#if DEBUG
+        let arguments = ProcessInfo.processInfo.arguments
+        guard let flagIndex = arguments.firstIndex(of: "-runbuoy-ui-preview-run"),
+              arguments.indices.contains(flagIndex + 1)
+        else {
+            return nil
+        }
+        return UUID(uuidString: arguments[flagIndex + 1])
+#else
+        nil
+#endif
     }
 }

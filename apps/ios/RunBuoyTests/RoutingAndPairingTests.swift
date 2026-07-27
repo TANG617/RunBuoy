@@ -9,14 +9,14 @@ final class RoutingAndPairingTests: XCTestCase {
         router.selectedTab = .settings
 
         XCTAssertTrue(router.handle(URL(string: "runbuoy://runs/\(id.uuidString)")!))
-        XCTAssertEqual(router.selectedTab, .runs)
-        XCTAssertEqual(router.runsPath, [.runDetail(id)])
+        XCTAssertEqual(router.selectedTab, .activeRuns)
+        XCTAssertEqual(router.activeRunsPath, [.runDetail(id)])
     }
 
     func testUnrelatedURLIsNotConsumed() {
         let router = AppRouter()
         XCTAssertFalse(router.handle(URL(string: "https://example.com/runs/1")!))
-        XCTAssertTrue(router.runsPath.isEmpty)
+        XCTAssertTrue(router.activeRunsPath.isEmpty)
     }
 
     func testCanonicalPairingURL() throws {

@@ -61,57 +61,137 @@ extension AttentionStatus {
     }
 }
 
-struct StatusBadge: View {
-    let presentation: StatusPresentation
+struct ReadOnlyGlassLabel: View {
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @Environment(\.colorSchemeContrast) private var contrast
 
     var body: some View {
-        Label {
-            Text(presentation.title)
-        } icon: {
+        Label("settings.read_only", systemImage: "hand.raised.fill")
+            .font(.subheadline.weight(.semibold))
+            .foregroundStyle(.secondary)
+            .lineLimit(1)
+            .padding(.horizontal, 13)
+            .frame(minHeight: 44)
+            .modifier(
+                ReadOnlyGlassModifier(
+                    reduceTransparency: reduceTransparency,
+                    increasedContrast: contrast == .increased
+                )
+            )
+    }
+}
+
+struct ReadOnlyGlassIcon: View {
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Environment(\.colorSchemeContrast) private var contrast
+
+    var body: some View {
+        Image(systemName: "hand.raised.fill")
+            .font(.body.weight(.semibold))
+            .foregroundStyle(.secondary)
+            .frame(width: 44, height: 44)
+            .modifier(
+                ReadOnlyGlassModifier(
+                    reduceTransparency: reduceTransparency,
+                    increasedContrast: contrast == .increased
+                )
+            )
+            .accessibilityLabel("settings.read_only")
+    }
+}
+
+private struct ReadOnlyGlassModifier: ViewModifier {
+    let reduceTransparency: Bool
+    let increasedContrast: Bool
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if reduceTransparency {
+            content
+                .background(
+                    Color(uiColor: .secondarySystemGroupedBackground),
+                    in: Capsule()
+                )
+                .overlay {
+                    Capsule().stroke(.primary, lineWidth: 1)
+                }
+        } else {
+            content
+                .overlay {
+                    if increasedContrast {
+                        Capsule().stroke(.primary, lineWidth: 1)
+                    }
+                }
+                .glassEffect(
+                    .regular.tint(Color.accentColor.opacity(0.16)),
+                    in: .capsule
+                )
+        }
+    }
+}
+
+struct StatusBadge: View {
+    let presentation: StatusPresentation
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Environment(\.colorSchemeContrast) private var contrast
+
+    var body: some View {
+        HStack(spacing: 6) {
             Image(systemName: presentation.symbol)
+                .accessibilityHidden(true)
+            Text(presentation.title)
         }
         .font(.caption.weight(.semibold))
         .foregroundStyle(presentation.color)
         .padding(.horizontal, 9)
         .padding(.vertical, 5)
-        .background(presentation.color.opacity(contrast == .increased ? 0.2 : 0.12), in: Capsule())
+        .background(
+            reduceTransparency
+                ? Color(uiColor: .secondarySystemBackground)
+                : presentation.color.opacity(contrast == .increased ? 0.2 : 0.12),
+            in: Capsule()
+        )
         .overlay {
-            if contrast == .increased {
+            if contrast == .increased || reduceTransparency {
                 Capsule().stroke(presentation.color, lineWidth: 1)
             }
         }
+        .lineLimit(1)
+        .fixedSize(horizontal: true, vertical: false)
     }
 }
 
 struct RunProgressView: View {
     let progress: RunProgress?
     let phase: String?
+    let showsIndeterminate: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            if let progress, let fraction = progress.boundedFraction {
-                ProgressView(value: fraction)
-                    .accessibilityLabel("run.progress")
-                    .accessibilityValue(Text(fraction, format: .percent))
-                HStack {
-                    if let current = progress.current, let total = progress.total {
-                        Text("\(current, format: .number) / \(total, format: .number)")
+            if let progress {
+                if let fraction = progress.boundedFraction {
+                    ProgressView(value: fraction)
+                        .accessibilityLabel("run.progress")
+                        .accessibilityValue(Text(fraction, format: .percent))
+                    HStack {
+                        if let current = progress.current, let total = progress.total {
+                            Text("\(current, format: .number) / \(total, format: .number)")
+                        }
+                        Spacer()
+                        Text(fraction, format: .percent.precision(.fractionLength(0)))
+                            .fontWeight(.semibold)
                     }
-                    Spacer()
-                    Text(fraction, format: .percent.precision(.fractionLength(0)))
-                        .fontWeight(.semibold)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                } else if showsIndeterminate {
+                    HStack(spacing: 8) {
+                        Image(systemName: "ellipsis")
+                            .accessibilityHidden(true)
+                        Text("progress.indeterminate")
+                    }
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
                 }
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            } else {
-                HStack(spacing: 8) {
-                    Image(systemName: "ellipsis")
-                        .accessibilityHidden(true)
-                    Text("progress.indeterminate")
-                }
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
             }
             if let phase, !phase.isEmpty {
                 Text(phase)
@@ -125,42 +205,106 @@ struct RunProgressView: View {
 }
 
 struct RunRow: View {
+    let model: RunSummaryModel
+
+    var body: some View {
+        RunRowContent(run: model.snapshot)
+    }
+}
+
+private struct RunRowContent: View {
     let run: RunSnapshot
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .firstTextBaseline) {
-                Text(run.title)
-                    .font(.headline)
-                    .lineLimit(2)
-                Spacer(minLength: 8)
-                StatusBadge(presentation: run.executionStatus.presentation)
+            if dynamicTypeSize.isAccessibilitySize {
+                VStack(alignment: .leading, spacing: 8) {
+                    runTitle
+                    StatusBadge(presentation: run.executionStatus.presentation)
+                }
+            } else {
+                HStack(alignment: .firstTextBaseline) {
+                    runTitle
+                    Spacer(minLength: 8)
+                    StatusBadge(presentation: run.executionStatus.presentation)
+                }
             }
             Label(run.machineName, systemImage: "desktopcomputer")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
-            RunProgressView(progress: run.progress, phase: run.phase)
-            HStack {
-                if run.healthStatus != .healthy {
-                    Label(run.healthStatus.presentation.title, systemImage: run.healthStatus.presentation.symbol)
-                }
-                if run.attentionStatus != .none {
-                    Label(run.attentionStatus.presentation.title, systemImage: run.attentionStatus.presentation.symbol)
-                }
-                Spacer()
-                Text(run.updatedAt, format: .relative(presentation: .named))
-            }
-            .font(.caption)
-            .foregroundStyle(.secondary)
+            RunProgressView(
+                progress: run.progress,
+                phase: run.phase,
+                showsIndeterminate: run.executionStatus.isActive
+            )
+            RunRowMetadataFooter(run: run)
         }
         .padding(.vertical, 6)
         .contentShape(Rectangle())
         .accessibilityElement(children: .combine)
     }
+
+    private var runTitle: some View {
+        Text(run.title)
+            .font(.headline)
+            .lineLimit(dynamicTypeSize.isAccessibilitySize ? 3 : 2)
+    }
+}
+
+private struct RunRowMetadataFooter: View {
+    let run: RunSnapshot
+
+    var body: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack {
+                statusLabels
+                Spacer()
+                updateTime
+            }
+
+            VStack(alignment: .leading, spacing: 6) {
+                statusLabels
+                updateTime
+            }
+        }
+        .font(.caption)
+        .foregroundStyle(.secondary)
+    }
+
+    @ViewBuilder
+    private var statusLabels: some View {
+        HStack(spacing: 8) {
+            if run.healthStatus != .healthy {
+                HStack(spacing: 4) {
+                    Image(systemName: run.healthStatus.presentation.symbol)
+                        .accessibilityHidden(true)
+                    Text(run.healthStatus.presentation.title)
+                }
+                    .fixedSize(horizontal: true, vertical: false)
+            }
+            if run.attentionStatus != .none {
+                HStack(spacing: 4) {
+                    Image(systemName: run.attentionStatus.presentation.symbol)
+                        .accessibilityHidden(true)
+                    Text(run.attentionStatus.presentation.title)
+                }
+                    .fixedSize(horizontal: true, vertical: false)
+            }
+        }
+    }
+
+    private var updateTime: some View {
+        Text(run.updatedAt, format: .relative(presentation: .named))
+            .fixedSize(horizontal: true, vertical: false)
+    }
 }
 
 struct OfflineBanner: View {
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Environment(\.colorSchemeContrast) private var contrast
+
     let message: String
 
     var body: some View {
@@ -178,7 +322,16 @@ struct OfflineBanner: View {
         .foregroundStyle(.orange)
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 12))
+        .background(
+            reduceTransparency ? Color(uiColor: .secondarySystemBackground) : .orange.opacity(0.12),
+            in: RoundedRectangle(cornerRadius: 12)
+        )
+        .overlay {
+            if reduceTransparency || contrast == .increased {
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(.orange, lineWidth: 1)
+            }
+        }
         .accessibilityElement(children: .combine)
     }
 }

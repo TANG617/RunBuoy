@@ -20,14 +20,14 @@ struct RunLiveActivityWidget: Widget {
                         .font(.headline.monospacedDigit())
                 }
                 DynamicIslandExpandedRegion(.center) {
-                    Text(context.attributes.title)
+                    LivePhaseOrStatus(state: context.state)
                         .font(.headline)
                         .lineLimit(1)
                 }
                 DynamicIslandExpandedRegion(.bottom) {
                     VStack(alignment: .leading, spacing: 6) {
                         HStack {
-                            Label(context.attributes.machineName, systemImage: "desktopcomputer")
+                            Label(statusStyle(context.state).title, systemImage: statusStyle(context.state).symbol)
                                 .lineLimit(1)
                             Spacer()
                             Text(context.state.startedAt, style: .relative)
@@ -36,20 +36,7 @@ struct RunLiveActivityWidget: Widget {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         LiveProgressBar(state: context.state)
-                        if let phase = context.state.phase {
-                            Text(phase)
-                                .font(.caption)
-                                .lineLimit(1)
-                        }
-                        if let estimate = context.state.estimatedEndAt {
-                            Label {
-                                Text(estimate, style: .time)
-                            } icon: {
-                                Image(systemName: "clock")
-                            }
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                        }
+                        LiveResultView(state: context.state)
                     }
                 }
             } compactLeading: {
@@ -78,15 +65,9 @@ struct RunLockScreenView: View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .top, spacing: 10) {
                 LiveStatusIcon(state: state, size: 26)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(attributes.title)
-                        .font(.headline)
-                        .lineLimit(2)
-                    Label(attributes.machineName, systemImage: "desktopcomputer")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                }
+                Text(statusStyle(state).title)
+                    .font(.headline)
+                    .lineLimit(1)
                 Spacer(minLength: 6)
                 LiveProgressText(state: state)
                     .font(.headline.monospacedDigit())
@@ -101,22 +82,18 @@ struct RunLockScreenView: View {
                 }
                 Spacer()
                 Label {
-                    Text(state.updatedAt, style: .relative)
+                    Text(state.startedAt, style: .relative)
                 } icon: {
-                    Image(systemName: "clock.arrow.circlepath")
+                    Image(systemName: "timer")
                 }
             }
             .font(.caption)
             .foregroundStyle(.secondary)
-            if let estimate = state.estimatedEndAt {
-                Text(String(format: String(localized: "widget.explicit_eta"), estimate.formatted(date: .omitted, time: .shortened)))
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-            }
+            LiveResultView(state: state)
         }
         .padding()
         .accessibilityElement(children: .combine)
-        .accessibilityLabel(attributes.title)
+        .accessibilityLabel(statusStyle(state).title)
         .accessibilityValue(statusStyle(state).accessibilityValue(state: state))
     }
 }
@@ -151,6 +128,18 @@ private struct LiveProgressText: View {
     }
 }
 
+private struct LivePhaseOrStatus: View {
+    let state: RunActivityAttributes.ContentState
+
+    var body: some View {
+        if let phase = state.phase, !phase.isEmpty {
+            Text(phase)
+        } else {
+            Text(statusStyle(state).title)
+        }
+    }
+}
+
 private struct LiveProgressBar: View {
     let state: RunActivityAttributes.ContentState
 
@@ -168,6 +157,40 @@ private struct LiveProgressBar: View {
                     .font(.caption)
             }
             .foregroundStyle(.secondary)
+        }
+    }
+}
+
+private struct LiveResultView: View {
+    let state: RunActivityAttributes.ContentState
+
+    var body: some View {
+        if isTerminal {
+            Label {
+                if let exitCode = state.exitCode {
+                    Text(
+                        String(
+                            format: String(localized: "widget.result_exit_code"),
+                            exitCode
+                        )
+                    )
+                } else {
+                    Text(statusStyle(state).title)
+                }
+            } icon: {
+                Image(systemName: statusStyle(state).symbol)
+            }
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(statusStyle(state).color)
+        }
+    }
+
+    private var isTerminal: Bool {
+        switch state.executionStatus {
+        case "SUCCEEDED", "FAILED", "CANCELLED", "LOST":
+            true
+        default:
+            false
         }
     }
 }

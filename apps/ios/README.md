@@ -1,6 +1,6 @@
 # RunBuoy for iOS
 
-RunBuoy is a native iOS 18+ read-only presentation client. Execution data flows
+RunBuoy is a native iOS 26+ read-only presentation client. Execution data flows
 from a paired machine through the RunBuoy server to the iPhone. The app contains
 no command, process, terminal, approval, or agent-response surface.
 
@@ -18,7 +18,7 @@ The shared `RunBuoy` scheme builds the app and widget and runs `RunBuoyTests`.
 
 ## Build and test
 
-Xcode 16 or newer with the iOS 18 SDK is required:
+Xcode 26 or newer with the iOS 26 SDK is required:
 
 ```sh
 xcodebuild \
@@ -29,7 +29,7 @@ xcodebuild \
   build
 ```
 
-With an iOS 18 simulator available:
+With an iOS 26 simulator available:
 
 ```sh
 xcodebuild \

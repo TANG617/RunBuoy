@@ -3,6 +3,8 @@
 "attention.none" = "No attention";
 "attention.warning" = "Warning";
 "common.close" = "Close";
+"common.done" = "Done";
+"common.refresh" = "Refresh";
 "error.http_status" = "The server returned status %d.";
 "error.invalid_response" = "The server response could not be read.";
 "error.invalid_url" = "The server address is invalid.";
@@ -23,6 +25,9 @@
 "health.healthy" = "Healthy";
 "health.offline" = "Offline";
 "health.stale" = "Stale";
+"history.empty" = "No run history";
+"history.empty_description" = "Completed runs will appear here.";
+"history.title" = "History";
 "machine.architecture" = "Architecture";
 "machine.cli_version" = "CLI version";
 "machine.identity" = "Identity";
@@ -41,6 +46,7 @@
 "machines.empty" = "No paired machines";
 "machines.empty_description" = "Pair a machine to see its read-only status here.";
 "machines.not_found" = "Machine not found";
+"machines.loading" = "Loading machines";
 "machines.title" = "Machines";
 "onboarding.confirm_machine" = "Confirm This Machine";
 "onboarding.continue" = "Continue";
@@ -93,6 +99,8 @@
 "run.unavailable" = "Run unavailable";
 "run.updated" = "Updated";
 "runs.active" = "Active Runs";
+"runs.active_empty" = "All clear";
+"runs.active_empty_description" = "There are no active runs right now.";
 "runs.cached_data" = "Showing cached data";
 "runs.empty" = "No runs yet";
 "runs.empty_description" = "Runs sent by paired machines will appear here.";
@@ -100,6 +108,11 @@
 "runs.messages" = "Recent Messages";
 "runs.offline_cache" = "The network is unavailable.";
 "runs.pull_to_refresh" = "Pull down when the connection returns.";
+"runs.full_logs_local" = "Full logs and terminal content stay on the machine";
+"runs.live_activity_contents" = "Shows status, progress, phase, elapsed time, and result only";
+"runs.no_remote_commands" = "No cancel, pause, retry, approval, or terminal commands";
+"runs.read_only_flow" = "Status flows one way: machine to server to iPhone";
+"runs.read_only_info" = "Read-Only Access";
 "runs.recent" = "Recent Runs";
 "runs.title" = "Runs";
 "runs.unavailable" = "Runs unavailable";
@@ -129,8 +142,12 @@
 "status.starting" = "Starting";
 "status.succeeded" = "Succeeded";
 "status.unknown" = "Unknown";
+"tab.active" = "Active";
+"tab.history" = "History";
+"tab.machines" = "Machines";
 "tab.runs" = "Runs";
 "tab.settings" = "Settings";
 "widget.attention" = "Attention needed";
 "widget.explicit_eta" = "Estimated finish %@";
 "widget.progress" = "Progress";
+"widget.result_exit_code" = "Result: exit code %d";

@@ -3,7 +3,9 @@ import Observation
 import SwiftUI
 
 enum AppTab: String, CaseIterable, Identifiable {
-    case runs
+    case activeRuns
+    case history
+    case machines
     case settings
 
     var id: String { rawValue }
@@ -11,16 +13,16 @@ enum AppTab: String, CaseIterable, Identifiable {
 
 enum AppRoute: Hashable {
     case runDetail(UUID)
-    case machines
     case machine(String)
-    case pairMachine
 }
 
 @MainActor
 @Observable
 final class AppRouter {
-    var selectedTab: AppTab = .runs
-    var runsPath: [AppRoute] = []
+    var selectedTab: AppTab = .activeRuns
+    var activeRunsPath: [AppRoute] = []
+    var historyPath: [AppRoute] = []
+    var machinesPath: [AppRoute] = []
     var settingsPath: [AppRoute] = []
 
     func handle(_ url: URL) -> Bool {
@@ -31,8 +33,12 @@ final class AppRouter {
         else {
             return false
         }
-        selectedTab = .runs
-        runsPath = [.runDetail(runID)]
+        selectedTab = .activeRuns
+        activeRunsPath = [.runDetail(runID)]
         return true
+    }
+
+    func showMachines() {
+        selectedTab = .machines
     }
 }

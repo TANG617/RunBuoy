@@ -1,11 +1,6 @@
 import SwiftUI
 import UIKit
 
-private enum PairingSheet: String, Identifiable {
-    case scanner
-    var id: String { rawValue }
-}
-
 struct OnboardingView: View {
     @Environment(RunBuoyStore.self) private var store
     let notificationCoordinator: NotificationCoordinator
@@ -47,9 +42,7 @@ struct OnboardingView: View {
                     .padding(.horizontal)
             }
 
-            Button {
-                Task { await advance() }
-            } label: {
+            Button(action: advanceAction) {
                 if isWorking {
                     ProgressView()
                         .frame(maxWidth: .infinity)
@@ -58,21 +51,14 @@ struct OnboardingView: View {
                         .frame(maxWidth: .infinity)
                 }
             }
-            .buttonStyle(.borderedProminent)
+            .buttonStyle(.glassProminent)
             .controlSize(.large)
             .disabled(isWorking)
             .padding()
         }
         .background(Color(uiColor: .systemGroupedBackground))
         .sheet(item: $sheet) { _ in
-            ScannerSheet { value in
-                do {
-                    pairingCode = try PairingCode.decode(value)
-                    errorMessage = nil
-                } catch {
-                    errorMessage = error.localizedDescription
-                }
-            }
+            ScannerSheet(onCode: receiveScannedCode)
         }
     }
 
@@ -94,6 +80,19 @@ struct OnboardingView: View {
         case 0: "arrow.right"
         case 1: "bell.badge"
         default: pairingSucceeded ? "checkmark" : (pairingCode == nil ? "qrcode.viewfinder" : "checkmark.shield")
+        }
+    }
+
+    private func advanceAction() {
+        Task { await advance() }
+    }
+
+    private func receiveScannedCode(_ value: String) {
+        do {
+            pairingCode = try PairingCode.decode(value)
+            errorMessage = nil
+        } catch {
+            errorMessage = error.localizedDescription
         }
     }
 
@@ -251,57 +250,6 @@ private struct PairingIdentityCard: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(.background, in: RoundedRectangle(cornerRadius: 16))
         .padding(.horizontal)
-    }
-}
-
-struct PairMachineView: View {
-    @Environment(RunBuoyStore.self) private var store
-    @State private var sheet: PairingSheet?
-    @State private var code: PairingCode?
-    @State private var status: LocalizedStringKey?
-
-    var body: some View {
-        Form {
-            Section {
-                Label("pairing.read_only_note", systemImage: "hand.raised")
-            }
-            if let code {
-                Section("pairing.machine") {
-                    LabeledContent("pairing.name", value: code.machineDisplayName)
-                    if let platform = code.platform {
-                        LabeledContent("machine.platform", value: platform)
-                    }
-                    Button("pairing.claim") {
-                        Task {
-                            do {
-                                try await store.claim(code)
-                                status = "pairing.success"
-                            } catch {
-                                status = "pairing.failed"
-                            }
-                        }
-                    }
-                    .buttonStyle(.borderedProminent)
-                }
-            } else {
-                Button {
-                    sheet = .scanner
-                } label: {
-                    Label("pairing.scan_title", systemImage: "qrcode.viewfinder")
-                }
-            }
-            if let status {
-                Section {
-                    Label(status, systemImage: "info.circle")
-                }
-            }
-        }
-        .navigationTitle("settings.pair_machine")
-        .sheet(item: $sheet) { _ in
-            ScannerSheet { value in
-                code = try? PairingCode.decode(value)
-            }
-        }
     }
 }
 

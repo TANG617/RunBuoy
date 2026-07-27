@@ -3,6 +3,8 @@
 "attention.none" = "无需关注";
 "attention.warning" = "警告";
 "common.close" = "关闭";
+"common.done" = "完成";
+"common.refresh" = "刷新";
 "error.http_status" = "服务器返回状态 %d。";
 "error.invalid_response" = "无法读取服务器响应。";
 "error.invalid_url" = "服务器地址无效。";
@@ -23,6 +25,9 @@
 "health.healthy" = "健康";
 "health.offline" = "离线";
 "health.stale" = "更新延迟";
+"history.empty" = "还没有运行历史";
+"history.empty_description" = "已结束的运行会显示在这里。";
+"history.title" = "历史";
 "machine.architecture" = "架构";
 "machine.cli_version" = "CLI 版本";
 "machine.identity" = "身份";
@@ -41,6 +46,7 @@
 "machines.empty" = "没有已配对的电脑";
 "machines.empty_description" = "配对电脑后，可在这里查看只读状态。";
 "machines.not_found" = "找不到电脑";
+"machines.loading" = "正在加载电脑";
 "machines.title" = "电脑";
 "onboarding.confirm_machine" = "确认这台电脑";
 "onboarding.continue" = "继续";
@@ -93,6 +99,8 @@
 "run.unavailable" = "无法读取运行";
 "run.updated" = "更新时间";
 "runs.active" = "正在运行";
+"runs.active_empty" = "一切正常";
+"runs.active_empty_description" = "当前没有正在运行的任务。";
 "runs.cached_data" = "正在显示缓存数据";
 "runs.empty" = "还没有运行";
 "runs.empty_description" = "已配对电脑发送的运行会显示在这里。";
@@ -100,6 +108,11 @@
 "runs.messages" = "最近消息";
 "runs.offline_cache" = "网络不可用。";
 "runs.pull_to_refresh" = "连接恢复后请下拉刷新。";
+"runs.full_logs_local" = "完整日志和终端内容始终留在电脑上";
+"runs.live_activity_contents" = "仅显示状态、进度、阶段、耗时和结果";
+"runs.no_remote_commands" = "不提供取消、暂停、重试、批准或终端命令";
+"runs.read_only_flow" = "状态只沿单向流动：电脑 → 服务器 → iPhone";
+"runs.read_only_info" = "只读访问";
 "runs.recent" = "最近运行";
 "runs.title" = "运行";
 "runs.unavailable" = "无法读取运行";
@@ -129,8 +142,12 @@
 "status.starting" = "正在开始";
 "status.succeeded" = "成功";
 "status.unknown" = "未知";
+"tab.active" = "运行中";
+"tab.history" = "历史";
+"tab.machines" = "电脑";
 "tab.runs" = "运行";
 "tab.settings" = "设置";
 "widget.attention" = "需要关注";
 "widget.explicit_eta" = "预计完成 %@";
 "widget.progress" = "进度";
+"widget.result_exit_code" = "结果：退出码 %d";

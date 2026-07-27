@@ -8,7 +8,8 @@ struct RunDetailView: View {
     @State private var errorMessage: String?
 
     var body: some View {
-        Group {
+        ZStack {
+            Color.clear
             if let detail {
                 RunDetailContent(detail: detail)
             } else if let cached = store.runs.first(where: { $0.id == runID }) {
@@ -48,32 +49,28 @@ struct RunDetailView: View {
 
 struct RunDetailContent: View {
     let detail: RunDetail
+    private let orderedFeed: [RunFeedEvent]
+    private let safeLogLines: [SafeLogLine]
     @AppStorage("runbuoy.safe-messages-enabled") private var safeMessagesEnabled = true
+
+    init(detail: RunDetail) {
+        self.detail = detail
+        orderedFeed = detail.feed.sorted { $0.sequence < $1.sequence }
+        safeLogLines = (detail.run.safeLogTail ?? []).enumerated().map {
+            SafeLogLine(id: $0.offset, text: $0.element)
+        }
+    }
 
     var body: some View {
         List {
-            Section {
-                VStack(alignment: .leading, spacing: 14) {
-                    Text(detail.run.title)
-                        .font(.title2.bold())
-                        .fixedSize(horizontal: false, vertical: true)
-                    Label(detail.run.machineName, systemImage: "desktopcomputer")
-                        .foregroundStyle(.secondary)
-                    HStack {
-                        StatusBadge(presentation: detail.run.executionStatus.presentation)
-                        StatusBadge(presentation: detail.run.healthStatus.presentation)
-                    }
-                    if detail.run.attentionStatus != .none {
-                        StatusBadge(presentation: detail.run.attentionStatus.presentation)
-                    }
-                    RunProgressView(progress: detail.run.progress, phase: detail.run.phase)
-                }
-                .padding(.vertical, 8)
-            }
+            RunOverviewSection(run: detail.run)
 
             Section("run.timeline") {
                 LabeledContent("run.elapsed") {
-                    elapsedView
+                    RunElapsedView(
+                        startedAt: detail.run.startedAt,
+                        endedAt: detail.run.endedAt
+                    )
                 }
                 if let estimate = detail.run.estimatedEndAt {
                     LabeledContent("run.explicit_eta") {
@@ -100,26 +97,24 @@ struct RunDetailContent: View {
                 Section("run.safe_message") {
                     Text(message)
                         .textSelection(.enabled)
-                    Button {
-                        UIPasteboard.general.string = message
-                    } label: {
+                    Button(action: copySafeMessage) {
                         Label("run.copy_message", systemImage: "doc.on.doc")
                     }
                 }
             }
 
-            if !detail.feed.isEmpty {
+            if !orderedFeed.isEmpty {
                 Section("run.feed") {
-                    ForEach(detail.feed.sorted { $0.sequence < $1.sequence }) { event in
+                    ForEach(orderedFeed) { event in
                         RunFeedRow(event: event)
                     }
                 }
             }
 
-            if let lines = detail.run.safeLogTail, !lines.isEmpty {
+            if !safeLogLines.isEmpty {
                 Section {
-                    ForEach(Array(lines.enumerated()), id: \.offset) { _, line in
-                        Text(line)
+                    ForEach(safeLogLines) { line in
+                        Text(line.text)
                             .font(.system(.caption, design: .monospaced))
                             .textSelection(.enabled)
                     }
@@ -134,45 +129,128 @@ struct RunDetailContent: View {
                 Text(detail.run.id.uuidString.lowercased())
                     .font(.caption.monospaced())
                     .textSelection(.enabled)
-                Button {
-                    UIPasteboard.general.string = detail.run.id.uuidString.lowercased()
-                } label: {
-                    Label("run.copy_id", systemImage: "doc.on.doc")
-                }
-                ShareLink(item: shareSummary) {
-                    Label("run.share_summary", systemImage: "square.and.arrow.up")
-                }
             }
         }
         .listStyle(.insetGrouped)
+        .safeAreaInset(edge: .bottom) {
+            RunDetailActionBar(run: detail.run)
+        }
     }
 
-    @ViewBuilder
-    private var elapsedView: some View {
-        let end = detail.run.endedAt ?? Date()
-        Text(elapsedString(from: detail.run.startedAt, to: max(end, detail.run.startedAt)))
+    private func copySafeMessage() {
+        guard let safeMessage = detail.run.safeMessage else { return }
+        UIPasteboard.general.string = safeMessage
+    }
+}
+
+private struct SafeLogLine: Identifiable {
+    let id: Int
+    let text: String
+}
+
+private struct RunOverviewSection: View {
+    let run: RunSnapshot
+
+    var body: some View {
+        Section {
+            VStack(alignment: .leading, spacing: 14) {
+                Text(run.title)
+                    .font(.title2.bold())
+                    .fixedSize(horizontal: false, vertical: true)
+                Label(run.machineName, systemImage: "desktopcomputer")
+                    .foregroundStyle(.secondary)
+                HStack {
+                    StatusBadge(presentation: run.executionStatus.presentation)
+                    StatusBadge(presentation: run.healthStatus.presentation)
+                }
+                if run.attentionStatus != .none {
+                    StatusBadge(presentation: run.attentionStatus.presentation)
+                }
+                RunProgressView(
+                    progress: run.progress,
+                    phase: run.phase,
+                    showsIndeterminate: run.executionStatus.isActive
+                )
+            }
+            .padding(.vertical, 8)
+        }
+    }
+}
+
+private struct RunElapsedView: View {
+    let startedAt: Date
+    let endedAt: Date?
+
+    var body: some View {
+        if let endedAt {
+            durationText(to: endedAt)
+        } else {
+            TimelineView(.periodic(from: .now, by: 1)) { context in
+                durationText(to: context.date)
+            }
+        }
+    }
+
+    private func durationText(to end: Date) -> some View {
+        Text(RunDurationText.string(from: startedAt, to: end))
             .monospacedDigit()
     }
+}
 
-    private func elapsedString(from start: Date, to end: Date) -> String {
-        let formatter = DateComponentsFormatter()
-        formatter.allowedUnits = end.timeIntervalSince(start) >= 3600
-            ? [.hour, .minute, .second]
-            : [.minute, .second]
-        formatter.unitsStyle = .abbreviated
-        return formatter.string(from: start, to: end) ?? "—"
+private enum RunDurationText {
+    static func string(from start: Date, to end: Date) -> String {
+        let totalSeconds = max(0, Int(end.timeIntervalSince(start)))
+        let hours = totalSeconds / 3_600
+        let minutes = (totalSeconds % 3_600) / 60
+        let seconds = totalSeconds % 60
+        if hours > 0 {
+            return String(format: "%d:%02d:%02d", hours, minutes, seconds)
+        }
+        return String(format: "%d:%02d", minutes, seconds)
+    }
+}
+
+private struct RunDetailActionBar: View {
+    let run: RunSnapshot
+
+    var body: some View {
+        GlassEffectContainer(spacing: 12) {
+            HStack(spacing: 12) {
+                ReadOnlyGlassLabel()
+
+                Spacer(minLength: 0)
+
+                Button(action: copyID) {
+                    Image(systemName: "doc.on.doc")
+                        .frame(width: 24, height: 24)
+                }
+                .buttonStyle(.glass)
+                .buttonBorderShape(.circle)
+                .accessibilityLabel("run.copy_id")
+
+                ShareLink(item: shareSummary) {
+                    Image(systemName: "square.and.arrow.up")
+                        .frame(width: 24, height: 24)
+                }
+                .buttonStyle(.glassProminent)
+                .buttonBorderShape(.circle)
+                .accessibilityLabel("run.share_summary")
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
     }
 
     private var shareSummary: String {
-        var lines = [
-            detail.run.title,
-            detail.run.machineName,
-            detail.run.executionStatus.rawValue
-        ]
-        if let safeMessage = detail.run.safeMessage {
+        var lines = [run.title, run.machineName, run.executionStatus.rawValue]
+        if let safeMessage = run.safeMessage {
             lines.append(safeMessage)
         }
         return lines.joined(separator: "\n")
+    }
+
+    private func copyID() {
+        UIPasteboard.general.string = run.id.uuidString.lowercased()
     }
 }
 
