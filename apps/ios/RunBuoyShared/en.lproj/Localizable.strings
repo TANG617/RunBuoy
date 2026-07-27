@@ -44,7 +44,7 @@
 "machine.save_local_label" = "Save Local Label";
 "machine.stop_receiving" = "Stop Receiving";
 "machines.empty" = "No paired machines";
-"machines.empty_description" = "Pair a machine to see its read-only status here.";
+"machines.empty_description" = "Pair a machine to see its status here.";
 "machines.not_found" = "Machine not found";
 "machines.loading" = "Loading machines";
 "machines.title" = "Machines";
@@ -52,11 +52,10 @@
 "onboarding.continue" = "Continue";
 "onboarding.enable_notifications" = "Enable Notifications";
 "onboarding.flow_machine" = "Your machine sends safe status updates";
-"onboarding.flow_phone" = "Your iPhone reads and displays them";
+"onboarding.flow_phone" = "Your iPhone displays the updates";
 "onboarding.flow_server" = "RunBuoy relays the updates";
 "onboarding.finish" = "Open RunBuoy";
 "onboarding.live_updates" = "Track long runs on the Lock Screen and Dynamic Island";
-"onboarding.no_remote_control" = "This iPhone cannot control a run";
 "onboarding.notifications" = "Stay informed";
 "onboarding.notifications_body" = "Notifications and Live Activities show meaningful changes without exposing full logs.";
 "onboarding.one_time_code" = "Pairing codes expire and contain no long-term credential";
@@ -65,7 +64,7 @@
 "onboarding.scan_code" = "Scan Pairing Code";
 "onboarding.tokens_private" = "Device and activity tokens are sent securely and never written to ordinary logs";
 "onboarding.welcome" = "Keep every run in sight.";
-"onboarding.welcome_body" = "RunBuoy is a one-way, read-only view of commands, builds, experiments, and agents running on your computers.";
+"onboarding.welcome_body" = "RunBuoy keeps commands, builds, experiments, and agents running on your computers in view.";
 "pairing.camera_unavailable" = "Camera scanning is unavailable on this device. Use a physical iPhone with camera permission.";
 "pairing.camera_unavailable_title" = "Camera unavailable";
 "pairing.claim" = "Pair This Machine";
@@ -74,7 +73,6 @@
 "pairing.invalid_code" = "This is not a valid RunBuoy pairing code.";
 "pairing.machine" = "Machine";
 "pairing.name" = "Name";
-"pairing.read_only_note" = "Pairing adds a read-only receiving subscription to this iPhone.";
 "pairing.scan_title" = "Scan Pairing Code";
 "pairing.success" = "Machine paired.";
 "progress.indeterminate" = "In progress";
@@ -93,7 +91,7 @@
 "run.safe_log_tail" = "Uploaded Safe Log Snippet";
 "run.safe_log_tail_notice" = "This sanitized snippet was explicitly shared by the machine. Full logs remain on the machine.";
 "run.safe_message" = "Safe Message";
-"run.share_summary" = "Share Read-Only Summary";
+"run.share_summary" = "Share Summary";
 "run.started" = "Started";
 "run.timeline" = "Timing";
 "run.unavailable" = "Run unavailable";
@@ -108,16 +106,10 @@
 "runs.messages" = "Recent Messages";
 "runs.offline_cache" = "The network is unavailable.";
 "runs.pull_to_refresh" = "Pull down when the connection returns.";
-"runs.full_logs_local" = "Full logs and terminal content stay on the machine";
-"runs.live_activity_contents" = "Shows status, progress, phase, elapsed time, and result only";
-"runs.no_remote_commands" = "No cancel, pause, retry, approval, or terminal commands";
-"runs.read_only_flow" = "Status flows one way: machine to server to iPhone";
-"runs.read_only_info" = "Read-Only Access";
 "runs.recent" = "Recent Runs";
 "runs.title" = "Runs";
 "runs.unavailable" = "Runs unavailable";
 "settings.about" = "About";
-"settings.boundary" = "Access";
 "settings.cache_cleared" = "Local cache cleared.";
 "settings.clear_cache" = "Clear Local Cache";
 "settings.connections" = "Connections";
@@ -129,7 +121,6 @@
 "settings.pair_machine" = "Pair New Machine";
 "settings.privacy" = "Privacy";
 "settings.product" = "Product";
-"settings.read_only" = "Read only";
 "settings.safe_messages" = "Show safe messages";
 "settings.server" = "Server";
 "settings.storage" = "Storage";
@@ -148,6 +139,7 @@
 "tab.runs" = "Runs";
 "tab.settings" = "Settings";
 "widget.attention" = "Attention needed";
+"widget.last_update" = "Time since last update";
+"widget.terminal_time" = "Time since run ended";
 "widget.explicit_eta" = "Estimated finish %@";
 "widget.progress" = "Progress";
-"widget.result_exit_code" = "Result: exit code %d";

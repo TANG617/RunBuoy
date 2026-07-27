@@ -47,7 +47,6 @@ struct SettingsView: View {
 
             Section("settings.about") {
                 LabeledContent("settings.product", value: "RunBuoy")
-                LabeledContent("settings.boundary", value: String(localized: "settings.read_only"))
                 LabeledContent("settings.server", value: AppConfiguration.live.apiBaseURL.host ?? "—")
                 Link(destination: URL(string: "https://runbuoy.dev/privacy")!) {
                     Label("settings.privacy", systemImage: "hand.raised")

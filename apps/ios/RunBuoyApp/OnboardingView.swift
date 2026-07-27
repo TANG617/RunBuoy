@@ -3,6 +3,7 @@ import UIKit
 
 struct OnboardingView: View {
     @Environment(RunBuoyStore.self) private var store
+    @Environment(AppRouter.self) private var router
     let notificationCoordinator: NotificationCoordinator
     let onFinished: () -> Void
 
@@ -17,7 +18,7 @@ struct OnboardingView: View {
     var body: some View {
         VStack(spacing: 24) {
             TabView(selection: $page) {
-                ReadOnlyIntroduction()
+                ProductIntroduction()
                     .tag(0)
                 PermissionIntroduction()
                     .tag(1)
@@ -27,7 +28,7 @@ struct OnboardingView: View {
             .tabViewStyle(.page(indexDisplayMode: .always))
             .animation(reduceMotion ? nil : .default, value: page)
 
-            if let pairingCode {
+            if page == 2, let pairingCode {
                 PairingIdentityCard(code: pairingCode)
             }
             if pairingSucceeded {
@@ -59,6 +60,12 @@ struct OnboardingView: View {
         .background(Color(uiColor: .systemGroupedBackground))
         .sheet(item: $sheet) { _ in
             ScannerSheet(onCode: receiveScannedCode)
+        }
+        .onAppear {
+            receivePendingPairingCode(router.pendingPairingCode)
+        }
+        .onChange(of: router.pendingPairingCode) { _, code in
+            receivePendingPairingCode(code)
         }
     }
 
@@ -114,6 +121,8 @@ struct OnboardingView: View {
             isWorking = false
         default:
             if pairingSucceeded {
+                router.clearPendingPairing()
+                router.selectedTab = .activeRuns
                 onFinished()
                 return
             }
@@ -131,9 +140,15 @@ struct OnboardingView: View {
             isWorking = false
         }
     }
+
+    private func receivePendingPairingCode(_ code: PairingCode?) {
+        guard let code else { return }
+        pairingCode = code
+        errorMessage = nil
+    }
 }
 
-private struct ReadOnlyIntroduction: View {
+private struct ProductIntroduction: View {
     var body: some View {
         OnboardingPage(
             symbol: "water.waves",
@@ -144,10 +159,6 @@ private struct ReadOnlyIntroduction: View {
                 BoundaryRow(symbol: "arrow.right.circle", title: "onboarding.flow_machine")
                 BoundaryRow(symbol: "server.rack", title: "onboarding.flow_server")
                 BoundaryRow(symbol: "iphone", title: "onboarding.flow_phone")
-                Label("onboarding.no_remote_control", systemImage: "hand.raised.fill")
-                    .font(.headline)
-                    .foregroundStyle(.secondary)
-                    .padding(.top, 8)
             }
         }
     }
@@ -256,11 +267,13 @@ private struct PairingIdentityCard: View {
 #Preview("English") {
     OnboardingView(notificationCoordinator: NotificationCoordinator(), onFinished: {})
         .environment(PreviewFixtures.store())
+        .environment(AppRouter())
 }
 
 #Preview("简体中文 · 大字体") {
     OnboardingView(notificationCoordinator: NotificationCoordinator(), onFinished: {})
         .environment(PreviewFixtures.store())
+        .environment(AppRouter())
         .environment(\.locale, Locale(identifier: "zh-Hans"))
         .environment(\.dynamicTypeSize, .accessibility3)
 }

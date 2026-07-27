@@ -8,15 +8,13 @@ enum PairingSheet: String, Identifiable {
 
 struct PairMachineView: View {
     @Environment(RunBuoyStore.self) private var store
+    @Environment(AppRouter.self) private var router
     @State private var sheet: PairingSheet?
     @State private var code: PairingCode?
     @State private var status: LocalizedStringKey?
 
     var body: some View {
         Form {
-            Section {
-                Label("pairing.read_only_note", systemImage: "hand.raised")
-            }
             if let code {
                 Section("pairing.machine") {
                     LabeledContent("pairing.name", value: code.machineDisplayName)
@@ -42,6 +40,12 @@ struct PairMachineView: View {
         .sheet(item: $sheet) { _ in
             ScannerSheet(onCode: receiveScannedCode)
         }
+        .onAppear {
+            receivePendingPairingCode(router.pendingPairingCode)
+        }
+        .onChange(of: router.pendingPairingCode) { _, pendingCode in
+            receivePendingPairingCode(pendingCode)
+        }
     }
 
     private func showScanner() {
@@ -52,11 +56,17 @@ struct PairMachineView: View {
         code = try? PairingCode.decode(value)
     }
 
+    private func receivePendingPairingCode(_ pendingCode: PairingCode?) {
+        guard let pendingCode else { return }
+        code = pendingCode
+    }
+
     private func claimPairing() {
         guard let code else { return }
         Task {
             do {
                 try await store.claim(code)
+                router.clearPendingPairing()
                 status = "pairing.success"
             } catch {
                 status = "pairing.failed"
@@ -70,4 +80,5 @@ struct PairMachineView: View {
         PairMachineView()
     }
     .environment(PreviewFixtures.store())
+    .environment(AppRouter())
 }

@@ -20,23 +20,23 @@ struct RunLiveActivityWidget: Widget {
                         .font(.headline.monospacedDigit())
                 }
                 DynamicIslandExpandedRegion(.center) {
-                    LivePhaseOrStatus(state: context.state)
+                    Text(context.attributes.title)
                         .font(.headline)
                         .lineLimit(1)
                 }
                 DynamicIslandExpandedRegion(.bottom) {
                     VStack(alignment: .leading, spacing: 6) {
                         HStack {
-                            Label(statusStyle(context.state).title, systemImage: statusStyle(context.state).symbol)
-                                .lineLimit(1)
+                            LivePhaseOrMachine(
+                                attributes: context.attributes,
+                                state: context.state
+                            )
                             Spacer()
-                            Text(context.state.startedAt, style: .relative)
-                                .monospacedDigit()
+                            LiveActivityTime(state: context.state)
                         }
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         LiveProgressBar(state: context.state)
-                        LiveResultView(state: context.state)
                     }
                 }
             } compactLeading: {
@@ -65,7 +65,7 @@ struct RunLockScreenView: View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .top, spacing: 10) {
                 LiveStatusIcon(state: state, size: 26)
-                Text(statusStyle(state).title)
+                Text(attributes.title)
                     .font(.headline)
                     .lineLimit(1)
                 Spacer(minLength: 6)
@@ -74,22 +74,12 @@ struct RunLockScreenView: View {
             }
             LiveProgressBar(state: state)
             HStack {
-                if let phase = state.phase {
-                    Text(phase)
-                        .lineLimit(1)
-                } else {
-                    Text(statusStyle(state).title)
-                }
+                LivePhaseOrMachine(attributes: attributes, state: state)
                 Spacer()
-                Label {
-                    Text(state.startedAt, style: .relative)
-                } icon: {
-                    Image(systemName: "timer")
-                }
+                LiveActivityTime(state: state)
             }
             .font(.caption)
             .foregroundStyle(.secondary)
-            LiveResultView(state: state)
         }
         .padding()
         .accessibilityElement(children: .combine)
@@ -114,29 +104,60 @@ private struct LiveProgressText: View {
     let state: RunActivityAttributes.ContentState
 
     var body: some View {
-        if state.progressKind == "determinate", let progress = state.progress {
+        if isTerminal(state) {
+            Text(state.endedAt ?? state.updatedAt, style: .relative)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+                .accessibilityLabel("widget.terminal_time")
+        } else if state.progressKind == "determinate", let progress = state.progress {
             Text(min(max(progress, 0), 1), format: .percent.precision(.fractionLength(0)))
         } else if state.attentionStatus == "WARNING" || state.attentionStatus == "ACTION_REQUIRED" {
             Image(systemName: "exclamationmark.triangle.fill")
                 .accessibilityLabel("widget.attention")
-        } else if state.executionStatus == "RUNNING" {
-            Text(state.startedAt, style: .relative)
         } else {
-            Image(systemName: statusStyle(state).symbol)
-                .accessibilityLabel(statusStyle(state).title)
+            Text(state.updatedAt, style: .timer)
+                .accessibilityLabel("widget.last_update")
         }
     }
 }
 
-private struct LivePhaseOrStatus: View {
+private struct LivePhaseOrMachine: View {
+    let attributes: RunActivityAttributes
     let state: RunActivityAttributes.ContentState
 
     var body: some View {
         if let phase = state.phase, !phase.isEmpty {
             Text(phase)
         } else {
-            Text(statusStyle(state).title)
+            Text(attributes.machineName)
         }
+    }
+}
+
+private struct LiveActivityTime: View {
+    let state: RunActivityAttributes.ContentState
+
+    var body: some View {
+        HStack(spacing: 4) {
+            if isTerminal(state) {
+                Image(systemName: statusStyle(state).symbol)
+                    .foregroundStyle(statusStyle(state).color)
+                    .accessibilityHidden(true)
+                Text(state.endedAt ?? state.updatedAt, style: .relative)
+            } else {
+                Image(systemName: "arrow.clockwise")
+                    .accessibilityHidden(true)
+                Text(state.updatedAt, style: .timer)
+            }
+        }
+        .monospacedDigit()
+        .lineLimit(1)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(
+            isTerminal(state)
+                ? Text("widget.terminal_time")
+                : Text("widget.last_update")
+        )
     }
 }
 
@@ -161,40 +182,6 @@ private struct LiveProgressBar: View {
     }
 }
 
-private struct LiveResultView: View {
-    let state: RunActivityAttributes.ContentState
-
-    var body: some View {
-        if isTerminal {
-            Label {
-                if let exitCode = state.exitCode {
-                    Text(
-                        String(
-                            format: String(localized: "widget.result_exit_code"),
-                            exitCode
-                        )
-                    )
-                } else {
-                    Text(statusStyle(state).title)
-                }
-            } icon: {
-                Image(systemName: statusStyle(state).symbol)
-            }
-            .font(.caption.weight(.semibold))
-            .foregroundStyle(statusStyle(state).color)
-        }
-    }
-
-    private var isTerminal: Bool {
-        switch state.executionStatus {
-        case "SUCCEEDED", "FAILED", "CANCELLED", "LOST":
-            true
-        default:
-            false
-        }
-    }
-}
-
 private struct LiveStatusStyle {
     let title: LocalizedStringKey
     let symbol: String
@@ -209,6 +196,18 @@ private struct LiveStatusStyle {
 }
 
 private func statusStyle(_ state: RunActivityAttributes.ContentState) -> LiveStatusStyle {
+    switch state.executionStatus {
+    case "SUCCEEDED":
+        return LiveStatusStyle(title: "status.succeeded", symbol: "checkmark.circle.fill", color: .green)
+    case "FAILED":
+        return LiveStatusStyle(title: "status.failed", symbol: "xmark.octagon.fill", color: .red)
+    case "CANCELLED":
+        return LiveStatusStyle(title: "status.cancelled", symbol: "minus.circle.fill", color: .orange)
+    case "LOST":
+        return LiveStatusStyle(title: "status.lost", symbol: "questionmark.diamond.fill", color: .orange)
+    default:
+        break
+    }
     if state.attentionStatus == "ACTION_REQUIRED" {
         return LiveStatusStyle(
             title: "attention.action_required",
@@ -227,18 +226,19 @@ private func statusStyle(_ state: RunActivityAttributes.ContentState) -> LiveSta
         return LiveStatusStyle(title: "health.offline", symbol: "wifi.slash", color: .secondary)
     }
     switch state.executionStatus {
-    case "SUCCEEDED":
-        return LiveStatusStyle(title: "status.succeeded", symbol: "checkmark.circle.fill", color: .green)
-    case "FAILED":
-        return LiveStatusStyle(title: "status.failed", symbol: "xmark.octagon.fill", color: .red)
-    case "CANCELLED":
-        return LiveStatusStyle(title: "status.cancelled", symbol: "minus.circle.fill", color: .orange)
-    case "LOST":
-        return LiveStatusStyle(title: "status.lost", symbol: "questionmark.diamond.fill", color: .orange)
     case "STARTING":
         return LiveStatusStyle(title: "status.starting", symbol: "hourglass", color: .blue)
     default:
         return LiveStatusStyle(title: "status.running", symbol: "waveform.path.ecg", color: .blue)
+    }
+}
+
+private func isTerminal(_ state: RunActivityAttributes.ContentState) -> Bool {
+    switch state.executionStatus {
+    case "SUCCEEDED", "FAILED", "CANCELLED", "LOST":
+        true
+    default:
+        false
     }
 }
 
@@ -269,9 +269,19 @@ private enum WidgetPreviewFixtures {
             message: nil,
             startedAt: Date().addingTimeInterval(-620),
             updatedAt: Date(),
+            endedAt: isTerminalExecution(execution) ? Date().addingTimeInterval(-125) : nil,
             estimatedEndAt: progress == nil ? nil : Date().addingTimeInterval(240),
             exitCode: execution == "FAILED" ? 1 : nil
         )
+    }
+
+    private static func isTerminalExecution(_ execution: String) -> Bool {
+        switch execution {
+        case "SUCCEEDED", "FAILED", "CANCELLED", "LOST":
+            true
+        default:
+            false
+        }
     }
 }
 

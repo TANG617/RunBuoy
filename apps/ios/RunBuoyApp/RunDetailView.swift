@@ -216,8 +216,6 @@ private struct RunDetailActionBar: View {
     var body: some View {
         GlassEffectContainer(spacing: 12) {
             HStack(spacing: 12) {
-                ReadOnlyGlassLabel()
-
                 Spacer(minLength: 0)
 
                 Button(action: copyID) {

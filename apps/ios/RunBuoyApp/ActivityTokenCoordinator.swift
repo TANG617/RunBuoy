@@ -8,6 +8,7 @@ final class ActivityTokenCoordinator {
     private var lifecycleTasks: [Task<Void, Never>] = []
     private var activityTokenTasks: [String: Task<Void, Never>] = [:]
     private var generations: [String: Int] = [:]
+    private var observedTokens: [String: Data] = [:]
 
     init(api: any RunBuoyAPI, userDefaults: UserDefaults = .standard) {
         self.api = api
@@ -54,27 +55,29 @@ final class ActivityTokenCoordinator {
 
     private func observeUpdateToken(for activity: Activity<RunActivityAttributes>) {
         guard activityTokenTasks[activity.id] == nil else { return }
+        if let token = activity.pushToken {
+            registerUpdateToken(token, for: activity)
+        }
         activityTokenTasks[activity.id] = Task { [weak self] in
             for await token in activity.pushTokenUpdates {
                 guard !Task.isCancelled else { return }
-                let generation = await self?.nextGeneration(for: activity.id) ?? 1
-                try? await self?.api.registerActivityToken(
-                    token.hexadecimalString,
-                    activityID: activity.id,
-                    runID: activity.attributes.runID,
-                    generation: generation
-                )
+                self?.registerUpdateToken(token, for: activity)
             }
         }
     }
 
     private func syncCurrentActivities() async {
-        let current = Activity<RunActivityAttributes>.activities.map {
-            ActivityRegistration(
-                activityID: $0.id,
-                runID: $0.attributes.runID,
-                state: stateName($0.activityState),
-                lastSequence: $0.content.state.sequence
+        let current = Activity<RunActivityAttributes>.activities.map { activity in
+            let token = activity.pushToken
+            return ActivityRegistration(
+                activityID: activity.id,
+                runID: activity.attributes.runID,
+                updateToken: token?.hexadecimalString,
+                tokenGeneration: token.map { tokenData in
+                    generation(for: activity.id, token: tokenData)
+                } ?? 1,
+                state: stateName(activity.activityState),
+                lastSequence: activity.content.state.sequence
             )
         }
         try? await api.syncActivities(current)
@@ -82,6 +85,7 @@ final class ActivityTokenCoordinator {
 
     private func stateName(_ state: ActivityState) -> String {
         switch state {
+        case .pending: "active"
         case .active: "active"
         case .dismissed: "dismissed"
         case .ended: "ended"
@@ -97,6 +101,30 @@ final class ActivityTokenCoordinator {
         generations[activityID] = next
         userDefaults.set(next, forKey: key)
         return next
+    }
+
+    private func generation(for activityID: String, token: Data) -> Int {
+        if observedTokens[activityID] == token {
+            return generations[activityID]
+                ?? userDefaults.integer(forKey: "runbuoy.activity-generation.\(activityID)")
+        }
+        observedTokens[activityID] = token
+        return nextGeneration(for: activityID)
+    }
+
+    private func registerUpdateToken(
+        _ token: Data,
+        for activity: Activity<RunActivityAttributes>
+    ) {
+        let generation = generation(for: activity.id, token: token)
+        Task { [weak self] in
+            try? await self?.api.registerActivityToken(
+                token.hexadecimalString,
+                activityID: activity.id,
+                runID: activity.attributes.runID,
+                generation: generation
+            )
+        }
     }
 }
 

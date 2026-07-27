@@ -40,7 +40,9 @@ xcodebuild \
   test
 ```
 
-`RUNBUOY_API_BASE_URL` in `RunBuoyApp/Info.plist` selects the HTTPS API.
+The `RUNBUOY_API_BASE_URL` build setting selects the HTTPS API and is expanded
+into `RunBuoyApp/Info.plist`. Override the setting per build environment when
+the checked-in deployment is not the desired server.
 
 ## Signing and Apple capabilities
 

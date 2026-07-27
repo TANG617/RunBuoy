@@ -44,7 +44,7 @@
 "machine.save_local_label" = "保存本地名称";
 "machine.stop_receiving" = "停止接收";
 "machines.empty" = "没有已配对的电脑";
-"machines.empty_description" = "配对电脑后，可在这里查看只读状态。";
+"machines.empty_description" = "配对电脑后，可在这里查看运行状态。";
 "machines.not_found" = "找不到电脑";
 "machines.loading" = "正在加载电脑";
 "machines.title" = "电脑";
@@ -52,11 +52,10 @@
 "onboarding.continue" = "继续";
 "onboarding.enable_notifications" = "启用通知";
 "onboarding.flow_machine" = "电脑发送安全状态更新";
-"onboarding.flow_phone" = "iPhone 只读取并显示更新";
+"onboarding.flow_phone" = "iPhone 显示运行更新";
 "onboarding.flow_server" = "RunBuoy 中转更新";
 "onboarding.finish" = "打开 RunBuoy";
 "onboarding.live_updates" = "在锁定屏幕和灵动岛跟踪长任务";
-"onboarding.no_remote_control" = "这台 iPhone 无法控制运行";
 "onboarding.notifications" = "及时了解状态";
 "onboarding.notifications_body" = "通知和实时活动只显示有意义的变化，不会暴露完整日志。";
 "onboarding.one_time_code" = "配对码会过期，且不包含长期凭证";
@@ -65,7 +64,7 @@
 "onboarding.scan_code" = "扫描配对码";
 "onboarding.tokens_private" = "设备和活动令牌会安全上传，且永远不会写入普通日志";
 "onboarding.welcome" = "让每一次运行都尽收眼底。";
-"onboarding.welcome_body" = "RunBuoy 单向、只读地展示电脑上正在运行的命令、构建、实验和 Agent。";
+"onboarding.welcome_body" = "RunBuoy 集中展示电脑上正在运行的命令、构建、实验和 Agent。";
 "pairing.camera_unavailable" = "此设备无法使用相机扫描。请在允许相机权限的实体 iPhone 上使用。";
 "pairing.camera_unavailable_title" = "相机不可用";
 "pairing.claim" = "配对这台电脑";
@@ -74,7 +73,6 @@
 "pairing.invalid_code" = "这不是有效的 RunBuoy 配对码。";
 "pairing.machine" = "电脑";
 "pairing.name" = "名称";
-"pairing.read_only_note" = "配对只会为这台 iPhone 添加只读接收订阅。";
 "pairing.scan_title" = "扫描配对码";
 "pairing.success" = "电脑已配对。";
 "progress.indeterminate" = "正在运行";
@@ -93,7 +91,7 @@
 "run.safe_log_tail" = "已上传的安全日志片段";
 "run.safe_log_tail_notice" = "此脱敏片段由电脑端明确选择上传。完整日志仍保留在电脑上。";
 "run.safe_message" = "安全消息";
-"run.share_summary" = "分享只读摘要";
+"run.share_summary" = "分享摘要";
 "run.started" = "开始时间";
 "run.timeline" = "时间";
 "run.unavailable" = "无法读取运行";
@@ -108,16 +106,10 @@
 "runs.messages" = "最近消息";
 "runs.offline_cache" = "网络不可用。";
 "runs.pull_to_refresh" = "连接恢复后请下拉刷新。";
-"runs.full_logs_local" = "完整日志和终端内容始终留在电脑上";
-"runs.live_activity_contents" = "仅显示状态、进度、阶段、耗时和结果";
-"runs.no_remote_commands" = "不提供取消、暂停、重试、批准或终端命令";
-"runs.read_only_flow" = "状态只沿单向流动：电脑 → 服务器 → iPhone";
-"runs.read_only_info" = "只读访问";
 "runs.recent" = "最近运行";
 "runs.title" = "运行";
 "runs.unavailable" = "无法读取运行";
 "settings.about" = "关于";
-"settings.boundary" = "访问方式";
 "settings.cache_cleared" = "已清除本地缓存。";
 "settings.clear_cache" = "清除本地缓存";
 "settings.connections" = "连接";
@@ -129,7 +121,6 @@
 "settings.pair_machine" = "配对新电脑";
 "settings.privacy" = "隐私";
 "settings.product" = "产品";
-"settings.read_only" = "只读";
 "settings.safe_messages" = "显示安全消息";
 "settings.server" = "服务器";
 "settings.storage" = "存储";
@@ -148,6 +139,7 @@
 "tab.runs" = "运行";
 "tab.settings" = "设置";
 "widget.attention" = "需要关注";
+"widget.last_update" = "距上次更新";
+"widget.terminal_time" = "距运行结束";
 "widget.explicit_eta" = "预计完成 %@";
 "widget.progress" = "进度";
-"widget.result_exit_code" = "结果：退出码 %d";

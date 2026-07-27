@@ -54,6 +54,8 @@ private extension View {
                 RunDetailView(runID: id)
             case .machine(let id):
                 MachineDetailView(machineID: id)
+            case .pairMachine:
+                PairMachineView()
             }
         }
     }

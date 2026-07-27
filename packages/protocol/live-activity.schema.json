@@ -34,6 +34,7 @@
     "message": { "type": ["string", "null"], "maxLength": 500 },
     "startedAt": { "type": "string", "format": "date-time" },
     "updatedAt": { "type": "string", "format": "date-time" },
+    "endedAt": { "type": ["string", "null"], "format": "date-time" },
     "estimatedEndAt": { "type": ["string", "null"], "format": "date-time" },
     "exitCode": { "type": ["integer", "null"] }
   },

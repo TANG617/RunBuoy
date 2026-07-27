@@ -38,7 +38,7 @@
     <key>NSSupportsLiveActivities</key>
     <true/>
     <key>RUNBUOY_API_BASE_URL</key>
-    <string>https://api.example.runbuoy.dev</string>
+    <string>$(RUNBUOY_API_BASE_URL)</string>
     <key>UIBackgroundModes</key>
     <array>
         <string>remote-notification</string>

@@ -53,7 +53,8 @@ def pair_machine(
                 "challenge": challenge,
                 "machine": config.machine_name,
                 "platform": platform.system().lower(),
-            }
+            },
+            quote_via=quote,
         )
         qr_value = f"runbuoy://pair/{quote(session_id, safe='')}?{query}"
         safe_created = public_pairing_fields(created)
