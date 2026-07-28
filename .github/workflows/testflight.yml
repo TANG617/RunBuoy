@@ -1,0 +1,254 @@
+name: Publish iOS to TestFlight
+
+on:
+  workflow_dispatch:
+    inputs:
+      marketing_version:
+        description: "App version, for example 1.0.0 (leave blank to use the Xcode project value)"
+        required: false
+        type: string
+      build_number:
+        description: "Numeric build number (leave blank to use this workflow's run number)"
+        required: false
+        type: string
+      release_notes:
+        description: "Optional TestFlight release notes"
+        required: false
+        type: string
+  push:
+    tags:
+      - "ios-v*"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: testflight
+  cancel-in-progress: false
+
+env:
+  XCODE_PROJECT: apps/ios/RunBuoy.xcodeproj
+  XCODE_SCHEME: RunBuoy
+  APPLE_TEAM_ID: PRTA2MGMQH
+  APP_BUNDLE_ID: dev.runbuoy.app
+  WIDGET_BUNDLE_ID: dev.runbuoy.app.widgets
+
+jobs:
+  publish:
+    name: Archive, sign, and upload
+    runs-on: macos-26
+    timeout-minutes: 60
+    environment:
+      name: testflight
+      url: https://appstoreconnect.apple.com/apps/6795591930/testflight/ios
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+
+      - name: Verify TestFlight credentials are configured
+        shell: bash
+        env:
+          APPSTORE_API_KEY_ID: ${{ vars.APPSTORE_API_KEY_ID }}
+          APPSTORE_ISSUER_ID: ${{ vars.APPSTORE_ISSUER_ID }}
+          APPSTORE_API_PRIVATE_KEY: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
+          APPSTORE_CERTIFICATES_FILE_BASE64: ${{ secrets.APPSTORE_CERTIFICATES_FILE_BASE64 }}
+          APPSTORE_CERTIFICATES_PASSWORD: ${{ secrets.APPSTORE_CERTIFICATES_PASSWORD }}
+        run: |
+          set -euo pipefail
+
+          missing=()
+          for variable_name in \
+            APPSTORE_API_KEY_ID \
+            APPSTORE_ISSUER_ID \
+            APPSTORE_API_PRIVATE_KEY \
+            APPSTORE_CERTIFICATES_FILE_BASE64 \
+            APPSTORE_CERTIFICATES_PASSWORD
+          do
+            if [[ -z "${!variable_name}" ]]; then
+              missing+=("$variable_name")
+            fi
+          done
+
+          if (( ${#missing[@]} > 0 )); then
+            echo "::error::Missing testflight environment configuration: ${missing[*]}"
+            exit 1
+          fi
+
+      - name: Resolve version and build number
+        id: release
+        shell: bash
+        env:
+          INPUT_MARKETING_VERSION: ${{ inputs.marketing_version }}
+          INPUT_BUILD_NUMBER: ${{ inputs.build_number }}
+        run: |
+          set -euo pipefail
+
+          if [[ "$GITHUB_EVENT_NAME" == "push" ]]; then
+            marketing_version="${GITHUB_REF_NAME#ios-v}"
+          elif [[ -n "$INPUT_MARKETING_VERSION" ]]; then
+            marketing_version="$INPUT_MARKETING_VERSION"
+          else
+            build_settings="$(
+              xcodebuild \
+                -project "$XCODE_PROJECT" \
+                -scheme "$XCODE_SCHEME" \
+                -configuration Release \
+                -showBuildSettings
+            )"
+            marketing_version="$(
+              awk '/MARKETING_VERSION =/ { print $3; exit }' <<< "$build_settings"
+            )"
+          fi
+
+          build_number="${INPUT_BUILD_NUMBER:-$GITHUB_RUN_NUMBER}"
+
+          if [[ ! "$marketing_version" =~ ^[0-9]+(\.[0-9]+){2}$ ]]; then
+            echo "::error::Marketing version must contain three numeric components, for example 1.2.3."
+            exit 1
+          fi
+
+          if [[ ! "$build_number" =~ ^[0-9]+(\.[0-9]+){0,2}$ ]]; then
+            echo "::error::Build number must contain one to three period-separated integers."
+            exit 1
+          fi
+
+          echo "marketing_version=$marketing_version" >> "$GITHUB_OUTPUT"
+          echo "build_number=$build_number" >> "$GITHUB_OUTPUT"
+          echo "Publishing RunBuoy $marketing_version ($build_number)"
+
+      - name: Import Apple Distribution certificate
+        uses: apple-actions/import-codesign-certs@5142e029c445c10ffc7149d172e540235a065466 # v7.0.0
+        with:
+          p12-file-base64: ${{ secrets.APPSTORE_CERTIFICATES_FILE_BASE64 }}
+          p12-password: ${{ secrets.APPSTORE_CERTIFICATES_PASSWORD }}
+
+      - name: Download app provisioning profile
+        id: app_profiles
+        uses: apple-actions/download-provisioning-profiles@2126b5f86a0e2863cbf4d2d312112b22b943a594 # v6.1.0
+        with:
+          bundle-id: ${{ env.APP_BUNDLE_ID }}
+          profile-type: IOS_APP_STORE
+          issuer-id: ${{ vars.APPSTORE_ISSUER_ID }}
+          api-key-id: ${{ vars.APPSTORE_API_KEY_ID }}
+          api-private-key: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
+
+      - name: Download widget provisioning profile
+        id: widget_profiles
+        uses: apple-actions/download-provisioning-profiles@2126b5f86a0e2863cbf4d2d312112b22b943a594 # v6.1.0
+        with:
+          bundle-id: ${{ env.WIDGET_BUNDLE_ID }}
+          profile-type: IOS_APP_STORE
+          issuer-id: ${{ vars.APPSTORE_ISSUER_ID }}
+          api-key-id: ${{ vars.APPSTORE_API_KEY_ID }}
+          api-private-key: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
+
+      - name: Select signing profiles
+        id: profiles
+        shell: bash
+        env:
+          APP_PROFILES_JSON: ${{ steps.app_profiles.outputs.profiles }}
+          WIDGET_PROFILES_JSON: ${{ steps.widget_profiles.outputs.profiles }}
+        run: |
+          set -euo pipefail
+
+          app_profile_name="$(
+            jq -er 'map(select(.type == "IOS_APP_STORE")) | first | .name' \
+              <<< "$APP_PROFILES_JSON"
+          )"
+          widget_profile_name="$(
+            jq -er 'map(select(.type == "IOS_APP_STORE")) | first | .name' \
+              <<< "$WIDGET_PROFILES_JSON"
+          )"
+
+          echo "app_profile_name=$app_profile_name" >> "$GITHUB_OUTPUT"
+          echo "widget_profile_name=$widget_profile_name" >> "$GITHUB_OUTPUT"
+
+      - name: Archive signed app
+        shell: bash
+        env:
+          APP_PROFILE_NAME: ${{ steps.profiles.outputs.app_profile_name }}
+          WIDGET_PROFILE_NAME: ${{ steps.profiles.outputs.widget_profile_name }}
+          MARKETING_VERSION: ${{ steps.release.outputs.marketing_version }}
+          BUILD_NUMBER: ${{ steps.release.outputs.build_number }}
+        run: |
+          set -euo pipefail
+
+          xcodebuild \
+            -project "$XCODE_PROJECT" \
+            -scheme "$XCODE_SCHEME" \
+            -configuration Release \
+            -destination "generic/platform=iOS" \
+            -archivePath "$RUNNER_TEMP/RunBuoy.xcarchive" \
+            DEVELOPMENT_TEAM="$APPLE_TEAM_ID" \
+            CODE_SIGN_STYLE=Manual \
+            CODE_SIGN_IDENTITY="Apple Distribution" \
+            "RUNBUOY_APP_PROVISIONING_PROFILE=$APP_PROFILE_NAME" \
+            "RUNBUOY_WIDGET_PROVISIONING_PROFILE=$WIDGET_PROFILE_NAME" \
+            MARKETING_VERSION="$MARKETING_VERSION" \
+            CURRENT_PROJECT_VERSION="$BUILD_NUMBER" \
+            clean archive
+
+      - name: Export signed IPA
+        id: export
+        shell: bash
+        env:
+          APP_PROFILE_NAME: ${{ steps.profiles.outputs.app_profile_name }}
+          WIDGET_PROFILE_NAME: ${{ steps.profiles.outputs.widget_profile_name }}
+        run: |
+          set -euo pipefail
+
+          export_options="$RUNNER_TEMP/ExportOptions-TestFlight.plist"
+          export_path="$RUNNER_TEMP/TestFlight"
+          cp apps/ios/ExportOptions-TestFlight.plist "$export_options"
+
+          /usr/libexec/PlistBuddy \
+            -c "Add :provisioningProfiles:$APP_BUNDLE_ID string $APP_PROFILE_NAME" \
+            "$export_options"
+          /usr/libexec/PlistBuddy \
+            -c "Add :provisioningProfiles:$WIDGET_BUNDLE_ID string $WIDGET_PROFILE_NAME" \
+            "$export_options"
+
+          xcodebuild \
+            -exportArchive \
+            -archivePath "$RUNNER_TEMP/RunBuoy.xcarchive" \
+            -exportPath "$export_path" \
+            -exportOptionsPlist "$export_options"
+
+          ipa_path="$(find "$export_path" -maxdepth 1 -type f -name '*.ipa' -print -quit)"
+          if [[ -z "$ipa_path" ]]; then
+            echo "::error::Xcode did not export an IPA."
+            exit 1
+          fi
+
+          echo "ipa_path=$ipa_path" >> "$GITHUB_OUTPUT"
+
+      - name: Verify archive signature and metadata
+        shell: bash
+        env:
+          EXPECTED_MARKETING_VERSION: ${{ steps.release.outputs.marketing_version }}
+          EXPECTED_BUILD_NUMBER: ${{ steps.release.outputs.build_number }}
+        run: |
+          set -euo pipefail
+
+          app_path="$RUNNER_TEMP/RunBuoy.xcarchive/Products/Applications/RunBuoy.app"
+          info_plist="$app_path/Info.plist"
+
+          codesign --verify --deep --strict --verbose=2 "$app_path"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$info_plist")" = "$APP_BUNDLE_ID"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$info_plist")" = "$EXPECTED_MARKETING_VERSION"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$info_plist")" = "$EXPECTED_BUILD_NUMBER"
+
+      - name: Upload build to TestFlight
+        uses: apple-actions/upload-testflight-build@1ad58030672057aa084b4e96beb6f7a8c627f9e6 # v5.2.1
+        with:
+          app-path: ${{ steps.export.outputs.ipa_path }}
+          app-type: ios
+          issuer-id: ${{ vars.APPSTORE_ISSUER_ID }}
+          api-key-id: ${{ vars.APPSTORE_API_KEY_ID }}
+          api-private-key: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
+          release-notes: ${{ inputs.release_notes }}
+          uses-non-exempt-encryption: "false"
+          wait-for-processing: "true"
