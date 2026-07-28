@@ -94,13 +94,10 @@ In the repository, open **Settings → Environments → New environment** and
 create `testflight`. Restrict deployment branches/tags and add a required
 reviewer if appropriate.
 
-Add these environment variables:
+Add these environment secrets:
 
 - `APPSTORE_API_KEY_ID`: the App Store Connect Key ID
 - `APPSTORE_ISSUER_ID`: the App Store Connect Issuer ID
-
-Add these environment secrets:
-
 - `APPSTORE_API_PRIVATE_KEY`: the complete raw contents of the `.p8` file,
   including the BEGIN/END lines
 - `APPSTORE_CERTIFICATES_FILE_BASE64`: the value copied by the Base64 command
