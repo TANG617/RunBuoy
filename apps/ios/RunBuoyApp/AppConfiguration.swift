@@ -17,7 +17,7 @@ struct AppConfiguration: Sendable {
 
     static var bundledAPIBaseURL: URL {
         let configured = Bundle.main.object(forInfoDictionaryKey: "RUNBUOY_API_BASE_URL") as? String
-        let fallback = URL(string: "https://runbuoy.cloud")!
+        let fallback = URL(string: "https://api.runbuoy.cloud")!
         guard let configured,
               let url = URL(string: configured),
               url.host != nil

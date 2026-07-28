@@ -112,7 +112,7 @@ final class APIClientTests: XCTestCase {
     }
 
     func testServerAddressUsesBundledServerWhenSettingIsEmpty() {
-        let bundledURL = URL(string: "https://runbuoy.cloud")!
+        let bundledURL = URL(string: "https://api.runbuoy.cloud")!
 
         let resolved = AppConfiguration.resolvedAPIBaseURL(
             serverAddress: "  ",
@@ -120,7 +120,7 @@ final class APIClientTests: XCTestCase {
         )
 
         XCTAssertEqual(resolved, bundledURL)
-        XCTAssertEqual(AppConfiguration.displayAddress(for: bundledURL), "runbuoy.cloud")
+        XCTAssertEqual(AppConfiguration.displayAddress(for: bundledURL), "api.runbuoy.cloud")
     }
 
     func testServerIPAddressPreservesSSLIPDeploymentConvention() {
@@ -134,7 +134,7 @@ final class APIClientTests: XCTestCase {
     }
 
     func testServerAddressAcceptsExplicitHTTPURLAndRejectsInvalidValue() {
-        let bundledURL = URL(string: "https://runbuoy.cloud")!
+        let bundledURL = URL(string: "https://api.runbuoy.cloud")!
 
         let explicitURL = AppConfiguration.resolvedAPIBaseURL(
             serverAddress: "http://192.168.1.8:8080",

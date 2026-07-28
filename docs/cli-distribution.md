@@ -63,8 +63,8 @@ pipx uninstall runbuoy
 To select an exact release:
 
 ```bash
-uv tool install 'runbuoy==0.1.1'
-pipx install 'runbuoy==0.1.1'
+uv tool install 'runbuoy==0.1.2'
+pipx install 'runbuoy==0.1.2'
 ```
 
 ## Package layout
@@ -176,13 +176,13 @@ published.
 5. Update local `main` and create an annotated tag whose version exactly
    matches `__version__`.
 
-For example, to publish `0.1.1`:
+For example, to publish `0.1.2`:
 
 ```bash
 git switch main
 git pull --ff-only
-git tag -a cli-v0.1.1 -m "RunBuoy CLI 0.1.1"
-git push origin refs/tags/cli-v0.1.1
+git tag -a cli-v0.1.2 -m "RunBuoy CLI 0.1.2"
+git push origin refs/tags/cli-v0.1.2
 ```
 
 The tag triggers `.github/workflows/publish-cli.yml`. The workflow:
@@ -214,7 +214,7 @@ Then test both supported installation paths from the public index in isolated
 directories:
 
 ```bash
-VERSION=0.1.1
+VERSION=0.1.2
 VERIFY_ROOT="$(mktemp -d)"
 VERIFY_PYTHON="$(uv python find 3.12)"
 

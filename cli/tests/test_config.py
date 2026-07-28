@@ -7,7 +7,7 @@ from runbuoy.paths import AppPaths
 
 
 def test_default_server_uses_production_https_url() -> None:
-    assert str(Config().server_url) == "https://runbuoy.cloud/"
+    assert str(Config().server_url) == "https://api.runbuoy.cloud/"
 
 
 def test_credential_file_fallback_is_mode_0600(tmp_path: Path, monkeypatch: object) -> None:

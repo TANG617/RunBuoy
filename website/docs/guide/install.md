@@ -45,9 +45,9 @@ pipx uninstall runbuoy
 ## 指定版本
 
 ```bash
-uv tool install 'runbuoy==0.1.1'
+uv tool install 'runbuoy==0.1.2'
 # 或
-pipx install 'runbuoy==0.1.1'
+pipx install 'runbuoy==0.1.2'
 ```
 
 ## tmux
