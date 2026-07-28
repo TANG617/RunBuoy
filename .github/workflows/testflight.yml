@@ -11,10 +11,6 @@ on:
         description: "Numeric build number (leave blank to use this workflow's run number)"
         required: false
         type: string
-      release_notes:
-        description: "Optional TestFlight release notes"
-        required: false
-        type: string
   push:
     tags:
       - "ios-v*"
@@ -249,6 +245,4 @@ jobs:
           issuer-id: ${{ secrets.APPSTORE_ISSUER_ID }}
           api-key-id: ${{ secrets.APPSTORE_API_KEY_ID }}
           api-private-key: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
-          release-notes: ${{ inputs.release_notes }}
-          uses-non-exempt-encryption: "false"
-          wait-for-processing: "true"
+          wait-for-processing: "false"

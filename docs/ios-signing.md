@@ -36,8 +36,9 @@ and each Live Activity presentation on a supported physical device.
 ## GitHub Actions to TestFlight
 
 The `Publish iOS to TestFlight` workflow archives and signs both the app and
-widget extension, exports an IPA, uploads it to TestFlight, and waits for Apple
-to process the build. It can be started manually or by pushing a tag such as
+widget extension, exports an IPA, and submits it to TestFlight. It finishes
+after Apple accepts the upload; App Store Connect then processes the build
+asynchronously. It can be started manually or by pushing a tag such as
 `ios-v1.0.0`.
 
 The workflow uses the GitHub environment named `testflight`. Keep all signing
@@ -126,6 +127,6 @@ The tag suffix becomes `CFBundleShortVersionString`; the workflow run number
 becomes `CFBundleVersion`.
 
 The current iOS app uses Apple's Keychain and HTTPS APIs but no custom
-cryptography, so the workflow reports that it does not use non-exempt
-encryption. Reassess `ITSAppUsesNonExemptEncryption` and the workflow upload
-setting before adding custom encryption.
+cryptography, so `RunBuoyApp/Info.plist` declares that it does not use
+non-exempt encryption. Reassess `ITSAppUsesNonExemptEncryption` before adding
+custom encryption.
