@@ -144,12 +144,16 @@ struct RunHistoryView: View {
                     .allowsHitTesting(false)
             }
         }
-        .safeAreaBar(edge: .top, spacing: 0) {
+        .safeAreaInset(edge: .top, spacing: 0) {
             if !machineOptions.isEmpty {
-                HistoryMachineFilterBar(
-                    options: machineOptions,
-                    selection: $selectedMachineID
-                )
+                VStack(spacing: 0) {
+                    HistoryMachineFilterBar(
+                        options: machineOptions,
+                        selection: $selectedMachineID
+                    )
+                    Divider()
+                }
+                .background(.ultraThinMaterial)
             }
         }
         .refreshable { await reload() }
@@ -241,10 +245,11 @@ struct HistoryContentFilter: Equatable {
 private struct HistoryMachineFilterBar: View {
     let options: [HistoryMachineOption]
     @Binding var selection: String?
+    @ScaledMetric(relativeTo: .subheadline) private var height = 54
 
     var body: some View {
         ScrollView(.horizontal) {
-            LazyHStack(spacing: 8) {
+            HStack(spacing: 8) {
                 filterButton(id: nil) {
                     Text("history.all")
                 }
@@ -262,7 +267,7 @@ private struct HistoryMachineFilterBar: View {
             .padding(.vertical, 8)
         }
         .scrollIndicators(.hidden)
-        .fixedSize(horizontal: false, vertical: true)
+        .frame(height: height)
     }
 
     private func filterButton<Content: View>(
