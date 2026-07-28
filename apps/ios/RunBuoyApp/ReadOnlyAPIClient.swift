@@ -143,7 +143,7 @@ struct ActivityRegistration: Codable, Equatable, Sendable {
 }
 
 struct URLSessionRunBuoyAPI: RunBuoyAPI, @unchecked Sendable {
-    private let baseURL: URL
+    private let baseURLProvider: @Sendable () -> URL
     private let session: URLSession
     private let identityStore: any DeviceIdentityStoring
 
@@ -152,7 +152,17 @@ struct URLSessionRunBuoyAPI: RunBuoyAPI, @unchecked Sendable {
         session: URLSession = .shared,
         identityStore: any DeviceIdentityStoring
     ) {
-        self.baseURL = baseURL
+        baseURLProvider = { baseURL }
+        self.session = session
+        self.identityStore = identityStore
+    }
+
+    init(
+        baseURLProvider: @escaping @Sendable () -> URL,
+        session: URLSession = .shared,
+        identityStore: any DeviceIdentityStoring
+    ) {
+        self.baseURLProvider = baseURLProvider
         self.session = session
         self.identityStore = identityStore
     }
@@ -274,6 +284,7 @@ struct URLSessionRunBuoyAPI: RunBuoyAPI, @unchecked Sendable {
         body: Body?,
         authenticated: Bool
     ) async throws -> Data {
+        let baseURL = baseURLProvider()
         guard let url = URL(string: endpoint.path, relativeTo: baseURL)?.absoluteURL else {
             throw APIError.invalidURL
         }

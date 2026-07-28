@@ -418,6 +418,49 @@ struct MachineSnapshot: Codable, Identifiable, Hashable, Sendable {
     }
 }
 
+enum MachineLocalLabel {
+    static func key(for machineID: String) -> String {
+        "runbuoy.machine-label.\(machineID)"
+    }
+
+    static func displayName(
+        machineID: String,
+        serverName: String,
+        userDefaults: UserDefaults = .standard
+    ) -> String {
+        userDefaults.string(forKey: key(for: machineID)) ?? serverName
+    }
+}
+
+enum MachineIcon: String, CaseIterable, Identifiable {
+    case desktopcomputer
+    case macProServer = "macpro.gen3.server"
+    case macbook
+    case macMini = "macmini"
+    case macStudio = "macstudio"
+    case macPro = "macpro.gen2"
+
+    static let defaultValue = MachineIcon.desktopcomputer
+
+    var id: String { rawValue }
+
+    static func key(for machineID: String) -> String {
+        "runbuoy.machine-icon.\(machineID)"
+    }
+
+    static func selected(
+        for machineID: String,
+        userDefaults: UserDefaults = .standard
+    ) -> MachineIcon {
+        guard let rawValue = userDefaults.string(forKey: key(for: machineID)),
+              let icon = MachineIcon(rawValue: rawValue)
+        else {
+            return defaultValue
+        }
+        return icon
+    }
+}
+
 struct RichMessage: Codable, Identifiable, Hashable, Sendable {
     struct Field: Codable, Identifiable, Hashable, Sendable {
         let name: String

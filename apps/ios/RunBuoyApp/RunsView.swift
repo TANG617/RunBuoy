@@ -1,3 +1,4 @@
+import Foundation
 import SwiftUI
 
 struct ActiveRunsView: View {
@@ -23,10 +24,6 @@ struct ActiveRunsView: View {
                     }
                 }
             }
-
-            if isEmpty, store.state == .loading {
-                RunLoadingRows()
-            }
         }
         .listStyle(.insetGrouped)
         .navigationTitle("runs.active")
@@ -40,10 +37,10 @@ struct ActiveRunsView: View {
         .task { await loadIfNeeded() }
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
-                Button(action: refresh) {
-                    Label("common.refresh", systemImage: "arrow.clockwise")
-                }
-                .disabled(store.state == .loading)
+                RefreshButton(
+                    isRefreshing: store.state == .loading,
+                    action: refresh
+                )
             }
         }
     }
@@ -65,13 +62,48 @@ struct ActiveRunsView: View {
 struct RunHistoryView: View {
     @Environment(RunBuoyStore.self) private var store
     @AppStorage("runbuoy.safe-messages-enabled") private var safeMessagesEnabled = true
+    @State private var selectedMachineID: String?
 
-    private var showsMessages: Bool {
-        safeMessagesEnabled && !store.messages.isEmpty
+    init(initialMachineID: String? = nil) {
+        _selectedMachineID = State(initialValue: initialMachineID)
+    }
+
+    private var machineOptions: [HistoryMachineOption] {
+        HistoryMachineOption.makeOptions(
+            machines: store.machines,
+            runs: store.historyRunModels.map(\.snapshot),
+            messages: store.messages
+        )
+    }
+
+    private var machineOptionIDs: [String] {
+        machineOptions.map(\.id)
+    }
+
+    private var selectedMachineName: String? {
+        guard let selectedMachineID else { return nil }
+        return machineOptions.first(where: { $0.id == selectedMachineID })?.name
+    }
+
+    private var contentFilter: HistoryContentFilter {
+        HistoryContentFilter(machineID: selectedMachineID)
+    }
+
+    private var filteredRunModels: [RunSummaryModel] {
+        store.historyRunModels.filter {
+            contentFilter.includes(machineID: $0.snapshot.machineID)
+        }
+    }
+
+    private var filteredMessages: [RichMessage] {
+        guard safeMessagesEnabled else { return [] }
+        return store.messages.filter {
+            contentFilter.includes(machineID: $0.machineID)
+        }
     }
 
     private var isEmpty: Bool {
-        store.historyRunModels.isEmpty && !showsMessages
+        filteredRunModels.isEmpty && filteredMessages.isEmpty
     }
 
     var body: some View {
@@ -81,9 +113,9 @@ struct RunHistoryView: View {
                     .listRowSeparator(.hidden)
             }
 
-            if !store.historyRunModels.isEmpty {
+            if !filteredRunModels.isEmpty {
                 Section("runs.recent") {
-                    ForEach(store.historyRunModels) { model in
+                    ForEach(filteredRunModels) { model in
                         NavigationLink(value: AppRoute.runDetail(model.id)) {
                             RunRow(model: model)
                         }
@@ -91,34 +123,51 @@ struct RunHistoryView: View {
                 }
             }
 
-            if showsMessages {
+            if !filteredMessages.isEmpty {
                 Section("runs.messages") {
-                    ForEach(store.messages) { message in
+                    ForEach(filteredMessages) { message in
                         RichMessageRow(message: message)
                     }
                 }
             }
-
-            if isEmpty, store.state == .loading {
-                RunLoadingRows()
-            }
         }
         .listStyle(.insetGrouped)
         .navigationTitle("history.title")
+        .navigationBarTitleDisplayMode(.inline)
         .overlay {
             if isEmpty, store.state != .loading {
-                HistoryEmptyState(state: store.state)
+                HistoryEmptyState(
+                    state: store.state,
+                    machineID: selectedMachineID,
+                    machineName: selectedMachineName
+                )
                     .allowsHitTesting(false)
+            }
+        }
+        .safeAreaBar(edge: .top, spacing: 0) {
+            if !machineOptions.isEmpty {
+                HistoryMachineFilterBar(
+                    options: machineOptions,
+                    selection: $selectedMachineID
+                )
             }
         }
         .refreshable { await reload() }
         .task { await loadIfNeeded() }
+        .onChange(of: machineOptionIDs) { _, availableIDs in
+            guard let selectedMachineID,
+                  !availableIDs.contains(selectedMachineID)
+            else {
+                return
+            }
+            self.selectedMachineID = nil
+        }
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
-                Button(action: refresh) {
-                    Label("common.refresh", systemImage: "arrow.clockwise")
-                }
-                .disabled(store.state == .loading)
+                RefreshButton(
+                    isRefreshing: store.state == .loading,
+                    action: refresh
+                )
             }
         }
     }
@@ -137,44 +186,115 @@ struct RunHistoryView: View {
     }
 }
 
-private struct RunLoadingRows: View {
-    private enum Placeholder: String, CaseIterable, Identifiable {
-        case first
-        case second
-        case third
+struct HistoryMachineOption: Identifiable, Hashable {
+    let id: String
+    let name: String
 
-        var id: String { rawValue }
-    }
+    static func makeOptions(
+        machines: [MachineSnapshot],
+        runs: [RunSnapshot],
+        messages: [RichMessage],
+        userDefaults: UserDefaults = .standard
+    ) -> [HistoryMachineOption] {
+        var serverNamesByID: [String: String] = [:]
 
-    var body: some View {
-        Section {
-            ForEach(Placeholder.allCases) { _ in
-                RunLoadingRow()
-                    .redacted(reason: .placeholder)
-                    .allowsHitTesting(false)
-            }
+        for message in messages {
+            guard let machineID = message.machineID, !machineID.isEmpty else { continue }
+            serverNamesByID[machineID] = serverNamesByID[machineID] ?? machineID
         }
-        .accessibilityLabel("runs.loading")
+        for run in runs.reversed() {
+            serverNamesByID[run.machineID] = run.machineName
+        }
+        for machine in machines {
+            serverNamesByID[machine.id] = machine.displayName
+        }
+
+        return serverNamesByID.map { machineID, serverName in
+            HistoryMachineOption(
+                id: machineID,
+                name: MachineLocalLabel.displayName(
+                    machineID: machineID,
+                    serverName: serverName,
+                    userDefaults: userDefaults
+                )
+            )
+        }
+        .sorted { lhs, rhs in
+            let comparison = lhs.name.localizedStandardCompare(rhs.name)
+            if comparison == .orderedSame {
+                return lhs.id < rhs.id
+            }
+            return comparison == .orderedAscending
+        }
     }
 }
 
-private struct RunLoadingRow: View {
+struct HistoryContentFilter: Equatable {
+    let machineID: String?
+
+    func includes(machineID candidateMachineID: String?) -> Bool {
+        guard let machineID else { return true }
+        return candidateMachineID == machineID
+    }
+}
+
+private struct HistoryMachineFilterBar: View {
+    let options: [HistoryMachineOption]
+    @Binding var selection: String?
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Text("A run title appears here")
-                    .font(.headline)
-                Spacer()
-                Text("Running")
-                    .font(.caption.weight(.semibold))
+        ScrollView(.horizontal) {
+            LazyHStack(spacing: 8) {
+                filterButton(id: nil) {
+                    Text("history.all")
+                }
+                ForEach(options) { option in
+                    filterButton(id: option.id) {
+                        Label {
+                            Text(option.name)
+                        } icon: {
+                            MachineIconImage(machineID: option.id)
+                        }
+                    }
+                }
             }
-            Label("Machine", systemImage: "desktopcomputer")
-                .font(.subheadline)
-            ProgressView(value: 0.4)
-            Text("Working")
-                .font(.subheadline.weight(.medium))
+            .padding(.horizontal)
+            .padding(.vertical, 8)
         }
-        .padding(.vertical, 6)
+        .scrollIndicators(.hidden)
+        .fixedSize(horizontal: false, vertical: true)
+    }
+
+    private func filterButton<Content: View>(
+        id: String?,
+        @ViewBuilder label: () -> Content
+    ) -> some View {
+        let isSelected = selection == id
+        return Button {
+            selection = id
+        } label: {
+            label()
+                .font(.subheadline.weight(.semibold))
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
+                .foregroundStyle(
+                    isSelected
+                        ? Color(uiColor: .systemBackground)
+                        : Color.primary
+                )
+                .padding(.horizontal, 14)
+                .padding(.vertical, 9)
+                .background {
+                    Capsule()
+                        .fill(
+                            isSelected
+                                ? Color.primary
+                                : Color.secondary.opacity(0.16)
+                        )
+                }
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 }
 
@@ -214,35 +334,61 @@ private struct ActiveRunsEmptyState: View {
 
 private struct HistoryEmptyState: View {
     let state: RunBuoyStore.LoadState
+    let machineID: String?
+    let machineName: String?
 
     var body: some View {
         ContentUnavailableView {
-            Label(title, systemImage: symbol)
+            Label {
+                Text(title)
+            } icon: {
+                if let machineID, !isFailure {
+                    MachineIconImage(machineID: machineID)
+                } else {
+                    Image(systemName: symbol)
+                }
+            }
         } description: {
             Text(description)
         }
         .padding()
     }
 
-    private var title: LocalizedStringKey {
+    private var title: String {
         if case .failed = state {
-            return "runs.unavailable"
+            return String(localized: "runs.unavailable")
         }
-        return "history.empty"
+        if let machineName {
+            return String(
+                format: String(localized: "history.filtered_empty"),
+                machineName
+            )
+        }
+        return String(localized: "history.empty")
     }
 
-    private var description: LocalizedStringKey {
+    private var description: String {
         if case .failed = state {
-            return "runs.pull_to_refresh"
+            return String(localized: "runs.pull_to_refresh")
         }
-        return "history.empty_description"
+        if machineName != nil {
+            return String(localized: "history.filtered_empty_description")
+        }
+        return String(localized: "history.empty_description")
     }
 
     private var symbol: String {
-        if case .failed = state {
+        if isFailure {
             return "exclamationmark.icloud"
         }
         return "clock.arrow.circlepath"
+    }
+
+    private var isFailure: Bool {
+        if case .failed = state {
+            return true
+        }
+        return false
     }
 }
 
@@ -307,4 +453,11 @@ struct RichMessageRow: View {
         .environment(PreviewFixtures.store())
         .preferredColorScheme(.dark)
         .environment(\.dynamicTypeSize, .accessibility3)
+}
+
+#Preview("History · Selected Machine") {
+    NavigationStack {
+        RunHistoryView(initialMachineID: PreviewFixtures.ciMachine.id)
+    }
+    .environment(PreviewFixtures.store())
 }

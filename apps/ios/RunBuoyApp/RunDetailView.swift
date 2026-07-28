@@ -157,7 +157,11 @@ private struct RunOverviewSection: View {
                 Text(run.title)
                     .font(.title2.bold())
                     .fixedSize(horizontal: false, vertical: true)
-                Label(run.machineName, systemImage: "desktopcomputer")
+                Label {
+                    Text(run.machineName)
+                } icon: {
+                    MachineIconImage(machineID: run.machineID)
+                }
                     .foregroundStyle(.secondary)
                 HStack {
                     StatusBadge(presentation: run.executionStatus.presentation)

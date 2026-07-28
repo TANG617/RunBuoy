@@ -111,6 +111,44 @@ final class APIClientTests: XCTestCase {
         XCTAssertTrue(endpoints.allSatisfy { $0.path.hasPrefix("/v1/") })
     }
 
+    func testServerAddressUsesBundledServerWhenSettingIsEmpty() {
+        let bundledURL = URL(string: "https://47-77-197-236.sslip.io")!
+
+        let resolved = AppConfiguration.resolvedAPIBaseURL(
+            serverAddress: "  ",
+            defaultBaseURL: bundledURL
+        )
+
+        XCTAssertEqual(resolved, bundledURL)
+        XCTAssertEqual(AppConfiguration.displayAddress(for: bundledURL), "47.77.197.236")
+    }
+
+    func testServerIPAddressPreservesSSLIPDeploymentConvention() {
+        let resolved = AppConfiguration.resolvedAPIBaseURL(
+            serverAddress: "203.0.113.42",
+            defaultBaseURL: URL(string: "https://47-77-197-236.sslip.io")!
+        )
+
+        XCTAssertEqual(resolved?.absoluteString, "https://203-0-113-42.sslip.io")
+        XCTAssertEqual(resolved.map(AppConfiguration.displayAddress(for:)), "203.0.113.42")
+    }
+
+    func testServerAddressAcceptsExplicitHTTPURLAndRejectsInvalidValue() {
+        let bundledURL = URL(string: "https://47-77-197-236.sslip.io")!
+
+        let explicitURL = AppConfiguration.resolvedAPIBaseURL(
+            serverAddress: "http://192.168.1.8:8080",
+            defaultBaseURL: bundledURL
+        )
+        let invalidURL = AppConfiguration.resolvedAPIBaseURL(
+            serverAddress: "not a server/path",
+            defaultBaseURL: bundledURL
+        )
+
+        XCTAssertEqual(explicitURL?.absoluteString, "http://192.168.1.8:8080")
+        XCTAssertNil(invalidURL)
+    }
+
     private func makeAPI(
         handler: @escaping (URLRequest) throws -> (Int, Data)
     ) -> URLSessionRunBuoyAPI {

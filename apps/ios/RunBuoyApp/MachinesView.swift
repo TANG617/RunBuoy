@@ -1,14 +1,27 @@
 import SwiftUI
 
-private enum MachinesSheet: String, Identifiable {
-    case pairMachine
+private enum MachinesSheet: Identifiable {
+    case scanner
+    case pairingCode
+    case confirmation(PairingCode)
 
-    var id: String { rawValue }
+    var id: String {
+        switch self {
+        case .scanner:
+            "scanner"
+        case .pairingCode:
+            "pairing-code"
+        case .confirmation:
+            "confirmation"
+        }
+    }
 }
 
 struct MachinesView: View {
     @Environment(RunBuoyStore.self) private var store
     @State private var presentedSheet: MachinesSheet?
+    @State private var queuedPairingCode: PairingCode?
+    @State private var pairingError: String?
 
     var body: some View {
         List {
@@ -30,26 +43,75 @@ struct MachinesView: View {
         .task { await loadIfNeeded() }
         .toolbar {
             ToolbarItemGroup(placement: .topBarTrailing) {
-                Button(action: refresh) {
-                    Label("common.refresh", systemImage: "arrow.clockwise")
-                }
-                .disabled(store.state == .loading)
+                RefreshButton(
+                    isRefreshing: store.state == .loading,
+                    action: refresh
+                )
 
-                Button(action: showPairing) {
-                    Label("settings.pair_machine", systemImage: "qrcode.viewfinder")
+                Button(action: showPairingCode) {
+                    Label("pairing.enter_code", systemImage: "keyboard")
+                }
+
+                Button(action: showScanner) {
+                    Label("pairing.scan_title", systemImage: "qrcode.viewfinder")
                 }
             }
         }
-        .sheet(item: $presentedSheet) { sheet in
+        .sheet(item: $presentedSheet, onDismiss: presentQueuedPairingCode) { sheet in
             switch sheet {
-            case .pairMachine:
-                PairMachineSheet()
+            case .scanner:
+                ScannerSheet(onCode: receiveScannedCode)
+            case .pairingCode:
+                PairMachineSheet(allowsCodeEntry: true)
+            case .confirmation(let code):
+                PairMachineSheet(
+                    initialCode: code,
+                    allowsCodeEntry: false
+                )
             }
+        }
+        .alert(
+            "pairing.invalid_code_title",
+            isPresented: Binding(
+                get: { pairingError != nil },
+                set: { isPresented in
+                    if !isPresented {
+                        pairingError = nil
+                    }
+                }
+            )
+        ) {
+            Button("common.close", role: .cancel) {}
+        } message: {
+            Text(pairingError ?? "")
         }
     }
 
-    private func showPairing() {
-        presentedSheet = .pairMachine
+    private func showScanner() {
+        presentedSheet = .scanner
+    }
+
+    private func showPairingCode() {
+        presentedSheet = .pairingCode
+    }
+
+    private func receiveScannedCode(_ value: String) {
+        do {
+            queuedPairingCode = try PairingCode.decode(value)
+            pairingError = nil
+        } catch {
+            queuedPairingCode = nil
+            pairingError = error.localizedDescription
+        }
+    }
+
+    private func presentQueuedPairingCode() {
+        guard let code = queuedPairingCode else { return }
+        queuedPairingCode = nil
+        Task { @MainActor in
+            await Task.yield()
+            presentedSheet = .confirmation(code)
+        }
     }
 
     private func refresh() {
@@ -75,7 +137,7 @@ private struct MachinesEmptyState: View {
                 ProgressView("machines.loading")
             } else {
                 ContentUnavailableView {
-                    Label("machines.empty", systemImage: "desktopcomputer")
+                    Label("machines.empty", systemImage: "desktopcomputer.and.macbook")
                 } description: {
                     Text("machines.empty_description")
                 }
@@ -87,10 +149,24 @@ private struct MachinesEmptyState: View {
 
 private struct PairMachineSheet: View {
     @Environment(\.dismiss) private var dismiss
+    var initialCode: PairingCode?
+    let allowsCodeEntry: Bool
+
+    init(
+        initialCode: PairingCode? = nil,
+        allowsCodeEntry: Bool
+    ) {
+        self.initialCode = initialCode
+        self.allowsCodeEntry = allowsCodeEntry
+    }
 
     var body: some View {
         NavigationStack {
-            PairMachineView()
+            PairMachineView(
+                initialCode: initialCode,
+                allowsCodeEntry: allowsCodeEntry,
+                dismissesOnSuccess: true
+            )
                 .toolbar {
                     ToolbarItem(placement: .cancellationAction) {
                         Button("common.close", action: dismiss.callAsFunction)
@@ -105,10 +181,18 @@ struct MachineRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            Image(systemName: machineSymbol)
+            MachineIconImage(machineID: machine.id)
                 .font(.title2)
                 .foregroundStyle(machine.isSubscribed ? Color.accentColor : .secondary)
                 .frame(width: 34)
+                .overlay(alignment: .bottomTrailing) {
+                    if !machine.isSubscribed {
+                        Image(systemName: "exclamationmark.circle.fill")
+                            .font(.caption2)
+                            .foregroundStyle(.orange)
+                            .background(.background, in: Circle())
+                    }
+                }
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 4) {
                 Text(localLabel)
@@ -129,18 +213,11 @@ struct MachineRow: View {
         .accessibilityElement(children: .combine)
     }
 
-    private var machineSymbol: String {
-        machine.isSubscribed
-            ? "desktopcomputer"
-            : "desktopcomputer.trianglebadge.exclamationmark"
-    }
-
     private var localLabel: String {
-        UserDefaults.standard.string(forKey: labelKey) ?? machine.displayName
-    }
-
-    private var labelKey: String {
-        "runbuoy.machine-label.\(machine.id)"
+        MachineLocalLabel.displayName(
+            machineID: machine.id,
+            serverName: machine.displayName
+        )
     }
 }
 
@@ -154,7 +231,13 @@ struct MachineDetailView: View {
             if let machine = store.machines.first(where: { $0.id == machineID }) {
                 MachineDetailContent(machine: machine)
             } else {
-                ContentUnavailableView("machines.not_found", systemImage: "desktopcomputer")
+                ContentUnavailableView {
+                    Label {
+                        Text("machines.not_found")
+                    } icon: {
+                        MachineIconImage(machineID: machineID)
+                    }
+                }
             }
         }
     }
@@ -166,13 +249,19 @@ private struct MachineDetailContent: View {
     let machine: MachineSnapshot
     @State private var localLabel: String
     @State private var notice: LocalizedStringKey?
+    @AppStorage private var machineIconName: String
 
     init(machine: MachineSnapshot) {
         self.machine = machine
         _localLabel = State(
-            initialValue: UserDefaults.standard.string(
-                forKey: "runbuoy.machine-label.\(machine.id)"
-            ) ?? machine.displayName
+            initialValue: MachineLocalLabel.displayName(
+                machineID: machine.id,
+                serverName: machine.displayName
+            )
+        )
+        _machineIconName = AppStorage(
+            wrappedValue: MachineIcon.defaultValue.rawValue,
+            MachineIcon.key(for: machine.id)
         )
     }
 
@@ -193,6 +282,25 @@ private struct MachineDetailContent: View {
                 }
                 LabeledContent("machine.paired") {
                     Text(machine.pairedAt, format: .dateTime)
+                }
+            }
+
+            Section("machine.appearance") {
+                Picker(selection: $machineIconName) {
+                    ForEach(MachineIcon.allCases) { icon in
+                        Label {
+                            Text(icon.title)
+                        } icon: {
+                            Image(systemName: icon.rawValue)
+                        }
+                        .tag(icon.rawValue)
+                    }
+                } label: {
+                    Label {
+                        Text("machine.icon")
+                    } icon: {
+                        MachineIconImage(machineID: machine.id)
+                    }
                 }
             }
 
@@ -225,7 +333,7 @@ private struct MachineDetailContent: View {
     }
 
     private var labelKey: String {
-        "runbuoy.machine-label.\(machine.id)"
+        MachineLocalLabel.key(for: machine.id)
     }
 
     private func saveLocalLabel() {
@@ -252,6 +360,25 @@ private struct MachineDetailContent: View {
         Task {
             try? await store.removeLocalPairing(subscriptionID: machine.subscriptionID)
             notice = "machine.pairing_removed"
+        }
+    }
+}
+
+private extension MachineIcon {
+    var title: LocalizedStringKey {
+        switch self {
+        case .desktopcomputer:
+            "machine.icon.desktopcomputer"
+        case .macProServer:
+            "machine.icon.macpro_server"
+        case .macbook:
+            "machine.icon.macbook"
+        case .macMini:
+            "machine.icon.macmini"
+        case .macStudio:
+            "machine.icon.macstudio"
+        case .macPro:
+            "machine.icon.macpro"
         }
     }
 }

@@ -1,5 +1,45 @@
 import SwiftUI
 
+struct MachineIconImage: View {
+    @AppStorage private var iconName: String
+
+    init(machineID: String) {
+        _iconName = AppStorage(
+            wrappedValue: MachineIcon.defaultValue.rawValue,
+            MachineIcon.key(for: machineID)
+        )
+    }
+
+    var body: some View {
+        Image(systemName: resolvedIcon.rawValue)
+    }
+
+    private var resolvedIcon: MachineIcon {
+        MachineIcon(rawValue: iconName) ?? .defaultValue
+    }
+}
+
+struct RefreshButton: View {
+    let isRefreshing: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Label {
+                Text("common.refresh")
+            } icon: {
+                Image(systemName: "arrow.clockwise")
+                    .symbolEffect(
+                        .rotate,
+                        options: .repeat(.continuous),
+                        isActive: isRefreshing
+                    )
+            }
+        }
+        .disabled(isRefreshing)
+    }
+}
+
 struct StatusPresentation {
     let title: LocalizedStringKey
     let symbol: String
@@ -161,7 +201,11 @@ private struct RunRowContent: View {
                     StatusBadge(presentation: run.executionStatus.presentation)
                 }
             }
-            Label(run.machineName, systemImage: "desktopcomputer")
+            Label {
+                Text(run.machineName)
+            } icon: {
+                MachineIconImage(machineID: run.machineID)
+            }
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .lineLimit(1)

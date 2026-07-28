@@ -5,7 +5,6 @@ import SwiftUI
 enum AppTab: String, CaseIterable, Identifiable {
     case activeRuns
     case history
-    case machines
     case settings
 
     var id: String { rawValue }
@@ -13,6 +12,7 @@ enum AppTab: String, CaseIterable, Identifiable {
 
 enum AppRoute: Hashable {
     case runDetail(UUID)
+    case machines
     case machine(String)
     case pairMachine
 }
@@ -23,7 +23,6 @@ final class AppRouter {
     var selectedTab: AppTab = .activeRuns
     var activeRunsPath: [AppRoute] = []
     var historyPath: [AppRoute] = []
-    var machinesPath: [AppRoute] = []
     var settingsPath: [AppRoute] = []
     var pendingPairingCode: PairingCode?
 
@@ -58,9 +57,5 @@ final class AppRouter {
     func clearPendingPairing() {
         pendingPairingCode = nil
         settingsPath = []
-    }
-
-    func showMachines() {
-        selectedTab = .machines
     }
 }

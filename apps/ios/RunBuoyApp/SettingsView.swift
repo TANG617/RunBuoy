@@ -3,23 +3,63 @@ import SwiftUI
 
 struct SettingsView: View {
     @Environment(RunBuoyStore.self) private var store
-    @Environment(AppRouter.self) private var router
+    @AppStorage(AppConfiguration.serverAddressDefaultsKey) private var serverAddress = ""
     @AppStorage("runbuoy.notifications-enabled") private var notificationsEnabled = true
     @AppStorage("runbuoy.live-activities-enabled") private var liveActivitiesEnabled = true
     @AppStorage("runbuoy.safe-messages-enabled") private var safeMessagesEnabled = true
     @State private var cacheMessage: LocalizedStringKey?
+    @State private var draftServerAddress = UserDefaults.standard.string(
+        forKey: AppConfiguration.serverAddressDefaultsKey
+    ) ?? ""
+    @State private var serverMessage: LocalizedStringKey?
+    @State private var serverValidationAttempted = false
+    @FocusState private var isServerFieldFocused: Bool
 
     var body: some View {
         Form {
-            Section("settings.connections") {
-                Button(action: showMachines) {
+            Section {
+                NavigationLink(value: AppRoute.machines) {
                     LabeledContent {
                         Text(store.machines.count, format: .number)
                     } label: {
-                        Label("settings.machines", systemImage: "desktopcomputer")
+                        Label("settings.machines", systemImage: "desktopcomputer.and.macbook")
                     }
                 }
-                .buttonStyle(.plain)
+
+                LabeledContent {
+                    TextField(
+                        AppConfiguration.defaultServerAddress,
+                        text: $draftServerAddress
+                    )
+                    .multilineTextAlignment(.trailing)
+                    .keyboardType(.URL)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .submitLabel(.done)
+                    .focused($isServerFieldFocused)
+                    .onSubmit(saveServer)
+                } label: {
+                    Label("settings.server", systemImage: "server.rack")
+                }
+
+                if serverValidationAttempted, !isServerValid {
+                    Label("settings.server_invalid", systemImage: "exclamationmark.triangle")
+                        .font(.footnote)
+                        .foregroundStyle(.red)
+                } else if let serverMessage {
+                    Label(serverMessage, systemImage: "checkmark.circle")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+            } header: {
+                Text("settings.connections")
+            } footer: {
+                Text(
+                    String(
+                        format: String(localized: "settings.server_default"),
+                        AppConfiguration.defaultServerAddress
+                    )
+                )
             }
 
             Section("settings.notifications") {
@@ -47,7 +87,6 @@ struct SettingsView: View {
 
             Section("settings.about") {
                 LabeledContent("settings.product", value: "RunBuoy")
-                LabeledContent("settings.server", value: AppConfiguration.live.apiBaseURL.host ?? "—")
                 Link(destination: URL(string: "https://runbuoy.dev/privacy")!) {
                     Label("settings.privacy", systemImage: "hand.raised")
                 }
@@ -57,6 +96,12 @@ struct SettingsView: View {
         .onChange(of: notificationsEnabled) { _, _ in savePreferences() }
         .onChange(of: liveActivitiesEnabled) { _, _ in savePreferences() }
         .onChange(of: safeMessagesEnabled) { _, _ in savePreferences() }
+        .onChange(of: draftServerAddress) { _, _ in
+            serverValidationAttempted = false
+            if hasServerChanges {
+                serverMessage = nil
+            }
+        }
     }
 
     private func savePreferences() {
@@ -68,15 +113,45 @@ struct SettingsView: View {
         Task { await store.savePreferences(preferences) }
     }
 
-    private func showMachines() {
-        router.showMachines()
-    }
-
     private func clearCache() {
         Task {
             try? await store.clearCache()
             cacheMessage = "settings.cache_cleared"
         }
+    }
+
+    private var trimmedServerAddress: String {
+        draftServerAddress.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var resolvedServerURL: URL? {
+        AppConfiguration.resolvedAPIBaseURL(
+            serverAddress: trimmedServerAddress,
+            defaultBaseURL: AppConfiguration.bundledAPIBaseURL
+        )
+    }
+
+    private var isServerValid: Bool {
+        resolvedServerURL != nil
+    }
+
+    private var hasServerChanges: Bool {
+        trimmedServerAddress != serverAddress
+    }
+
+    private func saveServer() {
+        serverValidationAttempted = true
+        guard isServerValid else {
+            serverMessage = nil
+            return
+        }
+        serverValidationAttempted = false
+        isServerFieldFocused = false
+        guard hasServerChanges else { return }
+        serverAddress = trimmedServerAddress
+        draftServerAddress = trimmedServerAddress
+        serverMessage = "settings.server_saved"
+        Task { await store.refresh() }
     }
 }
 

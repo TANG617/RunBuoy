@@ -1,6 +1,12 @@
 import SwiftUI
 import UIKit
 
+private enum OnboardingSheet: String, Identifiable {
+    case scanner
+
+    var id: String { rawValue }
+}
+
 struct OnboardingView: View {
     @Environment(RunBuoyStore.self) private var store
     @Environment(AppRouter.self) private var router
@@ -8,7 +14,7 @@ struct OnboardingView: View {
     let onFinished: () -> Void
 
     @State private var page = 0
-    @State private var sheet: PairingSheet?
+    @State private var sheet: OnboardingSheet?
     @State private var pairingCode: PairingCode?
     @State private var pairingSucceeded = false
     @State private var errorMessage: String?

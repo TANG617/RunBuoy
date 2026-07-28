@@ -1,17 +1,53 @@
 import SwiftUI
 
-enum PairingSheet: String, Identifiable {
-    case scanner
+private enum PairingStatus: Equatable {
+    case success
+    case invalidCode
+    case failed
 
-    var id: String { rawValue }
+    var title: LocalizedStringKey {
+        switch self {
+        case .success:
+            "pairing.success"
+        case .invalidCode:
+            "pairing.invalid_code"
+        case .failed:
+            "pairing.failed"
+        }
+    }
+
+    var symbol: String {
+        self == .success ? "checkmark.circle" : "exclamationmark.triangle"
+    }
+
+    var color: Color {
+        self == .success ? .green : .red
+    }
 }
 
 struct PairMachineView: View {
+    @Environment(\.dismiss) private var dismiss
     @Environment(RunBuoyStore.self) private var store
     @Environment(AppRouter.self) private var router
-    @State private var sheet: PairingSheet?
+
+    let allowsCodeEntry: Bool
+    let dismissesOnSuccess: Bool
+
     @State private var code: PairingCode?
-    @State private var status: LocalizedStringKey?
+    @State private var rawCode = ""
+    @State private var status: PairingStatus?
+    @State private var isWorking = false
+    @FocusState private var isCodeFieldFocused: Bool
+
+    init(
+        initialCode: PairingCode? = nil,
+        allowsCodeEntry: Bool = true,
+        dismissesOnSuccess: Bool = false
+    ) {
+        self.allowsCodeEntry = allowsCodeEntry
+        self.dismissesOnSuccess = dismissesOnSuccess
+        _code = State(initialValue: initialCode)
+    }
 
     var body: some View {
         Form {
@@ -21,63 +57,127 @@ struct PairMachineView: View {
                     if let platform = code.platform {
                         LabeledContent("machine.platform", value: platform)
                     }
-                    Button("pairing.claim", action: claimPairing)
-                        .buttonStyle(.glassProminent)
+                    Button(action: claimPairing) {
+                        if isWorking {
+                            ProgressView()
+                                .frame(maxWidth: .infinity)
+                        } else {
+                            Text("pairing.claim")
+                                .frame(maxWidth: .infinity)
+                        }
+                    }
+                    .buttonStyle(.glassProminent)
+                    .disabled(isWorking)
+                }
+            } else if allowsCodeEntry {
+                Section {
+                    TextField(
+                        "pairing.code_placeholder",
+                        text: $rawCode,
+                        axis: .vertical
+                    )
+                    .lineLimit(3...6)
+                    .keyboardType(.asciiCapable)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .submitLabel(.done)
+                    .focused($isCodeFieldFocused)
+                    .onSubmit(validateCode)
+
+                    Button("pairing.continue", action: validateCode)
+                        .disabled(trimmedCode.isEmpty)
+                } header: {
+                    Text("pairing.enter_code")
+                } footer: {
+                    Text("pairing.code_hint")
                 }
             } else {
-                Button(action: showScanner) {
-                    Label("pairing.scan_title", systemImage: "qrcode.viewfinder")
-                }
-                .buttonStyle(.glass)
+                ContentUnavailableView(
+                    "pairing.invalid_code_title",
+                    systemImage: "exclamationmark.triangle"
+                )
             }
+
             if let status {
                 Section {
-                    Label(status, systemImage: "info.circle")
+                    Label(status.title, systemImage: status.symbol)
+                        .foregroundStyle(status.color)
                 }
             }
         }
-        .navigationTitle("settings.pair_machine")
-        .sheet(item: $sheet) { _ in
-            ScannerSheet(onCode: receiveScannedCode)
-        }
+        .navigationTitle(code == nil ? "pairing.enter_code" : "settings.pair_machine")
+        .navigationBarTitleDisplayMode(.inline)
         .onAppear {
             receivePendingPairingCode(router.pendingPairingCode)
+            if code == nil, allowsCodeEntry {
+                isCodeFieldFocused = true
+            }
         }
         .onChange(of: router.pendingPairingCode) { _, pendingCode in
             receivePendingPairingCode(pendingCode)
         }
     }
 
-    private func showScanner() {
-        sheet = .scanner
+    private var trimmedCode: String {
+        rawCode.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    private func receiveScannedCode(_ value: String) {
-        code = try? PairingCode.decode(value)
+    private func validateCode() {
+        do {
+            code = try PairingCode.decode(trimmedCode)
+            status = nil
+            isCodeFieldFocused = false
+        } catch {
+            status = .invalidCode
+        }
     }
 
     private func receivePendingPairingCode(_ pendingCode: PairingCode?) {
         guard let pendingCode else { return }
         code = pendingCode
+        status = nil
+        isCodeFieldFocused = false
     }
 
     private func claimPairing() {
-        guard let code else { return }
+        guard let code, !isWorking else { return }
+        isWorking = true
         Task {
             do {
                 try await store.claim(code)
-                router.clearPendingPairing()
-                status = "pairing.success"
+                status = .success
+                if dismissesOnSuccess {
+                    router.pendingPairingCode = nil
+                    dismiss()
+                } else {
+                    router.clearPendingPairing()
+                }
             } catch {
-                status = "pairing.failed"
+                status = .failed
             }
+            isWorking = false
         }
     }
 }
 
-#Preview {
+#Preview("Enter Pairing Code") {
     NavigationStack {
         PairMachineView()
+    }
+    .environment(PreviewFixtures.store())
+    .environment(AppRouter())
+}
+
+#Preview("Confirm Pairing") {
+    NavigationStack {
+        PairMachineView(
+            initialCode: PairingCode(
+                sessionID: "session_preview",
+                challenge: "preview",
+                machineDisplayName: "Mac Studio",
+                platform: "macOS"
+            )
+        )
     }
     .environment(PreviewFixtures.store())
     .environment(AppRouter())

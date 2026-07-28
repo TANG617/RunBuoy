@@ -62,33 +62,6 @@ enum PreviewFixtures {
         sequence: 18
     )
 
-    static let placeholderRun = RunSnapshot(
-        id: UUID(),
-        machineID: "placeholder",
-        machineName: "Machine",
-        title: "A run title appears here",
-        executionStatus: .running,
-        healthStatus: .healthy,
-        attentionStatus: .none,
-        progress: RunProgress(
-            kind: .determinate,
-            current: 40,
-            total: 100,
-            fraction: 0.4,
-            unit: nil,
-            source: "explicit"
-        ),
-        phase: "Working",
-        safeMessage: nil,
-        startedAt: baseDate,
-        updatedAt: baseDate,
-        endedAt: nil,
-        estimatedEndAt: nil,
-        exitCode: nil,
-        safeLogTail: nil,
-        sequence: 1
-    )
-
     static let machine = MachineSnapshot(
         id: "machine_mac_studio",
         displayName: "Mac Studio",
@@ -101,6 +74,18 @@ enum PreviewFixtures {
         isSubscribed: true
     )
 
+    static let ciMachine = MachineSnapshot(
+        id: "machine_ci",
+        displayName: "CI Builder in the release engineering laboratory",
+        platform: "Linux",
+        architecture: "x86_64",
+        cliVersion: "1.0.0",
+        lastSeenAt: baseDate.addingTimeInterval(-900),
+        pairedAt: baseDate.addingTimeInterval(-172_800),
+        subscriptionID: "subscription_2",
+        isSubscribed: true
+    )
+
     static let message = RichMessage(
         id: "notification_1",
         machineID: machine.id,
@@ -110,6 +95,18 @@ enum PreviewFixtures {
         level: "success",
         fields: [.init(name: "Rows", value: "12,840")],
         createdAt: baseDate,
+        expiresAt: nil
+    )
+
+    static let ciMessage = RichMessage(
+        id: "notification_2",
+        machineID: ciMachine.id,
+        title: "Release build needs attention",
+        subtitle: "Signing",
+        body: "The release build stopped during signing.",
+        level: "warning",
+        fields: [],
+        createdAt: baseDate.addingTimeInterval(-900),
         expiresAt: nil
     )
 
@@ -184,8 +181,8 @@ enum PreviewFixtures {
     static func store() -> RunBuoyStore {
         let snapshot = CachedSnapshot(
             runs: [activeRun, failedRun],
-            machines: [machine],
-            messages: [message],
+            machines: [machine, ciMachine],
+            messages: [message, ciMessage],
             savedAt: baseDate
         )
         return RunBuoyStore(

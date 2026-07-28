@@ -17,7 +17,7 @@ struct RunBuoyApp: App {
         let isUIPreviewMode = Self.isUIPreviewLaunch
         let identityStore = KeychainDeviceIdentityStore()
         let api = URLSessionRunBuoyAPI(
-            baseURL: AppConfiguration.live.apiBaseURL,
+            baseURLProvider: { AppConfiguration.live.apiBaseURL },
             identityStore: identityStore
         )
         let router = AppRouter()
@@ -95,7 +95,7 @@ struct RunBuoyApp: App {
     private func registerNotificationToken(_ token: String) async throws {
         let identityStore = KeychainDeviceIdentityStore()
         let api = URLSessionRunBuoyAPI(
-            baseURL: AppConfiguration.live.apiBaseURL,
+            baseURLProvider: { AppConfiguration.live.apiBaseURL },
             identityStore: identityStore
         )
         try await api.registerNotificationToken(token)

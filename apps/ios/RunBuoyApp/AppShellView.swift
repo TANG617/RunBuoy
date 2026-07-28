@@ -24,15 +24,6 @@ struct AppShellView: View {
                 Label("tab.history", systemImage: "clock.arrow.circlepath")
             }
 
-            Tab(value: AppTab.machines) {
-                NavigationStack(path: $router.machinesPath) {
-                    MachinesView()
-                        .withAppDestinations()
-                }
-            } label: {
-                Label("tab.machines", systemImage: "desktopcomputer")
-            }
-
             Tab(value: AppTab.settings) {
                 NavigationStack(path: $router.settingsPath) {
                     SettingsView()
@@ -54,6 +45,8 @@ private extension View {
                 RunDetailView(runID: id)
             case .machine(let id):
                 MachineDetailView(machineID: id)
+            case .machines:
+                MachinesView()
             case .pairMachine:
                 PairMachineView()
             }
