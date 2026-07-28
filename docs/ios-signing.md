@@ -36,10 +36,9 @@ and each Live Activity presentation on a supported physical device.
 ## GitHub Actions to TestFlight
 
 The `Publish iOS to TestFlight` workflow archives and signs both the app and
-widget extension, exports an IPA, and submits it to TestFlight. It finishes
-after Apple accepts the upload; App Store Connect then processes the build
-asynchronously. It can be started manually or by pushing a tag such as
-`ios-v1.0.0`.
+widget extension, exports an IPA, submits it to TestFlight, and waits for App
+Store Connect to validate the build. It can be started manually or by pushing
+a tag such as `ios-v1.0.0`.
 
 The workflow uses the GitHub environment named `testflight`. Keep all signing
 credentials in that environment, not in repository files.
