@@ -1,0 +1,16 @@
+{
+  "name": "@runbuoy/website",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "rspress dev",
+    "build": "rspress build",
+    "preview": "rspress preview"
+  },
+  "dependencies": {
+    "@rspress/core": "2.0.18"
+  },
+  "devDependencies": {
+    "typescript": "5.9.3"
+  }
+}

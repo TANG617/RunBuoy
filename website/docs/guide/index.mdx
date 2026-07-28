@@ -1,0 +1,84 @@
+# 快速开始
+
+import { Tab, Tabs } from '@rspress/core/theme';
+
+RunBuoy 将电脑上长时间运行的命令、构建、实验与 Agent 状态，以只读方式送到 iPhone。
+
+## 系统要求
+
+- macOS 或 Linux
+- Python 3.12 或更新版本
+- `tmux`，用于持久运行任务
+- RunBuoy iOS App
+
+## 1. 安装 tmux
+
+<Tabs>
+<Tab label="macOS">
+
+```bash
+brew install tmux
+```
+
+</Tab>
+<Tab label="Debian / Ubuntu">
+
+```bash
+sudo apt install tmux
+```
+
+</Tab>
+</Tabs>
+
+## 2. 安装 RunBuoy
+
+<Tabs>
+<Tab label="uv（推荐）">
+
+```bash
+uv tool install runbuoy
+uv tool update-shell
+```
+
+</Tab>
+<Tab label="pipx">
+
+```bash
+pipx install runbuoy
+pipx ensurepath
+```
+
+</Tab>
+</Tabs>
+
+重启终端后检查环境：
+
+```bash
+runbuoy doctor
+runbuoy capabilities --json
+```
+
+## 3. 配对 iPhone
+
+打开 RunBuoy App，选择“配对新电脑”，然后在电脑上运行：
+
+```bash
+runbuoy pair
+```
+
+扫描二维码。配对挑战五分钟后过期、只能使用一次，并且不包含长期凭证。
+
+## 4. 启动一次 Run
+
+```bash
+runbuoy run -- python3 experiment.py
+```
+
+命令继续在电脑上运行；iPhone 只接收安全状态、进度、时间和结果。
+
+## 下一步
+
+- [安装、升级与卸载](/guide/install)
+- [配对更多电脑](/guide/pairing)
+- [运行命令与发送通知](/guide/run)
+- [配置真实进度](/guide/progress)

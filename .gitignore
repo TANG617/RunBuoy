@@ -22,3 +22,7 @@ DerivedData/
 xcuserdata/
 server/.apns-mock/
 cli/.runbuoy-test/
+website/node_modules/
+website/doc_build/
+.playwright-cli/
+output/
