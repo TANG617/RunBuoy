@@ -83,5 +83,7 @@ for the complete data boundary.
 
 Source code, documentation, and issue tracking are available in the
 [RunBuoy repository](https://github.com/TANG617/RunBuoy).
+Maintainer packaging and release instructions are in
+[`docs/cli-distribution.md`](https://github.com/TANG617/RunBuoy/blob/main/docs/cli-distribution.md).
 
 RunBuoy is licensed under the MIT License.
