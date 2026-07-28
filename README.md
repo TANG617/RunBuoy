@@ -55,12 +55,16 @@ Mock APNs records exact payloads and requires no Apple credentials.
 ### 2. Install the CLI
 
 ```bash
-uv tool install ./cli
+uv tool install runbuoy
 runbuoy doctor
 runbuoy capabilities --json
 ```
 
-RunBuoy supports macOS and Linux. `tmux` is required for durable Runs.
+You can alternatively use `pipx install runbuoy`. RunBuoy supports macOS and
+Linux and requires Python 3.12 or newer. `tmux` is required for durable Runs;
+install it with `brew install tmux` on macOS or your Linux system package
+manager. Installation, upgrade, packaging, and release details are in
+[`docs/cli-distribution.md`](docs/cli-distribution.md).
 
 ### 3. Bootstrap iPhone and pair
 
@@ -263,6 +267,7 @@ See [`docs/development.md`](docs/development.md).
 - [Security](docs/security.md) and [threat model](docs/threat-model.md)
 - [Self-hosting](docs/self-hosting.md)
 - [APNs setup](docs/apns-setup.md)
+- [CLI distribution and PyPI releases](docs/cli-distribution.md)
 - [Code provenance](docs/code-provenance.md)
 
 ## Current limitations

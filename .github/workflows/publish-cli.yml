@@ -1,0 +1,81 @@
+name: Publish CLI
+
+on:
+  push:
+    tags:
+      - "cli-v*"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build and verify package
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+        with:
+          python-version: "3.12"
+
+      - name: Verify tag matches package version
+        working-directory: cli
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          package_version="$(sed -nE 's/^__version__ = "([^"]+)"$/\1/p' src/runbuoy/__init__.py)"
+          tag_version="${RELEASE_TAG#cli-v}"
+          test -n "$package_version"
+          test "$package_version" = "$tag_version"
+
+      - name: Run CLI tests
+        working-directory: cli
+        run: |
+          uv sync --all-groups --frozen
+          uv run pytest
+
+      - name: Build wheel and source distribution
+        working-directory: cli
+        run: uv build --no-sources
+
+      - name: Validate distribution metadata
+        run: uvx --from twine twine check cli/dist/*
+
+      - name: Smoke-test installed wheel
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes tmux
+          uv tool install cli/dist/*.whl
+          runbuoy --help
+          runbuoy doctor --json
+
+      - name: Upload distributions
+        uses: actions/upload-artifact@v5
+        with:
+          name: python-package-distributions
+          path: cli/dist/
+          if-no-files-found: error
+
+  publish:
+    name: Publish to PyPI
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/runbuoy
+    permissions:
+      id-token: write
+
+    steps:
+      - name: Download distributions
+        uses: actions/download-artifact@v6
+        with:
+          name: python-package-distributions
+          path: dist/
+
+      - name: Publish distributions
+        uses: pypa/gh-action-pypi-publish@release/v1

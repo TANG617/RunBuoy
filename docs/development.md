@@ -26,6 +26,9 @@ uv run mypy src
 uv run pytest
 ```
 
+Package construction, isolated-install checks, and PyPI release steps are in
+[`cli-distribution.md`](cli-distribution.md).
+
 ## Server
 
 ```bash

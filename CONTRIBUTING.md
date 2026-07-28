@@ -11,6 +11,7 @@ Before opening a pull request:
 4. Run the commands in `docs/development.md`.
 5. Update OpenAPI, JSON Schema, fixtures, and both Swift/Python models together.
 6. Update provenance when reusing third-party code.
+7. Follow `docs/cli-distribution.md` for CLI package or release changes.
 
 Do not propose a remote command, Machine inbox, terminal stream, input,
 cancel/retry/signal, approval, tunnel, WebSocket control, WebView terminal, or
@@ -18,4 +19,6 @@ mobile mutation action. Local-only CLI control remains acceptable when it
 cannot be reached through the Server or iPhone.
 
 Never commit tokens, `.p8` files, provisioning profiles, `.env`, databases, or
-logs. Use mock APNs and synthetic fixture tokens in tests.
+logs. Use mock APNs and synthetic fixture tokens in tests. PyPI releases use
+Trusted Publishing; never add a long-lived PyPI API token to repository
+secrets.
