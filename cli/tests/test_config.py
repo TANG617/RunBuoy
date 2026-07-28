@@ -6,6 +6,10 @@ from runbuoy.config import Config, CredentialStore, ensure_machine_identity, loa
 from runbuoy.paths import AppPaths
 
 
+def test_default_server_uses_production_https_url() -> None:
+    assert str(Config().server_url) == "https://runbuoy.cloud/"
+
+
 def test_credential_file_fallback_is_mode_0600(tmp_path: Path, monkeypatch: object) -> None:
     monkeypatch.setenv("RUNBUOY_DISABLE_KEYRING", "1")  # type: ignore[attr-defined]
     paths = AppPaths(tmp_path / "config", tmp_path / "data", tmp_path / "state", tmp_path / "cache")

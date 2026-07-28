@@ -39,7 +39,7 @@ def test_doctor_uses_healthz(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) ->
     monkeypatch.setattr("httpx.get", get)
     result = runner.invoke(app, ["doctor", "--json"])
     assert result.exit_code == 0
-    assert requested == ["http://127.0.0.1:8000/healthz"]
+    assert requested == ["https://runbuoy.cloud/healthz"]
     assert json.loads(result.stdout)["checks"]["server_reachable"] is True
 
 

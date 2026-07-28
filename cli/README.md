@@ -43,6 +43,9 @@ runbuoy doctor
 runbuoy capabilities --json
 ```
 
+New installations use `https://runbuoy.cloud` as the default server URL.
+Override it when needed with `runbuoy config --server-url <url>`.
+
 Upgrade with the same tool used for installation:
 
 ```bash

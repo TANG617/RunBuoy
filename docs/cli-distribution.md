@@ -63,8 +63,8 @@ pipx uninstall runbuoy
 To select an exact release:
 
 ```bash
-uv tool install 'runbuoy==0.1.0'
-pipx install 'runbuoy==0.1.0'
+uv tool install 'runbuoy==0.1.1'
+pipx install 'runbuoy==0.1.1'
 ```
 
 ## Package layout
@@ -214,7 +214,7 @@ Then test both supported installation paths from the public index in isolated
 directories:
 
 ```bash
-VERSION=0.1.0
+VERSION=0.1.1
 VERIFY_ROOT="$(mktemp -d)"
 VERIFY_PYTHON="$(uv python find 3.12)"
 

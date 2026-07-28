@@ -14,7 +14,7 @@ from runbuoy.paths import AppPaths
 
 
 class Config(BaseModel):
-    server_url: HttpUrl = Field(default=HttpUrl("http://127.0.0.1:8000"))
+    server_url: HttpUrl = Field(default=HttpUrl("https://runbuoy.cloud"))
     machine_id: str | None = None
     machine_name: str = Field(default_factory=platform.node)
     upload_interval_seconds: float = Field(default=1.0, ge=0.1, le=60)

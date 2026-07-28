@@ -511,7 +511,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = dev.runbuoy.app;
 				PRODUCT_MODULE_NAME = RunBuoyApp;
 				PRODUCT_NAME = RunBuoy;
-				RUNBUOY_API_BASE_URL = "https://47-77-197-236.sslip.io";
+				RUNBUOY_API_BASE_URL = "https://runbuoy.cloud";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
@@ -536,7 +536,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = dev.runbuoy.app;
 				PRODUCT_MODULE_NAME = RunBuoyApp;
 				PRODUCT_NAME = RunBuoy;
-				RUNBUOY_API_BASE_URL = "https://47-77-197-236.sslip.io";
+				RUNBUOY_API_BASE_URL = "https://runbuoy.cloud";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
