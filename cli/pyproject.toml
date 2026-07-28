@@ -4,9 +4,21 @@ build-backend = "hatchling.build"
 
 [project]
 name = "runbuoy"
-version = "0.1.0"
+dynamic = ["version"]
 description = "Read-only command status delivery for RunBuoy"
+readme = "README.md"
+license = "MIT"
 requires-python = ">=3.12"
+keywords = ["cli", "monitoring", "notifications", "progress", "runbuoy"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Environment :: Console",
+  "Operating System :: MacOS",
+  "Operating System :: POSIX :: Linux",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: System :: Monitoring",
+]
 dependencies = [
   "httpx>=0.27,<1",
   "keyring>=25,<26",
@@ -19,6 +31,12 @@ dependencies = [
 [project.scripts]
 runbuoy = "runbuoy.cli.app:main"
 
+[project.urls]
+Homepage = "https://github.com/TANG617/RunBuoy"
+Documentation = "https://github.com/TANG617/RunBuoy#readme"
+Repository = "https://github.com/TANG617/RunBuoy"
+Issues = "https://github.com/TANG617/RunBuoy/issues"
+
 [dependency-groups]
 dev = [
   "mypy>=1.11,<2",
@@ -30,6 +48,9 @@ dev = [
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/runbuoy"]
+
+[tool.hatch.version]
+path = "src/runbuoy/__init__.py"
 
 [tool.pytest.ini_options]
 addopts = "-ra"
