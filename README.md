@@ -179,6 +179,7 @@ runbuoy emit phase
 runbuoy emit message
 runbuoy emit attention
 runbuoy doctor
+runbuoy doctor --repair
 runbuoy config show
 runbuoy config set --server-url https://runbuoy.example.com
 runbuoy config path

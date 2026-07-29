@@ -388,6 +388,50 @@ class EventQueue:
             rows = connection.execute(query, parameters).fetchall()
         return [RunEvent.model_validate_json(row["event_json"]) for row in rows]
 
+    def pending_event_count(self, *, run_id: str | None = None) -> int:
+        clauses = ["delivered = 0"]
+        parameters: list[Any] = []
+        if run_id is not None:
+            clauses.append("run_id = ?")
+            parameters.append(run_id)
+        with self.connect() as connection:
+            row = connection.execute(
+                "SELECT COUNT(*) AS count FROM events WHERE " + " AND ".join(clauses),
+                parameters,
+            ).fetchone()
+        return int(row["count"]) if row is not None else 0
+
+    def pending_terminal_event_count(self) -> int:
+        placeholders = ",".join("?" for _ in TERMINAL_STATUSES)
+        with self.connect() as connection:
+            row = connection.execute(
+                f"""
+                SELECT COUNT(*) AS count
+                FROM events
+                JOIN runs ON runs.run_id = events.run_id
+                WHERE events.delivered = 0
+                  AND runs.status IN ({placeholders})
+                """,
+                sorted(TERMINAL_STATUSES),
+            ).fetchone()
+        return int(row["count"]) if row is not None else 0
+
+    def next_pending_event_attempt_at(self, *, run_id: str | None = None) -> float | None:
+        clauses = ["delivered = 0"]
+        parameters: list[Any] = []
+        if run_id is not None:
+            clauses.append("run_id = ?")
+            parameters.append(run_id)
+        with self.connect() as connection:
+            row = connection.execute(
+                "SELECT MIN(next_attempt_at) AS next_attempt_at FROM events WHERE "
+                + " AND ".join(clauses),
+                parameters,
+            ).fetchone()
+        if row is None or row["next_attempt_at"] is None:
+            return None
+        return float(row["next_attempt_at"])
+
     def mark_delivered(self, event_ids: list[str]) -> None:
         if not event_ids:
             return
@@ -447,6 +491,35 @@ class EventQueue:
                 (time.time() if now is None else now,),
             ).fetchone()
         return dict(row) if row is not None else None
+
+    def pending_machine_metadata_count(self) -> int:
+        with self.connect() as connection:
+            row = connection.execute(
+                "SELECT COUNT(*) AS count FROM machine_metadata_outbox"
+            ).fetchone()
+        return int(row["count"]) if row is not None else 0
+
+    def make_pending_delivery_ready(self) -> None:
+        with self.transaction() as connection:
+            connection.execute("UPDATE events SET next_attempt_at = 0 WHERE delivered = 0")
+            connection.execute("UPDATE machine_metadata_outbox SET next_attempt_at = 0")
+
+    def latest_pending_delivery_error(self) -> str | None:
+        with self.connect() as connection:
+            row = connection.execute(
+                """
+                SELECT last_error, next_attempt_at
+                FROM events
+                WHERE delivered = 0 AND last_error IS NOT NULL
+                UNION ALL
+                SELECT last_error, next_attempt_at
+                FROM machine_metadata_outbox
+                WHERE last_error IS NOT NULL
+                ORDER BY next_attempt_at DESC
+                LIMIT 1
+                """
+            ).fetchone()
+        return str(row["last_error"]) if row is not None else None
 
     def mark_machine_metadata_delivered(self, machine_id: str, display_name: str) -> None:
         with self.connect() as connection:

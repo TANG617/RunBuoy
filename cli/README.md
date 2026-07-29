@@ -44,6 +44,11 @@ runbuoy doctor
 runbuoy capabilities --json
 ```
 
+`runbuoy doctor` reports queued delivery without changing it. If a completed
+Run still has events left in the local outbox after connectivity recovers,
+`runbuoy doctor --repair` immediately retries all queued events and Machine
+metadata. Failed repair never deletes the local records.
+
 New installations use `https://api.runbuoy.cloud` as the default server URL.
 Override it when needed with
 `runbuoy config set --server-url <url>`.

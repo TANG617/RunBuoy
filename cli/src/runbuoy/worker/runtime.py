@@ -49,6 +49,7 @@ class Worker:
     def __init__(self, manifest: RunManifest, paths: AppPaths) -> None:
         self.manifest = manifest
         self.paths = paths
+        self.config = load_config(paths)
         self.queue = EventQueue(paths.database)
         self.cancel_requested = threading.Event()
         self.upload_wakeup = threading.Event()
@@ -117,29 +118,43 @@ class Worker:
         return {"ok": True}
 
     def _upload_loop(self) -> None:
-        config = load_config(self.paths)
         credentials = CredentialStore(self.paths)
         if credentials.get("machine_credential") is None:
             return
-        client = RemoteClient(config, credentials)
+        client = RemoteClient(self.config, credentials)
         try:
             while not self.upload_stop.is_set():
                 flush_pending(
                     self.queue,
                     client,
-                    batch_size=config.batch_size,
+                    batch_size=self.config.batch_size,
                     run_id=self.manifest.run_id,
                 )
-                self.upload_wakeup.wait(config.upload_interval_seconds)
+                self.upload_wakeup.wait(self.config.upload_interval_seconds)
                 self.upload_wakeup.clear()
+            self._retry_terminal_delivery(client)
+        finally:
+            client.close()
+
+    def _retry_terminal_delivery(self, client: RemoteClient) -> None:
+        deadline = time.monotonic() + self.config.terminal_retry_window_seconds
+        while self.queue.pending_event_count(run_id=self.manifest.run_id) > 0:
             flush_pending(
                 self.queue,
                 client,
                 batch_size=100,
                 run_id=self.manifest.run_id,
             )
-        finally:
-            client.close()
+            if self.queue.pending_event_count(run_id=self.manifest.run_id) == 0:
+                return
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                return
+            next_attempt_at = self.queue.next_pending_event_attempt_at(run_id=self.manifest.run_id)
+            retry_delay = self.config.upload_interval_seconds
+            if next_attempt_at is not None:
+                retry_delay = max(0.05, next_attempt_at - time.time())
+            time.sleep(min(retry_delay, remaining))
 
     def _request_cancel(self) -> None:
         process = self._process
@@ -160,7 +175,7 @@ class Worker:
         upload_thread = threading.Thread(
             target=self._upload_loop,
             name="runbuoy-uploader",
-            daemon=True,
+            daemon=False,
         )
         upload_thread.start()
         self._socket_server = EventSocketServer(
@@ -196,7 +211,7 @@ class Worker:
                 self._socket_server.close()
             self.upload_stop.set()
             self.upload_wakeup.set()
-            upload_thread.join(timeout=6)
+            upload_thread.join()
             for handled_signal, previous in old_handlers.items():
                 signal.signal(handled_signal, previous)
 

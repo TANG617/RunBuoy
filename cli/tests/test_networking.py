@@ -8,7 +8,7 @@ import httpx
 
 from runbuoy import __version__
 from runbuoy.config import Config, CredentialStore
-from runbuoy.networking.client import RemoteClient, flush_pending
+from runbuoy.networking.client import RemoteClient, flush_pending, repair_pending
 from runbuoy.paths import AppPaths
 from runbuoy.persistence.store import EventQueue
 
@@ -158,3 +158,58 @@ def test_ambiguous_batch_retry_does_not_re_upsert_terminal_run(tmp_path: Path) -
     recovered = RecordingClient()
     assert flush_pending(queue, recovered, batch_size=20) == 1  # type: ignore[arg-type]
     assert recovered.upserts == []
+
+
+def test_repair_forces_scheduled_events_and_drains_multiple_batches(tmp_path: Path) -> None:
+    queue = EventQueue(tmp_path / "db.sqlite3")
+    queue.create_run(
+        run_id="run",
+        machine_id="machine",
+        title="safe",
+        manifest_path="m",
+        log_path="l",
+        result_path="r",
+        socket_path="s",
+        tmux_session="t",
+    )
+    for sequence in range(4):
+        queue.append_event("run", "run.message", {"message": f"safe-{sequence}"})
+    with queue.connect() as connection:
+        connection.execute(
+            "UPDATE events SET attempt_count = 3, next_attempt_at = ?",
+            (9_999_999_999,),
+        )
+
+    client = RecordingClient()
+    result = repair_pending(queue, client, batch_size=2)  # type: ignore[arg-type]
+
+    assert result.pending_events_before == 5
+    assert result.delivered_events == 5
+    assert result.pending_events_after == 0
+    assert result.rounds == 3
+    assert result.completed is True
+
+
+def test_repair_failure_preserves_pending_events(tmp_path: Path) -> None:
+    queue = EventQueue(tmp_path / "db.sqlite3")
+    queue.create_run(
+        run_id="run",
+        machine_id="machine",
+        title="safe",
+        manifest_path="m",
+        log_path="l",
+        result_path="r",
+        socket_path="s",
+        tmux_session="t",
+    )
+
+    result = repair_pending(
+        queue,
+        RecordingClient(fail_upload=True),  # type: ignore[arg-type]
+        batch_size=20,
+    )
+
+    assert result.delivered_events == 0
+    assert result.pending_events_after == 1
+    assert result.rounds == 1
+    assert result.completed is False

@@ -68,9 +68,13 @@ sequenceDiagram
 Events are committed locally before upload. Batches are retried with bounded
 backoff; duplicates are accepted idempotently. A stale sequence cannot
 regress a projection. Terminal events are uploaded immediately and remain in
-the local outbox until acknowledged. Server push work is transactional with
-projection changes and retried independently; APNs 410 invalidates the target
-token rather than retrying forever.
+the local outbox until acknowledged. After the target exits, the Worker remains
+alive for a bounded terminal-delivery window and continues respecting the
+outbox backoff schedule. `runbuoy doctor --repair` is the explicit recovery
+path for delivery still queued after that window; it retries without changing
+local execution state or deleting failed records. Server push work is
+transactional with projection changes and retried independently; APNs 410
+invalidates the target token rather than retrying forever.
 
 If APNs is unavailable, Runs remain readable. If the Server is unavailable,
 the local process continues and events drain after recovery. If a heartbeat

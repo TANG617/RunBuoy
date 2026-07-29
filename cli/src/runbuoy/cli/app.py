@@ -38,7 +38,7 @@ from runbuoy.config import (
 from runbuoy.executors.tmux import TmuxExecutor
 from runbuoy.ids import uuid7
 from runbuoy.models import ExecutionStatus, ProgressMode, RunManifest
-from runbuoy.networking.client import RemoteClient, RemoteError
+from runbuoy.networking.client import RemoteClient, RemoteError, repair_pending
 from runbuoy.pairing.flow import (
     PENDING_SESSION_KEY,
     pair_machine,
@@ -1031,6 +1031,11 @@ def doctor(
         "--strict",
         help="Exit non-zero unless local requirements, pairing, and server health all pass.",
     ),
+    repair: bool = typer.Option(
+        False,
+        "--repair",
+        help="Retry all locally queued delivery without changing Run execution state.",
+    ),
     verbose: bool = typer.Option(
         False,
         "--verbose",
@@ -1048,17 +1053,35 @@ def doctor(
         "tmux_available": TmuxExecutor.available(),
         "paired": credentials.get("machine_credential") is not None,
         "server_reachable": False,
-        "pending_events": len(queue.pending_events(100)),
+        "pending_events": queue.pending_event_count(),
+        "pending_terminal_events": queue.pending_terminal_event_count(),
+        "pending_machine_metadata": queue.pending_machine_metadata_count(),
+        "last_delivery_error": safe_message(queue.latest_pending_delivery_error()),
     }
     try:
         response = httpx.get(str(config.server_url).rstrip("/") + "/healthz", timeout=2)
         checks["server_reachable"] = response.status_code == 200
     except Exception:
         pass
+    repair_result = None
+    if repair:
+        client = RemoteClient(config, credentials)
+        try:
+            repair_result = repair_pending(queue, client, batch_size=config.batch_size)
+        finally:
+            client.close()
+        checks["pending_events"] = repair_result.pending_events_after
+        checks["pending_terminal_events"] = queue.pending_terminal_event_count()
+        checks["pending_machine_metadata"] = repair_result.pending_machine_metadata_after
+        checks["last_delivery_error"] = safe_message(queue.latest_pending_delivery_error())
+        if repair_result.delivered_events > 0 or repair_result.repaired_machine_metadata > 0:
+            checks["server_reachable"] = True
     required = ("python_supported", "platform_supported", "tmux_available")
     ok = all(bool(checks[key]) for key in required)
     ready = ok and bool(checks["paired"]) and bool(checks["server_reachable"])
     result: dict[str, Any] = {"ok": ok, "ready": ready, "checks": checks}
+    if repair_result is not None:
+        result["repair"] = repair_result.as_dict()
     if verbose:
         result["paths"] = {
             "config": str(paths.config),
@@ -1103,12 +1126,30 @@ def doctor(
             table.add_row(name, symbol, str(details), "" if passed or not hint else hint)
         console.print(table)
         typer.echo(f"Pending local events: {checks['pending_events']}")
+        typer.echo(f"Pending terminal events: {checks['pending_terminal_events']}")
+        typer.echo(f"Pending Machine metadata: {checks['pending_machine_metadata']}")
+        if checks["last_delivery_error"] is not None:
+            typer.echo(f"Last delivery error: {checks['last_delivery_error']}")
+        if repair_result is not None:
+            typer.echo(
+                f"Repair delivered {repair_result.delivered_events} event(s) and "
+                f"{repair_result.repaired_machine_metadata} Machine update(s)."
+            )
+            typer.echo(
+                "Repair complete."
+                if repair_result.completed
+                else "Repair incomplete; queued delivery remains unchanged locally."
+            )
+        elif checks["pending_terminal_events"] or checks["pending_machine_metadata"]:
+            typer.echo("Recovery: run `runbuoy doctor --repair`.")
         typer.echo(
             "Ready for delivery." if ready else "Local CLI works, but delivery setup is incomplete."
         )
         if verbose:
             for key, value in result["paths"].items():
                 typer.echo(f"{key}_path: {value}")
+    if repair_result is not None and not repair_result.completed:
+        raise typer.Exit(1)
     if strict and not ready:
         raise typer.Exit(1)
     if not strict and not ok:
@@ -1176,6 +1217,8 @@ def _config_result(config: Config) -> dict[str, Any]:
         "machine_name": config.machine_name,
         "upload_interval_seconds": config.upload_interval_seconds,
         "batch_size": config.batch_size,
+        "request_timeout_seconds": config.request_timeout_seconds,
+        "terminal_retry_window_seconds": config.terminal_retry_window_seconds,
         "credential_storage": "keyring-or-mode-0600-fallback",
     }
 

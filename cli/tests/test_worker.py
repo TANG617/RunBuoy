@@ -3,9 +3,11 @@ from __future__ import annotations
 import json
 import os
 import sys
+import time
 from pathlib import Path
+from typing import Any
 
-from runbuoy.config import ephemeral_token
+from runbuoy.config import Config, ephemeral_token, save_config
 from runbuoy.models import ProgressMode, RunManifest
 from runbuoy.paths import AppPaths
 from runbuoy.persistence.store import EventQueue
@@ -27,6 +29,7 @@ def prepare_manifest(
     )
     paths.ensure()
     os.environ["RUNBUOY_HOME"] = str(tmp_path)
+    os.environ["RUNBUOY_DISABLE_KEYRING"] = "1"
     run_id = "0190f2a0-a003-7abc-8def-0123456789ab"
     directory = paths.run_dir(run_id)
     manifest_path = directory / "manifest.json"
@@ -67,6 +70,7 @@ def test_worker_captures_real_exit_and_final_result(tmp_path: Path) -> None:
         assert run_worker(manifest) == 0
     finally:
         os.environ.pop("RUNBUOY_HOME")
+        os.environ.pop("RUNBUOY_DISABLE_KEYRING")
     run = queue.get_run("0190f2a0-a003-7abc-8def-0123456789ab")
     assert run is not None
     assert run["status"] == "SUCCEEDED"
@@ -92,6 +96,7 @@ def test_worker_regex_progress_across_target_writes(tmp_path: Path) -> None:
         assert run_worker(manifest) == 0
     finally:
         os.environ.pop("RUNBUOY_HOME")
+        os.environ.pop("RUNBUOY_DISABLE_KEYRING")
     rows = queue.event_rows("0190f2a0-a003-7abc-8def-0123456789ab")
     events = [json.loads(row["event_json"]) for row in rows]
     progress = [event for event in events if event["type"] == "run.progress"]
@@ -104,7 +109,100 @@ def test_worker_nonzero_exit_is_failed(tmp_path: Path) -> None:
         assert run_worker(manifest) == 3
     finally:
         os.environ.pop("RUNBUOY_HOME")
+        os.environ.pop("RUNBUOY_DISABLE_KEYRING")
     run = queue.get_run("0190f2a0-a003-7abc-8def-0123456789ab")
     assert run is not None
     assert run["status"] == "FAILED"
     assert run["exit_code"] == 3
+
+
+def _enable_test_delivery(tmp_path: Path, *, retry_window: float) -> None:
+    paths = AppPaths(
+        tmp_path / "config",
+        tmp_path / "data",
+        tmp_path / "state",
+        tmp_path / "cache",
+    )
+    save_config(
+        paths,
+        Config(
+            upload_interval_seconds=0.1,
+            request_timeout_seconds=1,
+            terminal_retry_window_seconds=retry_window,
+        ),
+    )
+    credentials = paths.credential_file
+    credentials.write_text('{"machine_credential":"paired"}', encoding="utf-8")
+    credentials.chmod(0o600)
+
+
+def test_worker_retries_terminal_delivery_after_target_exit(
+    tmp_path: Path, monkeypatch: Any
+) -> None:
+    manifest, queue = prepare_manifest(tmp_path, ["/bin/sh", "-c", "exit 0"])
+    _enable_test_delivery(tmp_path, retry_window=2)
+
+    class Client:
+        terminal_attempts = 0
+
+        def __init__(self, _config: object, _credentials: object) -> None:
+            pass
+
+        def update_machine(self, _machine_id: str, _display_name: str) -> None:
+            pass
+
+        def upsert_run(self, _run: dict[str, object]) -> None:
+            pass
+
+        def upload_events(self, _run_id: str, events: list[Any]) -> None:
+            if any(event.type == "run.succeeded" for event in events):
+                Client.terminal_attempts += 1
+                if Client.terminal_attempts == 1:
+                    raise OSError("temporarily offline")
+
+        def close(self) -> None:
+            pass
+
+    monkeypatch.setattr("runbuoy.worker.runtime.RemoteClient", Client)
+    try:
+        assert run_worker(manifest) == 0
+    finally:
+        os.environ.pop("RUNBUOY_HOME")
+        os.environ.pop("RUNBUOY_DISABLE_KEYRING")
+
+    assert Client.terminal_attempts == 2
+    assert queue.pending_event_count() == 0
+
+
+def test_worker_preserves_terminal_delivery_after_retry_window(
+    tmp_path: Path, monkeypatch: Any
+) -> None:
+    manifest, queue = prepare_manifest(tmp_path, ["/bin/sh", "-c", "exit 0"])
+    _enable_test_delivery(tmp_path, retry_window=0.1)
+
+    class Client:
+        def __init__(self, _config: object, _credentials: object) -> None:
+            pass
+
+        def update_machine(self, _machine_id: str, _display_name: str) -> None:
+            pass
+
+        def upsert_run(self, _run: dict[str, object]) -> None:
+            pass
+
+        def upload_events(self, _run_id: str, _events: list[Any]) -> None:
+            raise OSError("still offline")
+
+        def close(self) -> None:
+            pass
+
+    monkeypatch.setattr("runbuoy.worker.runtime.RemoteClient", Client)
+    started = time.monotonic()
+    try:
+        assert run_worker(manifest) == 0
+    finally:
+        os.environ.pop("RUNBUOY_HOME")
+        os.environ.pop("RUNBUOY_DISABLE_KEYRING")
+
+    assert time.monotonic() - started < 1
+    assert queue.pending_event_count() > 0

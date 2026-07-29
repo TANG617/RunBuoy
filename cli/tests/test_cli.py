@@ -5,6 +5,7 @@ import shutil
 import sys
 import time
 from pathlib import Path
+from typing import Any
 
 import pytest
 from typer.testing import CliRunner
@@ -43,6 +44,113 @@ def test_doctor_uses_healthz(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) ->
     assert result.exit_code == 0
     assert requested == ["https://api.runbuoy.cloud/healthz"]
     assert json.loads(result.stdout)["checks"]["server_reachable"] is True
+
+
+def _prepare_doctor_repair(tmp_path: Path) -> EventQueue:
+    config_dir = tmp_path / "config"
+    config_dir.mkdir(parents=True)
+    credentials = config_dir / "credentials.json"
+    credentials.write_text('{"machine_credential":"paired"}', encoding="utf-8")
+    credentials.chmod(0o600)
+    queue = EventQueue(tmp_path / "state" / "runbuoy.sqlite3")
+    run_id = "019cdddd-0000-7000-8000-000000000001"
+    queue.create_run(
+        run_id=run_id,
+        machine_id="machine-local",
+        title="Repair terminal delivery",
+        manifest_path=str(tmp_path / "manifest.json"),
+        log_path=str(tmp_path / "run.log"),
+        result_path=str(tmp_path / "result.json"),
+        socket_path=str(tmp_path / "event.sock"),
+        tmux_session=None,
+    )
+    with queue.connect() as connection:
+        connection.execute("UPDATE events SET delivered = 1")
+    queue.append_event(run_id, "run.cancelled", {"exit_code": 130})
+    with queue.connect() as connection:
+        connection.execute("UPDATE events SET next_attempt_at = ?", (9_999_999_999,))
+    return queue
+
+
+def test_doctor_repair_delivers_terminal_pending(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("RUNBUOY_HOME", str(tmp_path))
+    monkeypatch.setenv("RUNBUOY_DISABLE_KEYRING", "1")
+    queue = _prepare_doctor_repair(tmp_path)
+    uploaded: list[str] = []
+
+    class Response:
+        status_code = 200
+
+    class Client:
+        def __init__(self, _config: object, _credentials: object) -> None:
+            pass
+
+        def update_machine(self, _machine_id: str, _display_name: str) -> None:
+            pass
+
+        def upsert_run(self, _run: dict[str, object]) -> None:
+            pass
+
+        def upload_events(self, _run_id: str, events: list[Any]) -> None:
+            uploaded.extend(event.type for event in events)
+
+        def close(self) -> None:
+            pass
+
+    monkeypatch.setattr("httpx.get", lambda *_args, **_kwargs: Response())
+    monkeypatch.setattr(cli_app, "RemoteClient", Client)
+
+    result = runner.invoke(app, ["doctor", "--repair", "--json"])
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.stdout)
+    assert uploaded == ["run.cancelled"]
+    assert payload["repair"]["completed"] is True
+    assert payload["repair"]["delivered_events"] == 1
+    assert payload["checks"]["pending_events"] == 0
+    assert payload["checks"]["pending_terminal_events"] == 0
+    assert queue.pending_event_count() == 0
+
+
+def test_doctor_repair_failure_keeps_pending_and_exits_nonzero(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("RUNBUOY_HOME", str(tmp_path))
+    monkeypatch.setenv("RUNBUOY_DISABLE_KEYRING", "1")
+    queue = _prepare_doctor_repair(tmp_path)
+
+    class Response:
+        status_code = 200
+
+    class Client:
+        def __init__(self, _config: object, _credentials: object) -> None:
+            pass
+
+        def update_machine(self, _machine_id: str, _display_name: str) -> None:
+            pass
+
+        def upsert_run(self, _run: dict[str, object]) -> None:
+            pass
+
+        def upload_events(self, _run_id: str, _events: list[object]) -> None:
+            raise OSError("offline")
+
+        def close(self) -> None:
+            pass
+
+    monkeypatch.setattr("httpx.get", lambda *_args, **_kwargs: Response())
+    monkeypatch.setattr(cli_app, "RemoteClient", Client)
+
+    result = runner.invoke(app, ["doctor", "--repair", "--json"])
+
+    assert result.exit_code == 1
+    payload = json.loads(result.stdout)
+    assert payload["repair"]["completed"] is False
+    assert payload["repair"]["pending_events_after"] == 1
+    assert payload["checks"]["last_delivery_error"] == "offline"
+    assert queue.pending_event_count() == 1
 
 
 def test_pair_json_never_prints_exchange_secret(

@@ -20,6 +20,8 @@ class Config(BaseModel):
     upload_interval_seconds: float = Field(default=1.0, ge=0.1, le=60)
     batch_size: int = Field(default=20, ge=1, le=100)
     cancel_grace_seconds: float = Field(default=3.0, ge=0.05, le=60)
+    request_timeout_seconds: float = Field(default=15.0, ge=1, le=120)
+    terminal_retry_window_seconds: float = Field(default=30.0, ge=0, le=300)
 
 
 def load_config(paths: AppPaths) -> Config:

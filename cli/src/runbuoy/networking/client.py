@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from dataclasses import dataclass
 from typing import Any
 
 import httpx
@@ -16,6 +17,33 @@ class RemoteError(RuntimeError):
     pass
 
 
+@dataclass(frozen=True)
+class DeliveryRepairResult:
+    pending_events_before: int
+    delivered_events: int
+    pending_events_after: int
+    pending_machine_metadata_before: int
+    repaired_machine_metadata: int
+    pending_machine_metadata_after: int
+    rounds: int
+
+    @property
+    def completed(self) -> bool:
+        return self.pending_events_after == 0 and self.pending_machine_metadata_after == 0
+
+    def as_dict(self) -> dict[str, int | bool]:
+        return {
+            "pending_events_before": self.pending_events_before,
+            "delivered_events": self.delivered_events,
+            "pending_events_after": self.pending_events_after,
+            "pending_machine_metadata_before": self.pending_machine_metadata_before,
+            "repaired_machine_metadata": self.repaired_machine_metadata,
+            "pending_machine_metadata_after": self.pending_machine_metadata_after,
+            "rounds": self.rounds,
+            "completed": self.completed,
+        }
+
+
 class RemoteClient:
     def __init__(
         self,
@@ -23,7 +51,7 @@ class RemoteClient:
         credentials: CredentialStore,
         *,
         transport: httpx.BaseTransport | None = None,
-        timeout: float = 5.0,
+        timeout: float | None = None,
     ) -> None:
         self.config = config
         token = credentials.get("machine_credential")
@@ -31,7 +59,7 @@ class RemoteClient:
         self.client = httpx.Client(
             base_url=str(config.server_url).rstrip("/"),
             headers=headers,
-            timeout=timeout,
+            timeout=config.request_timeout_seconds if timeout is None else timeout,
             transport=transport,
         )
 
@@ -100,8 +128,10 @@ def flush_pending(
     *,
     batch_size: int,
     run_id: str | None = None,
+    force: bool = False,
 ) -> int:
-    metadata = queue.pending_machine_metadata()
+    scheduled_before = float("inf") if force else None
+    metadata = queue.pending_machine_metadata(now=scheduled_before)
     if metadata is not None:
         try:
             client.update_machine(metadata["machine_id"], metadata["display_name"])
@@ -118,7 +148,7 @@ def flush_pending(
                 metadata["machine_id"],
                 metadata["display_name"],
             )
-    events = queue.pending_events(batch_size, run_id=run_id)
+    events = queue.pending_events(batch_size, run_id=run_id, now=scheduled_before)
     if not events:
         return 0
     grouped: dict[str, list[RunEvent]] = defaultdict(list)
@@ -145,3 +175,31 @@ def flush_pending(
         queue.mark_delivered(event_ids)
         delivered += len(batch)
     return delivered
+
+
+def repair_pending(
+    queue: EventQueue,
+    client: RemoteClient,
+    *,
+    batch_size: int,
+) -> DeliveryRepairResult:
+    pending_events_before = queue.pending_event_count()
+    pending_metadata_before = queue.pending_machine_metadata_count()
+    rounds = 0
+    queue.make_pending_delivery_ready()
+
+    while queue.pending_events(1) or queue.pending_machine_metadata() is not None:
+        rounds += 1
+        flush_pending(queue, client, batch_size=batch_size)
+
+    pending_events_after = queue.pending_event_count()
+    pending_metadata_after = queue.pending_machine_metadata_count()
+    return DeliveryRepairResult(
+        pending_events_before=pending_events_before,
+        delivered_events=pending_events_before - pending_events_after,
+        pending_events_after=pending_events_after,
+        pending_machine_metadata_before=pending_metadata_before,
+        repaired_machine_metadata=pending_metadata_before - pending_metadata_after,
+        pending_machine_metadata_after=pending_metadata_after,
+        rounds=rounds,
+    )
