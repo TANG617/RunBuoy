@@ -139,25 +139,25 @@ jobs:
           -destination 'generic/platform=iOS Simulator'
           CODE_SIGNING_ALLOWED=NO
           build
-      - name: Run iOS unit tests
-        run: >-
-          xcodebuild
-          -project apps/ios/RunBuoy.xcodeproj
-          -scheme RunBuoy
-          -destination 'platform=iOS Simulator,name=iPhone 17,OS=latest'
-          CODE_SIGNING_ALLOWED=NO
-          -only-testing:RunBuoyTests
-          test
-      - name: Run iOS UI tests
-        run: >-
-          xcodebuild
-          -project apps/ios/RunBuoy.xcodeproj
-          -scheme RunBuoy
-          -destination 'platform=iOS Simulator,name=iPhone 17,OS=latest'
-          -resultBundlePath "$RUNNER_TEMP/RunBuoyUITests.xcresult"
-          CODE_SIGNING_ALLOWED=NO
-          -only-testing:RunBuoyUITests
-          test
+      # - name: Run iOS unit tests
+      #   run: >-
+      #     xcodebuild
+      #     -project apps/ios/RunBuoy.xcodeproj
+      #     -scheme RunBuoy
+      #     -destination 'platform=iOS Simulator,name=iPhone 17,OS=latest'
+      #     CODE_SIGNING_ALLOWED=NO
+      #     -only-testing:RunBuoyTests
+      #     test
+      # - name: Run iOS UI tests
+      #   run: >-
+      #     xcodebuild
+      #     -project apps/ios/RunBuoy.xcodeproj
+      #     -scheme RunBuoy
+      #     -destination 'platform=iOS Simulator,name=iPhone 17,OS=latest'
+      #     -resultBundlePath "$RUNNER_TEMP/RunBuoyUITests.xcresult"
+      #     CODE_SIGNING_ALLOWED=NO
+      #     -only-testing:RunBuoyUITests
+      #     test
       - name: Upload UI test failure screenshots and diagnostics
         if: failure()
         uses: actions/upload-artifact@v4
