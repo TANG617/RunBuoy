@@ -1,9 +1,15 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Any
 
-from runbuoy.networking.client import flush_pending
+import httpx
+
+from runbuoy import __version__
+from runbuoy.config import Config, CredentialStore
+from runbuoy.networking.client import RemoteClient, flush_pending
+from runbuoy.paths import AppPaths
 from runbuoy.persistence.store import EventQueue
 
 
@@ -20,6 +26,51 @@ class RecordingClient:
         if self.fail_upload:
             raise OSError("offline")
         self.batches.append([event.model_dump(mode="json") for event in events])
+
+
+def test_run_upsert_sends_current_cli_version(
+    tmp_path: Path, monkeypatch: Any
+) -> None:
+    monkeypatch.setenv("RUNBUOY_DISABLE_KEYRING", "1")
+    paths = AppPaths(
+        tmp_path / "config",
+        tmp_path / "data",
+        tmp_path / "state",
+        tmp_path / "cache",
+    )
+    credentials = CredentialStore(paths)
+    credentials.set("machine_credential", "machine-token")
+    recorded: list[dict[str, Any]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        recorded.append(json.loads(request.content))
+        return httpx.Response(200, json={})
+
+    client = RemoteClient(
+        Config(),
+        credentials,
+        transport=httpx.MockTransport(handler),
+    )
+    try:
+        client.upsert_run(
+            {
+                "run_id": "019fac7f-e12a-7000-8000-000000000001",
+                "machine_id": "machine-local",
+                "title": "Safe title",
+                "source": "cli",
+            }
+        )
+    finally:
+        client.close()
+    assert recorded == [
+        {
+            "machine_id": "machine-local",
+            "title": "Safe title",
+            "source": "cli",
+            "execution_status": "CREATED",
+            "cli_version": __version__,
+        }
+    ]
 
 
 def test_fully_offline_terminal_run_replays_from_created(tmp_path: Path) -> None:

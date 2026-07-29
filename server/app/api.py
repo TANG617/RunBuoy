@@ -501,7 +501,10 @@ def upsert_run(
     session: Session = Depends(get_session),
     principal: Principal = Depends(require_scope("runs:create")),
 ) -> dict[str, Any]:
-    _machine_owned(session, principal, body.machine_id)
+    machine = _machine_owned(session, principal, body.machine_id)
+    machine.last_seen_at = utcnow()
+    if body.cli_version is not None:
+        machine.cli_version = body.cli_version
     key = str(run_id)
     run = session.get(Run, key)
     if run is None:

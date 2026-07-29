@@ -71,7 +71,7 @@
 "onboarding.notifications_body" = "Notifications and Live Activities show meaningful changes without exposing full logs.";
 "onboarding.one_time_code" = "Pairing codes expire and contain no long-term credential";
 "onboarding.pair" = "Pair a machine";
-"onboarding.pair_body" = "Run runbuoy pair on your computer, then scan its one-time code.";
+"onboarding.pair_body" = "Run runbuoy device pair on your computer, then scan its one-time code.";
 "onboarding.scan_code" = "Scan Pairing Code";
 "onboarding.tokens_private" = "Device and activity tokens are sent securely and never written to ordinary logs";
 "onboarding.welcome" = "Keep every run in sight.";
@@ -79,7 +79,7 @@
 "pairing.camera_unavailable" = "Camera scanning is unavailable on this device. Use a physical iPhone with camera permission.";
 "pairing.camera_unavailable_title" = "Camera unavailable";
 "pairing.claim" = "Pair This Machine";
-"pairing.code_hint" = "Paste the pairing code produced by runbuoy pair.";
+"pairing.code_hint" = "Paste the pairing code produced by runbuoy device pair.";
 "pairing.code_placeholder" = "Pairing code";
 "pairing.confirm_identity" = "Confirm machine identity";
 "pairing.continue" = "Continue";

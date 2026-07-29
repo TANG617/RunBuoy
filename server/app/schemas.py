@@ -88,6 +88,7 @@ class RunUpsert(APIModel):
     machine_id: str
     title: str = Field(min_length=1, max_length=200)
     source: str | None = Field(default=None, max_length=120)
+    cli_version: str | None = Field(default=None, max_length=64)
     execution_status: ExecutionStatus = "CREATED"
     health_status: HealthStatus = "HEALTHY"
     attention_status: AttentionStatus = "NONE"

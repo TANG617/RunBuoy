@@ -56,6 +56,7 @@ Mock APNs records exact payloads and requires no Apple credentials.
 
 ```bash
 uv tool install runbuoy
+runbuoy completion install zsh
 runbuoy doctor
 runbuoy capabilities --json
 ```
@@ -72,7 +73,7 @@ Build the native app in `apps/ios`, set the Server HTTPS URL, bootstrap the
 installation, and choose **Pair New Machine**. On the Machine:
 
 ```bash
-runbuoy pair
+runbuoy device pair
 ```
 
 Scan the short-lived QR code. The QR has a five-minute, single-use challenge
@@ -81,6 +82,9 @@ and no long-lived token. One iPhone installation can pair multiple Machines.
 ### 4. Run or notify
 
 ```bash
+runbuoy demo live-activity
+runbuoy demo notification
+
 runbuoy run -- python3 experiment.py
 
 runbuoy notify \
@@ -149,6 +153,7 @@ group, or a mode-restricted Unix socket:
 
 ```bash
 runbuoy list
+runbuoy list -a
 runbuoy status <run-id>
 runbuoy logs <run-id>
 runbuoy attach <run-id>
@@ -160,14 +165,20 @@ No Server or iOS endpoint can invoke them.
 Other commands:
 
 ```bash
-runbuoy pair
+runbuoy device pair
+runbuoy device status
 runbuoy notify
+runbuoy demo live-activity
+runbuoy demo notification
 runbuoy emit progress
 runbuoy emit phase
 runbuoy emit message
 runbuoy emit attention
 runbuoy doctor
-runbuoy config
+runbuoy config show
+runbuoy config set --server-url https://runbuoy.example.com
+runbuoy config path
+runbuoy history prune --older-than 30d --dry-run
 runbuoy capabilities --json
 ```
 

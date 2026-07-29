@@ -113,6 +113,7 @@ class EventQueue:
         run_id: str,
         machine_id: str,
         title: str,
+        source: str = "cli",
         manifest_path: str,
         log_path: str,
         result_path: str,
@@ -124,14 +125,15 @@ class EventQueue:
             connection.execute(
                 """
                 INSERT INTO runs(
-                    run_id, machine_id, title, status, updated_at, manifest_path,
+                    run_id, machine_id, title, source, status, updated_at, manifest_path,
                     log_path, result_path, socket_path, tmux_session
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     run_id,
                     machine_id,
                     title,
+                    source,
                     ExecutionStatus.CREATED.value,
                     now.isoformat(),
                     manifest_path,
@@ -147,7 +149,7 @@ class EventQueue:
                 "run.created",
                 {
                     "title": title,
-                    "source": "cli",
+                    "source": source,
                     "health_status": "HEALTHY",
                     "attention_status": "NONE",
                 },
@@ -261,12 +263,96 @@ class EventQueue:
             row = connection.execute("SELECT * FROM runs WHERE run_id = ?", (run_id,)).fetchone()
         return self._run_dict(row) if row is not None else None
 
-    def list_runs(self, limit: int = 50) -> list[dict[str, Any]]:
+    def list_runs(
+        self,
+        limit: int = 50,
+        *,
+        active_only: bool = False,
+        status: str | None = None,
+    ) -> list[dict[str, Any]]:
+        clauses: list[str] = []
+        parameters: list[Any] = []
+        if active_only:
+            placeholders = ",".join("?" for _ in TERMINAL_STATUSES)
+            clauses.append(f"status NOT IN ({placeholders})")
+            parameters.extend(sorted(TERMINAL_STATUSES))
+        if status is not None:
+            clauses.append("status = ?")
+            parameters.append(status)
+        where = f" WHERE {' AND '.join(clauses)}" if clauses else ""
+        parameters.append(limit)
         with self.connect() as connection:
             rows = connection.execute(
-                "SELECT * FROM runs ORDER BY updated_at DESC LIMIT ?", (limit,)
+                f"SELECT * FROM runs{where} ORDER BY updated_at DESC LIMIT ?",
+                parameters,
             ).fetchall()
         return [self._run_dict(row) for row in rows]
+
+    def matching_runs(
+        self,
+        reference: str,
+        *,
+        active_only: bool = False,
+        limit: int = 20,
+    ) -> list[dict[str, Any]]:
+        escaped_reference = (
+            reference.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        )
+        clauses = ["(run_id = ? OR run_id LIKE ? ESCAPE '\\')"]
+        parameters: list[Any] = [reference, f"{escaped_reference}%"]
+        if active_only:
+            placeholders = ",".join("?" for _ in TERMINAL_STATUSES)
+            clauses.append(f"status NOT IN ({placeholders})")
+            parameters.extend(sorted(TERMINAL_STATUSES))
+        parameters.append(limit)
+        with self.connect() as connection:
+            rows = connection.execute(
+                "SELECT * FROM runs WHERE "
+                + " AND ".join(clauses)
+                + " ORDER BY (run_id = ?) DESC, updated_at DESC LIMIT ?",
+                (*parameters[:-1], reference, parameters[-1]),
+            ).fetchall()
+        return [self._run_dict(row) for row in rows]
+
+    def terminal_runs_before(
+        self,
+        cutoff: datetime,
+        *,
+        include_unsynced: bool = False,
+        limit: int = 1000,
+    ) -> list[dict[str, Any]]:
+        placeholders = ",".join("?" for _ in TERMINAL_STATUSES)
+        delivery_clause = (
+            ""
+            if include_unsynced
+            else """
+                  AND NOT EXISTS (
+                      SELECT 1 FROM events
+                      WHERE events.run_id = runs.run_id AND events.delivered = 0
+                  )
+            """
+        )
+        with self.connect() as connection:
+            rows = connection.execute(
+                f"""
+                SELECT * FROM runs
+                WHERE status IN ({placeholders})
+                  AND COALESCE(ended_at, updated_at) < ?
+                  {delivery_clause}
+                ORDER BY COALESCE(ended_at, updated_at) ASC
+                LIMIT ?
+                """,
+                (*sorted(TERMINAL_STATUSES), cutoff.isoformat(), limit),
+            ).fetchall()
+        return [self._run_dict(row) for row in rows]
+
+    def delete_runs(self, run_ids: list[str]) -> None:
+        if not run_ids:
+            return
+        placeholders = ",".join("?" for _ in run_ids)
+        with self.transaction() as connection:
+            connection.execute(f"DELETE FROM events WHERE run_id IN ({placeholders})", run_ids)
+            connection.execute(f"DELETE FROM runs WHERE run_id IN ({placeholders})", run_ids)
 
     @staticmethod
     def _run_dict(row: sqlite3.Row) -> dict[str, Any]:

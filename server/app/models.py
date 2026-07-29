@@ -13,6 +13,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    true,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -44,7 +45,11 @@ class Device(Base):
     push_to_start_token_generation: Mapped[int] = mapped_column(Integer, default=0)
     live_activities_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     failure_notifications_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
-    success_notifications_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    success_notifications_enabled: Mapped[bool] = mapped_column(
+        Boolean,
+        default=True,
+        server_default=true(),
+    )
     last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 

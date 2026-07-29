@@ -87,6 +87,11 @@ paths:
       operationId: upsertRun
       security: [{ bearerAuth: [] }]
       parameters: [{ $ref: "#/components/parameters/RunId" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RunUpsert" }
       responses: { "200": { description: Run projection } }
     get:
       operationId: getRun
@@ -180,6 +185,17 @@ components:
       required: true
       schema: { type: string }
   schemas:
+    RunUpsert:
+      type: object
+      required: [machine_id, title]
+      properties:
+        machine_id: { type: string }
+        title: { type: string, minLength: 1, maxLength: 200 }
+        source: { type: [string, "null"], maxLength: 120 }
+        cli_version: { type: [string, "null"], maxLength: 64 }
+        execution_status:
+          enum: [CREATED, STARTING, RUNNING, SUCCEEDED, FAILED, CANCELLED, LOST]
+      additionalProperties: true
     RunEvent:
       type: object
       required:

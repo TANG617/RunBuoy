@@ -10,6 +10,7 @@ from sqlalchemy import select
 
 from app.models import (
     Device,
+    Machine,
     Notification,
     PairingSession,
     PushOutbox,
@@ -127,6 +128,37 @@ def test_pairing_expiry(harness: Harness) -> None:
     assert response.status_code == 410
 
 
+def test_run_upsert_refreshes_machine_cli_version_and_last_seen(harness: Harness) -> None:
+    device, machine = harness.pair()
+    with harness.session_factory() as session:
+        stored = session.get(Machine, machine["machine_id"])
+        assert stored is not None
+        assert stored.cli_version == "0.1"
+        previous_last_seen = stored.last_seen_at
+
+    run_id = str(uuid.uuid4())
+    response = harness.client.put(
+        f"/v1/runs/{run_id}",
+        headers=auth(machine["credential"]),
+        json={
+            "machine_id": machine["machine_id"],
+            "title": "Version refresh",
+            "source": "cli",
+            "cli_version": "0.1.2",
+        },
+    )
+    assert response.status_code == 200, response.text
+    with harness.session_factory() as session:
+        stored = session.get(Machine, machine["machine_id"])
+        assert stored is not None
+        assert stored.cli_version == "0.1.2"
+        assert stored.last_seen_at >= previous_last_seen
+
+    listed = harness.client.get("/v1/machines", headers=auth(device["credential"]))
+    assert listed.status_code == 200
+    assert listed.json()[0]["cli_version"] == "0.1.2"
+
+
 def test_scope_boundaries_and_encrypted_tokens(harness: Harness) -> None:
     device, machine = harness.pair()
     run_id = str(uuid.uuid4())
@@ -151,6 +183,15 @@ def test_scope_boundaries_and_encrypted_tokens(harness: Harness) -> None:
         assert stored is not None
         assert stored.notification_token_encrypted is not None
         assert token not in stored.notification_token_encrypted
+
+
+def test_notifications_are_enabled_by_default(harness: Harness) -> None:
+    device = harness.bootstrap()
+    with harness.session_factory() as session:
+        stored = session.get(Device, device["device_id"])
+        assert stored is not None
+        assert stored.failure_notifications_enabled is True
+        assert stored.success_notifications_enabled is True
 
 
 def test_offline_terminal_batch_replay_is_ordered_and_idempotent(harness: Harness) -> None:
@@ -292,17 +333,12 @@ def test_short_failure_falls_back_without_live_token_and_short_success_is_silent
             assert len(list(session.scalars(select(Notification)))) == expected_count
 
 
-def test_long_success_fallback_obeys_success_preference(harness: Harness) -> None:
+def test_long_success_fallback_is_enabled_by_default(harness: Harness) -> None:
     device, machine = harness.pair()
     harness.client.put(
         f"/v1/devices/{device['device_id']}/notification-token",
         headers=auth(device["credential"]),
         json={"token": "n" * 64},
-    )
-    harness.client.patch(
-        "/v1/device-preferences",
-        headers=auth(device["credential"]),
-        json={"success_notifications_enabled": True},
     )
     run_id = str(uuid.uuid4())
     harness.register_run(machine, run_id)
@@ -330,8 +366,37 @@ def test_long_success_fallback_obeys_success_preference(harness: Harness) -> Non
         assert push is not None
 
 
+def test_success_notification_can_be_disabled(harness: Harness) -> None:
+    device, machine = harness.pair()
+    harness.client.put(
+        f"/v1/devices/{device['device_id']}/notification-token",
+        headers=auth(device["credential"]),
+        json={"token": "n" * 64},
+    )
+    harness.client.patch(
+        "/v1/device-preferences",
+        headers=auth(device["credential"]),
+        json={"success_notifications_enabled": False},
+    )
+    response = harness.client.post(
+        "/v1/notifications",
+        headers=auth(machine["credential"]),
+        json={"title": "Complete", "body": "Finished", "level": "success"},
+    )
+    assert response.status_code == 201
+    with harness.session_factory() as session:
+        assert session.scalar(select(Notification)) is not None
+        assert session.scalar(select(PushOutbox).where(PushOutbox.kind == "NOTIFICATION")) is None
+
+
 def test_notification_idempotency_and_read_api(harness: Harness) -> None:
     device, machine = harness.pair()
+    token_response = harness.client.put(
+        f"/v1/devices/{device['device_id']}/notification-token",
+        headers=auth(device["credential"]),
+        json={"token": "n" * 64},
+    )
+    assert token_response.status_code == 204
     body = {
         "title": "Build completed",
         "body": "Release build succeeded",
@@ -346,6 +411,11 @@ def test_notification_idempotency_and_read_api(harness: Harness) -> None:
     assert first.json()["id"] == second.json()["id"]
     read = harness.client.get("/v1/notifications", headers=auth(device["credential"]))
     assert read.json()[0]["fields"] == [{"label": "Target", "value": "iOS"}]
+    with harness.session_factory() as session:
+        pushes = list(
+            session.scalars(select(PushOutbox).where(PushOutbox.kind == "NOTIFICATION"))
+        )
+        assert len(pushes) == 1
 
 
 def test_no_forbidden_or_websocket_routes(harness: Harness) -> None:

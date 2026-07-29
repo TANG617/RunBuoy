@@ -71,7 +71,7 @@
 "onboarding.notifications_body" = "通知和实时活动只显示有意义的变化，不会暴露完整日志。";
 "onboarding.one_time_code" = "配对码会过期，且不包含长期凭证";
 "onboarding.pair" = "配对电脑";
-"onboarding.pair_body" = "在电脑上运行 runbuoy pair，然后扫描一次性配对码。";
+"onboarding.pair_body" = "在电脑上运行 runbuoy device pair，然后扫描一次性配对码。";
 "onboarding.scan_code" = "扫描配对码";
 "onboarding.tokens_private" = "设备和活动令牌会安全上传，且永远不会写入普通日志";
 "onboarding.welcome" = "让每一次运行都尽收眼底。";
@@ -79,7 +79,7 @@
 "pairing.camera_unavailable" = "此设备无法使用相机扫描。请在允许相机权限的实体 iPhone 上使用。";
 "pairing.camera_unavailable_title" = "相机不可用";
 "pairing.claim" = "配对这台电脑";
-"pairing.code_hint" = "粘贴 runbuoy pair 生成的配对码。";
+"pairing.code_hint" = "粘贴 runbuoy device pair 生成的配对码。";
 "pairing.code_placeholder" = "配对码";
 "pairing.confirm_identity" = "确认电脑身份";
 "pairing.continue" = "继续";

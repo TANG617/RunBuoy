@@ -5,6 +5,7 @@ from typing import Any
 
 import httpx
 
+from runbuoy import __version__
 from runbuoy.config import Config, CredentialStore
 from runbuoy.models import RunEvent
 from runbuoy.persistence.store import EventQueue
@@ -51,6 +52,7 @@ class RemoteClient:
             "title": run["title"],
             "source": run["source"],
             "execution_status": "CREATED",
+            "cli_version": __version__,
         }
         assert_safe_remote_payload(payload)
         self._request("PUT", f"/v1/runs/{run['run_id']}", json=payload)
