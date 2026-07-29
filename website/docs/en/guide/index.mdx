@@ -1,0 +1,86 @@
+# Quick Start
+
+import { Tab, Tabs } from '@rspress/core/theme';
+
+RunBuoy keeps long-running commands, builds, experiments, and agent runs on your computer visible on iPhone.
+
+## Requirements
+
+- macOS or Linux
+- Python 3.12 or newer
+- `tmux` for durable runs
+- The RunBuoy iOS app
+
+## 1. Install tmux
+
+<Tabs>
+<Tab label="macOS">
+
+```bash
+brew install tmux
+```
+
+</Tab>
+<Tab label="Debian / Ubuntu">
+
+```bash
+sudo apt install tmux
+```
+
+</Tab>
+</Tabs>
+
+## 2. Install RunBuoy
+
+<Tabs>
+<Tab label="uv (recommended)">
+
+```bash
+uv tool install runbuoy
+uv tool update-shell
+runbuoy completion install zsh
+```
+
+</Tab>
+<Tab label="pipx">
+
+```bash
+pipx install runbuoy
+pipx ensurepath
+```
+
+</Tab>
+</Tabs>
+
+Restart your terminal, then verify the environment:
+
+```bash
+runbuoy doctor
+runbuoy capabilities --json
+```
+
+## 3. Pair your iPhone
+
+Open RunBuoy, choose “Pair New Machine,” then run this command on your computer:
+
+```bash
+runbuoy device pair
+```
+
+Scan the QR code. The challenge expires after five minutes, works only once, and contains no long-lived credential.
+
+## 4. Start a run
+
+```bash
+runbuoy demo live-activity
+runbuoy run -- python3 experiment.py
+```
+
+The command keeps running on your computer while iPhone displays carefully scoped status, progress, timing, and results.
+
+## Next steps
+
+- [Install, upgrade, or remove RunBuoy](/guide/install)
+- [Pair more machines](/guide/pairing)
+- [Run commands and send notifications](/guide/run)
+- [Configure honest progress](/guide/progress)

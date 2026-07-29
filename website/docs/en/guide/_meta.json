@@ -1,0 +1,27 @@
+[
+  {
+    "type": "file",
+    "name": "index",
+    "label": "Quick Start"
+  },
+  {
+    "type": "file",
+    "name": "install",
+    "label": "Install the CLI"
+  },
+  {
+    "type": "file",
+    "name": "pairing",
+    "label": "Pair an iPhone"
+  },
+  {
+    "type": "file",
+    "name": "run",
+    "label": "Runs and notifications"
+  },
+  {
+    "type": "file",
+    "name": "progress",
+    "label": "Progress modes"
+  }
+]

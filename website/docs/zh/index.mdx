@@ -1,0 +1,71 @@
+---
+pageType: home
+
+hero:
+  name: RunBuoy
+  text: 长任务进度，抬手就能看见
+  tagline: 将 Mac 与 Linux 上的命令、构建、实验和 AI Agent 进度，持续呈现在 iPhone 的实时活动、锁定屏幕和灵动岛。
+  actions:
+    - theme: brand
+      text: 快速开始
+      link: /guide/
+    - theme: alt
+      text: GitHub
+      link: https://github.com/TANG617/RunBuoy
+    - theme: alt
+      text: App Store · 即将上线
+      link: /download
+  image:
+    src: live-activity
+    alt: RunBuoy 在锁定屏幕和灵动岛持续显示长任务状态
+
+features:
+  - title: 运行状态，持续更新
+    details: 在实时活动、锁定屏幕和灵动岛查看运行阶段、真实进度与最终结果。
+    span: 4
+    link: /guide/run
+  - title: 隐私优先，自由掌控
+    details: 核心运行数据默认留在本机；开源代码可审计，也可按需自托管。
+    span: 4
+    link: /privacy
+  - title: 原生接入 AI Agent
+    details: 通过 CLI 与 $runbuoy Skill 跟踪 Codex 等 Agent 的阶段、进度与结果，自然融入现有工作流。
+    span: 4
+    link: /guide/run
+---
+
+## 三步开始使用
+
+<div className="runbuoy-flow">
+  <div>
+    <strong>1. 安装 CLI</strong>
+    <span>使用 uv 或 pipx 安装独立的命令行工具。</span>
+  </div>
+  <div>
+    <strong>2. 配对 iPhone</strong>
+    <span>扫描一次性配对码，在几秒内建立安全连接。</span>
+  </div>
+  <div>
+    <strong>3. 启动任务</strong>
+    <span>在原命令前加上 runbuoy run --，离开电脑也能掌握进度。</span>
+  </div>
+</div>
+
+```bash
+uv tool install runbuoy
+runbuoy completion install zsh
+runbuoy doctor
+runbuoy device pair
+runbuoy demo live-activity
+runbuoy run -- python3 experiment.py
+```
+
+[查看完整安装与使用指南 →](/docs/)
+
+## 专注状态，不打断任务
+
+```text
+Machine  →  RunBuoy Server  →  iPhone
+```
+
+任务仍由电脑端掌控，RunBuoy 在 iPhone 上清晰呈现进度与结果。命令、源码、环境变量与完整日志默认留在本机；[了解隐私与数据边界 →](/privacy)

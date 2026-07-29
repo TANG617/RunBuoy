@@ -2,7 +2,7 @@
 
 import { Tab, Tabs } from '@rspress/core/theme';
 
-RunBuoy 将电脑上长时间运行的命令、构建、实验与 Agent 状态，以只读方式送到 iPhone。
+RunBuoy 将电脑上长时间运行的命令、构建、实验与 Agent 进度持续呈现在 iPhone。
 
 ## 系统要求
 
@@ -38,6 +38,7 @@ sudo apt install tmux
 ```bash
 uv tool install runbuoy
 uv tool update-shell
+runbuoy completion install zsh
 ```
 
 </Tab>
@@ -63,7 +64,7 @@ runbuoy capabilities --json
 打开 RunBuoy App，选择“配对新电脑”，然后在电脑上运行：
 
 ```bash
-runbuoy pair
+runbuoy device pair
 ```
 
 扫描二维码。配对挑战五分钟后过期、只能使用一次，并且不包含长期凭证。
@@ -71,10 +72,11 @@ runbuoy pair
 ## 4. 启动一次 Run
 
 ```bash
+runbuoy demo live-activity
 runbuoy run -- python3 experiment.py
 ```
 
-命令继续在电脑上运行；iPhone 只接收安全状态、进度、时间和结果。
+命令继续在电脑上运行；iPhone 会同步显示经过筛选的状态、进度、时间和结果。
 
 ## 下一步
 

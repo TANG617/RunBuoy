@@ -63,3 +63,17 @@ sudo apt install tmux
 ```
 
 Python 包管理器不会安装这个系统依赖。
+
+## Tab 补全
+
+显式选择当前使用的 shell：
+
+```bash
+runbuoy completion install zsh
+# 或
+runbuoy completion install bash
+runbuoy completion install fish
+```
+
+重启终端后，命令、选项、合法枚举值和本地 Run ID 均可补全。`status` 与 `logs`
+会补全全部本地 Run，`attach` 与 `cancel` 只补全仍在运行的 Run。

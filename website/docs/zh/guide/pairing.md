@@ -9,7 +9,7 @@
 3. 在电脑上运行：
 
 ```bash
-runbuoy pair
+runbuoy device pair
 ```
 
 4. 扫描终端显示的二维码，并确认电脑身份。
@@ -18,12 +18,24 @@ runbuoy pair
 
 ## 无法扫码
 
-在配对页面选择“使用配对码”，粘贴 `runbuoy pair` 输出的代码。
+在配对页面选择“使用配对码”，粘贴 `runbuoy device pair` 输出的代码。
+
+需要先退出终端、稍后继续时：
+
+```bash
+runbuoy device pair --no-wait
+# 扫码后
+runbuoy device pair --resume
+```
+
+待配对交换密钥会保存在系统 Keyring 或权限为 0600 的本地凭证文件中，不会打印
+到终端。
 
 ## 检查连接
 
 ```bash
 runbuoy doctor
+runbuoy device status --check-server
 runbuoy capabilities --json
 ```
 
