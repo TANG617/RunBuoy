@@ -1,0 +1,61 @@
+name: Deploy server
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: runbuoy-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_branch == 'main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    environment:
+      name: production
+      url: https://api.runbuoy.cloud/healthz
+
+    env:
+      DEPLOY_SHA: ${{ github.event.workflow_run.head_sha }}
+      PROD_HOST: ${{ vars.PROD_HOST }}
+      PROD_PORT: ${{ vars.PROD_PORT }}
+      PROD_USER: ${{ vars.PROD_USER }}
+      PROD_SSH_KEY: ${{ secrets.PROD_SSH_KEY }}
+      PROD_KNOWN_HOSTS: ${{ secrets.PROD_KNOWN_HOSTS }}
+
+    steps:
+      - name: Configure SSH
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          RUNBUOY_SSH_DIR="$RUNNER_TEMP/runbuoy-ssh"
+          install -m 700 -d "$RUNBUOY_SSH_DIR"
+          printf '%s\n' "$PROD_SSH_KEY" > "$RUNBUOY_SSH_DIR/id_ed25519"
+          printf '%s\n' "$PROD_KNOWN_HOSTS" > "$RUNBUOY_SSH_DIR/known_hosts"
+          chmod 600 "$RUNBUOY_SSH_DIR/id_ed25519"
+          chmod 644 "$RUNBUOY_SSH_DIR/known_hosts"
+
+      - name: Deploy exact tested commit
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          RUNBUOY_SSH_DIR="$RUNNER_TEMP/runbuoy-ssh"
+          ssh \
+            -i "$RUNBUOY_SSH_DIR/id_ed25519" \
+            -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile="$RUNBUOY_SSH_DIR/known_hosts" \
+            -p "$PROD_PORT" \
+            "$PROD_USER@$PROD_HOST" \
+            "deploy $DEPLOY_SHA"
