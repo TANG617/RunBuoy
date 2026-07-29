@@ -81,18 +81,40 @@ paths:
     get:
       operationId: listRuns
       security: [{ bearerAuth: [] }]
-      responses: { "200": { description: Run projections } }
+      responses:
+        "200":
+          description: Run projections
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/RunProjection" }
   /v1/runs/{run_id}:
     put:
       operationId: upsertRun
       security: [{ bearerAuth: [] }]
       parameters: [{ $ref: "#/components/parameters/RunId" }]
-      responses: { "200": { description: Run projection } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RunUpsert" }
+      responses:
+        "200":
+          description: Run projection
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RunProjection" }
     get:
       operationId: getRun
       security: [{ bearerAuth: [] }]
       parameters: [{ $ref: "#/components/parameters/RunId" }]
-      responses: { "200": { description: Run detail and safe feed } }
+      responses:
+        "200":
+          description: Run detail and safe feed
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RunDetail" }
   /v1/runs/{run_id}/events:batch:
     post:
       operationId: ingestRunEvents
@@ -117,6 +139,18 @@ paths:
       operationId: listMachines
       security: [{ bearerAuth: [] }]
       responses: { "200": { description: Paired machines } }
+  /v1/machines/{machine_id}:
+    patch:
+      operationId: updateMachine
+      security: [{ bearerAuth: [] }]
+      parameters: [{ $ref: "#/components/parameters/MachineId" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/MachinePatch" }
+      responses:
+        "200": { description: Machine display name updated }
   /v1/notifications:
     get:
       operationId: listNotifications
@@ -169,6 +203,11 @@ components:
       in: path
       required: true
       schema: { type: string, format: uuid }
+    MachineId:
+      name: machine_id
+      in: path
+      required: true
+      schema: { type: string }
     HookId:
       name: hook_id
       in: path
@@ -180,6 +219,73 @@ components:
       required: true
       schema: { type: string }
   schemas:
+    MachinePatch:
+      type: object
+      required: [display_name]
+      properties:
+        display_name: { type: string, minLength: 1, maxLength: 120 }
+      additionalProperties: false
+    RunUpsert:
+      type: object
+      required: [machine_id, title]
+      properties:
+        machine_id: { type: string }
+        title: { type: string, minLength: 1, maxLength: 200 }
+        source: { type: [string, "null"], maxLength: 120 }
+        cli_version: { type: [string, "null"], maxLength: 64 }
+        execution_status:
+          enum: [CREATED, STARTING, RUNNING, SUCCEEDED, FAILED, CANCELLED, LOST]
+      additionalProperties: true
+    RunProjection:
+      type: object
+      required:
+        - id
+        - workspace_id
+        - machine_id
+        - machine_name
+        - title
+        - execution_status
+        - health_status
+        - attention_status
+        - created_at
+        - updated_at
+        - last_seq
+        - sequence
+      properties:
+        id: { type: string, format: uuid }
+        workspace_id: { type: string }
+        machine_id: { type: string }
+        machine_name: { type: string, maxLength: 120 }
+        title: { type: string, maxLength: 200 }
+        source: { type: [string, "null"], maxLength: 120 }
+        execution_status:
+          enum: [CREATED, STARTING, RUNNING, SUCCEEDED, FAILED, CANCELLED, LOST]
+        health_status: { enum: [HEALTHY, STALE, OFFLINE] }
+        attention_status: { enum: [NONE, INFORMATION, WARNING, ACTION_REQUIRED] }
+        progress: { type: [object, "null"], additionalProperties: true }
+        phase: { type: [string, "null"], maxLength: 120 }
+        safe_message: { type: [string, "null"], maxLength: 500 }
+        created_at: { type: string, format: date-time }
+        started_at: { type: [string, "null"], format: date-time }
+        updated_at: { type: string, format: date-time }
+        ended_at: { type: [string, "null"], format: date-time }
+        exit_code: { type: [integer, "null"] }
+        termination_reason: { type: [string, "null"], maxLength: 120 }
+        last_seq: { type: integer, minimum: 0 }
+        sequence: { type: integer, minimum: 0 }
+        safe_log_tail:
+          type: [array, "null"]
+          items: { type: string }
+      additionalProperties: false
+    RunDetail:
+      type: object
+      required: [run, events]
+      properties:
+        run: { $ref: "#/components/schemas/RunProjection" }
+        events:
+          type: array
+          items: { type: object, additionalProperties: true }
+      additionalProperties: false
     RunEvent:
       type: object
       required:

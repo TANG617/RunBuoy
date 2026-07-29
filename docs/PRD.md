@@ -70,8 +70,12 @@ worker coalesces and sends mock or production APNs requests.
 
 Live Activities start only for Runs still active after five seconds, are
 limited to two per device, update no faster than every three seconds for
-ordinary progress, and end with status-specific dismissal dates. Short
-successes remain history-only; short failures use a normal notification.
+ordinary progress, and advance their displayed elapsed time only from
+Machine-confirmed events. Fifteen-second heartbeats keep the duration fresh;
+after 60 seconds without confirmation the presentation becomes stale without
+claiming that execution stopped. Ended activities use ActivityKit's default
+dismissal behavior. Short successes remain history-only; short failures use a
+normal notification.
 
 ### Native iOS
 

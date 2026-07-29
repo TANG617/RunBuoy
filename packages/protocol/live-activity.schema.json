@@ -32,8 +32,10 @@
     "progress": { "type": ["number", "null"], "minimum": 0, "maximum": 1 },
     "phase": { "type": ["string", "null"], "maxLength": 120 },
     "message": { "type": ["string", "null"], "maxLength": 500 },
+    "createdAt": { "type": ["string", "null"], "format": "date-time" },
     "startedAt": { "type": "string", "format": "date-time" },
     "updatedAt": { "type": "string", "format": "date-time" },
+    "machineName": { "type": ["string", "null"], "maxLength": 120 },
     "endedAt": { "type": ["string", "null"], "format": "date-time" },
     "estimatedEndAt": { "type": ["string", "null"], "format": "date-time" },
     "exitCode": { "type": ["integer", "null"] }

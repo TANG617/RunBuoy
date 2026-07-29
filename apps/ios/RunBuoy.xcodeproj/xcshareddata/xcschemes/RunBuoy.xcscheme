@@ -41,19 +41,12 @@
       selectedDebuggerIdentifier = "Xcode.DebuggerFoundation.Debugger.LLDB"
       selectedLauncherIdentifier = "Xcode.DebuggerFoundation.Launcher.LLDB"
       shouldUseLaunchSchemeArgsEnv = "YES">
-      <Testables>
-         <TestableReference
-            skipped = "NO"
-            parallelizable = "NO">
-            <BuildableReference
-               BuildableIdentifier = "primary"
-               BlueprintIdentifier = "E30000000000000000000001"
-               BuildableName = "RunBuoyTests.xctest"
-               BlueprintName = "RunBuoyTests"
-               ReferencedContainer = "container:RunBuoy.xcodeproj">
-            </BuildableReference>
-         </TestableReference>
-      </Testables>
+      <TestPlans>
+         <TestPlanReference
+            reference = "container:RunBuoy.xctestplan"
+            default = "YES">
+         </TestPlanReference>
+      </TestPlans>
    </TestAction>
    <LaunchAction
       buildConfiguration = "Debug"

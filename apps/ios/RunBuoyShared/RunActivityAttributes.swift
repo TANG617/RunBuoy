@@ -27,8 +27,10 @@ public struct RunActivityAttributes {
         public let total: Double?
         public let phase: String?
         public let message: String?
+        public let createdAt: Date?
         public let startedAt: Date
         public let updatedAt: Date
+        public let machineName: String?
         public let endedAt: Date?
         public let estimatedEndAt: Date?
         public let exitCode: Int?
@@ -44,8 +46,10 @@ public struct RunActivityAttributes {
             total: Double? = nil,
             phase: String?,
             message: String?,
+            createdAt: Date? = nil,
             startedAt: Date,
             updatedAt: Date,
+            machineName: String? = nil,
             endedAt: Date? = nil,
             estimatedEndAt: Date?,
             exitCode: Int?
@@ -60,8 +64,10 @@ public struct RunActivityAttributes {
             self.total = total
             self.phase = phase
             self.message = message
+            self.createdAt = createdAt
             self.startedAt = startedAt
             self.updatedAt = updatedAt
+            self.machineName = machineName
             self.endedAt = endedAt
             self.estimatedEndAt = estimatedEndAt
             self.exitCode = exitCode
@@ -78,8 +84,10 @@ public struct RunActivityAttributes {
             case total
             case phase
             case message
+            case createdAt
             case startedAt
             case updatedAt
+            case machineName
             case endedAt
             case estimatedEndAt
             case exitCode
@@ -97,8 +105,12 @@ public struct RunActivityAttributes {
             total = try values.decodeIfPresent(Double.self, forKey: .total)
             phase = try values.decodeIfPresent(String.self, forKey: .phase)
             message = try values.decodeIfPresent(String.self, forKey: .message)
+            createdAt = try values.contains(.createdAt)
+                ? Self.decodeOptionalDate(values, key: .createdAt)
+                : nil
             startedAt = try Self.decodeDate(values, key: .startedAt)
             updatedAt = try Self.decodeDate(values, key: .updatedAt)
+            machineName = try values.decodeIfPresent(String.self, forKey: .machineName)
             endedAt = try values.contains(.endedAt)
                 ? Self.decodeOptionalDate(values, key: .endedAt)
                 : nil
@@ -120,8 +132,13 @@ public struct RunActivityAttributes {
             try values.encodeIfPresent(total, forKey: .total)
             try values.encodeIfPresent(phase, forKey: .phase)
             try values.encodeIfPresent(message, forKey: .message)
+            try values.encodeIfPresent(
+                createdAt.map(Self.dateFormatter.string(from:)),
+                forKey: .createdAt
+            )
             try values.encode(Self.dateFormatter.string(from: startedAt), forKey: .startedAt)
             try values.encode(Self.dateFormatter.string(from: updatedAt), forKey: .updatedAt)
+            try values.encodeIfPresent(machineName, forKey: .machineName)
             try values.encodeIfPresent(endedAt.map(Self.dateFormatter.string(from:)), forKey: .endedAt)
             try values.encodeIfPresent(estimatedEndAt.map(Self.dateFormatter.string(from:)), forKey: .estimatedEndAt)
             try values.encodeIfPresent(exitCode, forKey: .exitCode)
@@ -166,6 +183,24 @@ public struct RunActivityAttributes {
             formatter.formatOptions = [.withInternetDateTime]
             return formatter
         }()
+    }
+}
+
+enum RunActivityDurationText {
+    static func string(
+        createdAt: Date?,
+        startedAt: Date,
+        updatedAt: Date
+    ) -> String {
+        let anchor = createdAt ?? startedAt
+        let totalSeconds = max(0, Int(updatedAt.timeIntervalSince(anchor)))
+        let hours = totalSeconds / 3_600
+        let minutes = (totalSeconds % 3_600) / 60
+        let seconds = totalSeconds % 60
+        if hours > 0 {
+            return String(format: "%d:%02d:%02d", hours, minutes, seconds)
+        }
+        return String(format: "%d:%02d", minutes, seconds)
     }
 }
 

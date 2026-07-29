@@ -54,6 +54,7 @@ struct PairMachineView: View {
             if let code {
                 Section("pairing.machine") {
                     LabeledContent("pairing.name", value: code.machineDisplayName)
+                        .accessibilityIdentifier("pairing.machineName")
                     if let platform = code.platform {
                         LabeledContent("machine.platform", value: platform)
                     }
@@ -68,6 +69,7 @@ struct PairMachineView: View {
                     }
                     .buttonStyle(.glassProminent)
                     .disabled(isWorking)
+                    .accessibilityIdentifier("pairing.claim")
                 }
             } else if allowsCodeEntry {
                 Section {
@@ -83,9 +85,11 @@ struct PairMachineView: View {
                     .submitLabel(.done)
                     .focused($isCodeFieldFocused)
                     .onSubmit(validateCode)
+                    .accessibilityIdentifier("pairing.code")
 
                     Button("pairing.continue", action: validateCode)
                         .disabled(trimmedCode.isEmpty)
+                        .accessibilityIdentifier("pairing.continue")
                 } header: {
                     Text("pairing.enter_code")
                 } footer: {
@@ -102,9 +106,11 @@ struct PairMachineView: View {
                 Section {
                     Label(status.title, systemImage: status.symbol)
                         .foregroundStyle(status.color)
+                        .accessibilityIdentifier("pairing.status")
                 }
             }
         }
+        .accessibilityIdentifier("screen.pairMachine")
         .navigationTitle(code == nil ? "pairing.enter_code" : "settings.pair_machine")
         .navigationBarTitleDisplayMode(.inline)
         .onAppear {

@@ -10,7 +10,9 @@ no command, process, terminal, approval, or agent-response surface.
   onboarding, QR pairing, notification registration, and ActivityKit token
   lifecycle.
 - `RunBuoyWidgets`: WidgetKit Live Activity UI for the Lock Screen and Dynamic
-  Island. A tap opens `runbuoy://runs/<run-id>`; there are no action controls.
+  Island. Its elapsed value advances only with Machine-confirmed events and
+  becomes stale after 60 seconds without an update. A tap opens
+  `runbuoy://runs/<run-id>`; there are no action controls.
 - `RunBuoyTests`: protocol decoding, read-client, cache, routing, pairing, and
   token-registration contract tests.
 
@@ -40,6 +42,25 @@ xcodebuild \
   test
 ```
 
+The shared `RunBuoy.xctestplan` runs both `RunBuoyTests` and
+`RunBuoyUITests`. Run either layer independently with:
+
+```sh
+xcodebuild \
+  -project apps/ios/RunBuoy.xcodeproj \
+  -scheme RunBuoy \
+  -destination 'platform=iOS Simulator,name=iPhone 17,OS=latest' \
+  -only-testing:RunBuoyUITests \
+  -resultBundlePath /tmp/RunBuoyUITests.xcresult \
+  CODE_SIGNING_ALLOWED=NO \
+  test
+```
+
+UI tests launch the Debug app with deterministic Preview fixtures. Supported
+scenarios are `loaded`, `empty`, `offline`, and `failed`; the test-only launch
+arguments are parsed by `UITestConfiguration.swift`. Every UI test attaches a
+final screenshot that Xcode retains when the test fails.
+
 The `RUNBUOY_API_BASE_URL` build setting selects the HTTPS API and is expanded
 into `RunBuoyApp/Info.plist`. Override the setting per build environment when
 the checked-in deployment is not the desired server.
@@ -47,9 +68,11 @@ the checked-in deployment is not the desired server.
 ## Signing and Apple capabilities
 
 Replace the sample bundle IDs with identifiers owned by the development team.
-Enable Push Notifications and Live Activities for the App ID. Debug uses the
-development APNs environment; Release uses production. Provisioning profiles
-must contain the matching entitlements. No App Group is required by the MVP.
+Enable Push Notifications and Live Activities for the App ID. The app opts
+into frequent Live Activity updates for the 15-second heartbeat cadence.
+Debug uses the development APNs environment; Release uses production.
+Provisioning profiles must contain the matching entitlements. No App Group is
+required by the MVP.
 
 The implementation follows Apple’s current documentation for
 [ActivityKit](https://developer.apple.com/documentation/activitykit/),

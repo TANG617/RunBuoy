@@ -32,6 +32,7 @@ MACHINE_SCOPES = frozenset(
         "events:write",
         "notifications:send",
         "hooks:manage",
+        "machines:update",
         "pairing:poll",
     }
 )

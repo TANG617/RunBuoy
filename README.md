@@ -56,6 +56,7 @@ Mock APNs records exact payloads and requires no Apple credentials.
 
 ```bash
 uv tool install runbuoy
+runbuoy completion install zsh
 runbuoy doctor
 runbuoy capabilities --json
 ```
@@ -72,7 +73,7 @@ Build the native app in `apps/ios`, set the Server HTTPS URL, bootstrap the
 installation, and choose **Pair New Machine**. On the Machine:
 
 ```bash
-runbuoy pair
+runbuoy device pair
 ```
 
 Scan the short-lived QR code. The QR has a five-minute, single-use challenge
@@ -81,6 +82,11 @@ and no long-lived token. One iPhone installation can pair multiple Machines.
 ### 4. Run or notify
 
 ```bash
+runbuoy demo live-activity
+runbuoy demo notification
+
+runbuoy config set --machine-name "Build Mac"
+
 runbuoy run -- python3 experiment.py
 
 runbuoy notify \
@@ -139,8 +145,10 @@ runbuoy run \
   -- python3 experiment.py
 ```
 
-Without an explicit source, the Live Activity shows indeterminate state,
-elapsed time, phase, and last update—never a synthetic percent.
+Without an explicit source, the Live Activity shows indeterminate state and
+Machine-confirmed elapsed time—never a synthetic percent. The elapsed value
+advances only when a new Machine event arrives; a frozen value indicates that
+the delivery or display path has not received a fresh confirmation.
 
 ## Local-only commands
 
@@ -149,6 +157,7 @@ group, or a mode-restricted Unix socket:
 
 ```bash
 runbuoy list
+runbuoy list -a
 runbuoy status <run-id>
 runbuoy logs <run-id>
 runbuoy attach <run-id>
@@ -160,14 +169,20 @@ No Server or iOS endpoint can invoke them.
 Other commands:
 
 ```bash
-runbuoy pair
+runbuoy device pair
+runbuoy device status
 runbuoy notify
+runbuoy demo live-activity
+runbuoy demo notification
 runbuoy emit progress
 runbuoy emit phase
 runbuoy emit message
 runbuoy emit attention
 runbuoy doctor
-runbuoy config
+runbuoy config show
+runbuoy config set --server-url https://runbuoy.example.com
+runbuoy config path
+runbuoy history prune --older-than 30d --dry-run
 runbuoy capabilities --json
 ```
 
@@ -213,7 +228,10 @@ without HTML, JavaScript, executable schemes, or WebView.
 - Ordinary progress is coalesced to at most one update every three seconds and
   less than 1% changes are suppressed.
 - Phase, attention, terminal success, and failure update immediately.
-- Heartbeats update health but do not directly cause a push.
+- A heartbeat is emitted every 15 seconds and advances the confirmed elapsed
+  time with a low-priority Live Activity update.
+- Active payloads become stale 60 seconds after the latest confirmed Machine
+  event; terminal payloads end the activity with final state.
 - APNs 410 invalidates the token; retry is bounded.
 
 Production APNs uses HTTP/2, TLS, ES256 provider tokens, current rotating
@@ -265,6 +283,7 @@ See [`docs/development.md`](docs/development.md).
 - [Architecture](docs/architecture.md)
 - [Protocol](docs/protocol.md)
 - [Security](docs/security.md) and [threat model](docs/threat-model.md)
+- [Deployment and release guide](docs/deployment.md)
 - [Self-hosting](docs/self-hosting.md)
 - [APNs setup](docs/apns-setup.md)
 - [CLI distribution and PyPI releases](docs/cli-distribution.md)

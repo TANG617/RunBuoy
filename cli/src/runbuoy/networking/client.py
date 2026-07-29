@@ -5,6 +5,7 @@ from typing import Any
 
 import httpx
 
+from runbuoy import __version__
 from runbuoy.config import Config, CredentialStore
 from runbuoy.models import RunEvent
 from runbuoy.persistence.store import EventQueue
@@ -51,9 +52,15 @@ class RemoteClient:
             "title": run["title"],
             "source": run["source"],
             "execution_status": "CREATED",
+            "cli_version": __version__,
         }
         assert_safe_remote_payload(payload)
         self._request("PUT", f"/v1/runs/{run['run_id']}", json=payload)
+
+    def update_machine(self, machine_id: str, display_name: str) -> None:
+        payload = {"display_name": display_name}
+        assert_safe_remote_payload(payload)
+        self._request("PATCH", f"/v1/machines/{machine_id}", json=payload)
 
     def upload_events(self, run_id: str, events: list[RunEvent]) -> None:
         payload = {"events": [event.model_dump(mode="json") for event in events]}
@@ -94,6 +101,23 @@ def flush_pending(
     batch_size: int,
     run_id: str | None = None,
 ) -> int:
+    metadata = queue.pending_machine_metadata()
+    if metadata is not None:
+        try:
+            client.update_machine(metadata["machine_id"], metadata["display_name"])
+        except (httpx.HTTPError, RemoteError, OSError) as error:
+            attempts = int(metadata["attempt_count"])
+            queue.mark_machine_metadata_failed(
+                metadata["machine_id"],
+                metadata["display_name"],
+                str(error),
+                min(2**attempts, 60),
+            )
+        else:
+            queue.mark_machine_metadata_delivered(
+                metadata["machine_id"],
+                metadata["display_name"],
+            )
     events = queue.pending_events(batch_size, run_id=run_id)
     if not events:
         return 0

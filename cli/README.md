@@ -28,6 +28,7 @@ Install the CLI in an isolated environment with
 
 ```bash
 uv tool install runbuoy
+runbuoy completion install zsh  # or bash / fish
 ```
 
 Or use [pipx](https://pipx.pypa.io/):
@@ -44,7 +45,18 @@ runbuoy capabilities --json
 ```
 
 New installations use `https://api.runbuoy.cloud` as the default server URL.
-Override it when needed with `runbuoy config --server-url <url>`.
+Override it when needed with
+`runbuoy config set --server-url <url>`.
+
+Set the canonical Machine name from the CLI:
+
+```bash
+runbuoy config set --machine-name "Build Mac"
+```
+
+When paired, the CLI synchronizes the name to the Server immediately. If the
+Server is unavailable, the latest name remains queued locally and the next
+Run uploader retries it. iOS intentionally has no Machine-name editor.
 
 Upgrade with the same tool used for installation:
 
@@ -59,13 +71,28 @@ pipx upgrade runbuoy
 Pair this machine with the RunBuoy iOS app:
 
 ```bash
-runbuoy pair
+runbuoy device pair
+```
+
+Verify delivery with built-in examples:
+
+```bash
+runbuoy demo notification
+runbuoy demo live-activity
 ```
 
 Run a command:
 
 ```bash
 runbuoy run -- python3 experiment.py
+```
+
+`runbuoy list` shows active Runs. Use `runbuoy list -a` to include completed
+history. Run IDs may be supplied as unique prefixes, or as `@latest`.
+Preview old local history before permanently pruning it with:
+
+```bash
+runbuoy history prune --older-than 30d --dry-run
 ```
 
 Send a notification without starting a managed run:

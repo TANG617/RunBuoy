@@ -52,4 +52,4 @@ runbuoy run \
 
 ## Indeterminate progress
 
-When there is no honest progress source, omit the progress options. The iPhone shows the run status, phase, elapsed time, and last update instead of inventing a percentage.
+When there is no honest progress source, omit the progress options. The iPhone shows indeterminate progress and Machine-confirmed elapsed time instead of inventing a percentage. The elapsed value advances only when a new event or heartbeat reaches the Live Activity, so a frozen value indicates that the delivery or display path has not received a fresh confirmation.

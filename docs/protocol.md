@@ -33,12 +33,24 @@ records receipt time.
 Unknown object fields are ignored. Unknown event types require a newer
 protocol version and are rejected with a stable validation error.
 
+`run.created.occurred_at` is the Run creation time. The projection's
+`updated_at` is the monotonic occurrence time of the newest accepted Machine
+event. Any event proves that the Machine-to-Server path was alive at that
+time; a heartbeat supplies that proof every 15 seconds while no other event
+does. Live Activities display `updated_at - created_at` as a static,
+Machine-confirmed duration rather than advancing an iPhone-local timer.
+
 ## Progress
 
 Determinate progress includes non-negative `current`, positive `total`, a
 clamped `fraction` in `0...1`, and one of `explicit`, `adapter`, `regex`, or
 `lines` as its source. Indeterminate progress never invents a percentage or
 ETA. It may include elapsed time, a phase, and the last safe update.
+
+Machine display names have one write authority: the CLI. A paired Machine may
+update only its own Server projection, while Devices and iOS remain read-only.
+Active Live Activities receive the current name in content state; their
+creation attributes retain the initial name only as a compatibility fallback.
 
 ## Privacy
 

@@ -50,20 +50,24 @@ final class RunBuoyStore {
         identityStore: any DeviceIdentityStoring,
         cache: LocalCacheStore,
         userDefaults: UserDefaults = .standard,
-        initialSnapshot: CachedSnapshot? = nil
+        initialSnapshot: CachedSnapshot? = nil,
+        initialState: LoadState? = nil
     ) {
         self.api = api
         self.identityStore = identityStore
         self.cache = cache
         self.userDefaults = userDefaults
+        MachineNameMigration.removeLegacyLocalLabels(userDefaults: userDefaults)
         deviceIdentity = try? identityStore.load()
         if let initialSnapshot {
             runs = initialSnapshot.runs
             machines = initialSnapshot.machines
             messages = initialSnapshot.messages
             lastRefreshAt = initialSnapshot.savedAt
-            state = .loaded
+            state = initialState ?? .loaded
             reconcileRunModels(with: initialSnapshot.runs)
+        } else if let initialState {
+            state = initialState
         }
     }
 

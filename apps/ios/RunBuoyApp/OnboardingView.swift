@@ -11,6 +11,7 @@ struct OnboardingView: View {
     @Environment(RunBuoyStore.self) private var store
     @Environment(AppRouter.self) private var router
     let notificationCoordinator: NotificationCoordinator
+    let bypassesSystemPermissions: Bool
     let onFinished: () -> Void
 
     @State private var page = 0
@@ -20,6 +21,16 @@ struct OnboardingView: View {
     @State private var errorMessage: String?
     @State private var isWorking = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    init(
+        notificationCoordinator: NotificationCoordinator,
+        bypassesSystemPermissions: Bool = false,
+        onFinished: @escaping () -> Void
+    ) {
+        self.notificationCoordinator = notificationCoordinator
+        self.bypassesSystemPermissions = bypassesSystemPermissions
+        self.onFinished = onFinished
+    }
 
     var body: some View {
         VStack(spacing: 24) {
@@ -41,6 +52,7 @@ struct OnboardingView: View {
                 Label("pairing.success", systemImage: "checkmark.circle.fill")
                     .font(.headline)
                     .foregroundStyle(.green)
+                    .accessibilityIdentifier("onboarding.pairing-success")
             }
             if let errorMessage {
                 Label(errorMessage, systemImage: "exclamationmark.triangle")
@@ -61,6 +73,7 @@ struct OnboardingView: View {
             .buttonStyle(.glassProminent)
             .controlSize(.large)
             .disabled(isWorking)
+            .accessibilityIdentifier("onboarding.primary-action")
             .padding()
         }
         .background(Color(uiColor: .systemGroupedBackground))
@@ -117,9 +130,13 @@ struct OnboardingView: View {
         case 1:
             isWorking = true
             do {
-                _ = try await notificationCoordinator.requestAuthorization()
-                _ = try await store.bootstrapDevice()
-                UIApplication.shared.registerForRemoteNotifications()
+                if bypassesSystemPermissions {
+                    _ = try await store.bootstrapDevice()
+                } else {
+                    _ = try await notificationCoordinator.requestAuthorization()
+                    _ = try await store.bootstrapDevice()
+                    UIApplication.shared.registerForRemoteNotifications()
+                }
                 page = 2
             } catch {
                 errorMessage = error.localizedDescription
@@ -167,6 +184,7 @@ private struct ProductIntroduction: View {
                 BoundaryRow(symbol: "iphone", title: "onboarding.flow_phone")
             }
         }
+        .accessibilityIdentifier("onboarding.page.product")
     }
 }
 
@@ -182,6 +200,7 @@ private struct PermissionIntroduction: View {
                 BoundaryRow(symbol: "lock.fill", title: "onboarding.tokens_private")
             }
         }
+        .accessibilityIdentifier("onboarding.page.permissions")
     }
 }
 
@@ -195,6 +214,7 @@ private struct PairingIntroduction: View {
             Label("onboarding.one_time_code", systemImage: "clock.badge.checkmark")
                 .font(.headline)
         }
+        .accessibilityIdentifier("onboarding.page.pairing")
     }
 }
 
@@ -267,6 +287,7 @@ private struct PairingIdentityCard: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(.background, in: RoundedRectangle(cornerRadius: 16))
         .padding(.horizontal)
+        .accessibilityIdentifier("onboarding.pairing-identity")
     }
 }
 

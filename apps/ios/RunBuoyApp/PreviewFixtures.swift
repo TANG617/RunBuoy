@@ -178,21 +178,46 @@ enum PreviewFixtures {
     )
 
     @MainActor
-    static func store() -> RunBuoyStore {
-        let snapshot = CachedSnapshot(
+    static func store(
+        scenario: UITestConfiguration.Scenario = .loaded
+    ) -> RunBuoyStore {
+        let loadedSnapshot = CachedSnapshot(
             runs: [activeRun, failedRun],
             machines: [machine, ciMachine],
             messages: [message, ciMessage],
             savedAt: baseDate
         )
+        let snapshot: CachedSnapshot?
+        let initialState: RunBuoyStore.LoadState?
+        switch scenario {
+        case .loaded:
+            snapshot = loadedSnapshot
+            initialState = .loaded
+        case .empty:
+            snapshot = CachedSnapshot(
+                runs: [],
+                machines: [],
+                messages: [],
+                savedAt: baseDate
+            )
+            initialState = .loaded
+        case .offline:
+            snapshot = loadedSnapshot
+            initialState = .offline("UI test offline fixture")
+        case .failed:
+            snapshot = nil
+            initialState = .failed("UI test failure fixture")
+        }
+
         return RunBuoyStore(
-            api: PreviewAPI(snapshot: snapshot, events: events),
+            api: PreviewAPI(snapshot: loadedSnapshot, events: events),
             identityStore: PreviewIdentityStore(),
             cache: LocalCacheStore(
                 fileURL: FileManager.default.temporaryDirectory
                     .appendingPathComponent("runbuoy-preview-cache.json")
             ),
-            initialSnapshot: snapshot
+            initialSnapshot: snapshot,
+            initialState: initialState
         )
     }
 }

@@ -10,11 +10,14 @@ struct RunBuoyApp: App {
     @State private var router: AppRouter
     @State private var notificationCoordinator = NotificationCoordinator()
     @State private var activityCoordinator: ActivityTokenCoordinator
+    @State private var didFinishUITestOnboarding = false
     @AppStorage("runbuoy.onboarding-complete") private var onboardingComplete = false
     private let isUIPreviewMode: Bool
+    private let uiTestConfiguration: UITestConfiguration
 
     init() {
-        let isUIPreviewMode = Self.isUIPreviewLaunch
+        let uiTestConfiguration = UITestConfiguration.current
+        let isUIPreviewMode = Self.isUIPreviewLaunch || uiTestConfiguration.isEnabled
         let identityStore = KeychainDeviceIdentityStore()
         let api = URLSessionRunBuoyAPI(
             baseURLProvider: { AppConfiguration.live.apiBaseURL },
@@ -28,9 +31,16 @@ struct RunBuoyApp: App {
             router.selectedTab = .activeRuns
             router.activeRunsPath = [.runDetail(previewRunID)]
         }
+        if let initialURL = uiTestConfiguration.initialURL {
+            _ = router.handle(initialURL)
+        }
         _router = State(initialValue: router)
         if isUIPreviewMode {
-            _store = State(initialValue: PreviewFixtures.store())
+            _store = State(
+                initialValue: PreviewFixtures.store(
+                    scenario: uiTestConfiguration.scenario
+                )
+            )
         } else {
             _store = State(
                 initialValue: RunBuoyStore(
@@ -42,17 +52,22 @@ struct RunBuoyApp: App {
         }
         _activityCoordinator = State(initialValue: ActivityTokenCoordinator(api: api))
         self.isUIPreviewMode = isUIPreviewMode
+        self.uiTestConfiguration = uiTestConfiguration
     }
 
     var body: some Scene {
         WindowGroup {
             Group {
-                if onboardingComplete || isUIPreviewMode {
+                if shouldShowAppShell {
                     AppShellView()
                 } else {
                     OnboardingView(
                         notificationCoordinator: notificationCoordinator,
-                        onFinished: { onboardingComplete = true }
+                        bypassesSystemPermissions: uiTestConfiguration.isEnabled,
+                        onFinished: {
+                            onboardingComplete = true
+                            didFinishUITestOnboarding = true
+                        }
                     )
                 }
             }
@@ -99,6 +114,13 @@ struct RunBuoyApp: App {
             identityStore: identityStore
         )
         try await api.registerNotificationToken(token)
+    }
+
+    private var shouldShowAppShell: Bool {
+        if uiTestConfiguration.showsOnboarding {
+            return didFinishUITestOnboarding
+        }
+        return onboardingComplete || isUIPreviewMode
     }
 
     private static var isUIPreviewLaunch: Bool {

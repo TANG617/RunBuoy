@@ -14,6 +14,12 @@ class Credentials:
     def set(self, name: str, value: str) -> None:
         self.values[name] = value
 
+    def get(self, name: str) -> str | None:
+        return self.values.get(name)
+
+    def delete(self, name: str) -> None:
+        self.values.pop(name, None)
+
 
 def test_qr_is_safe_canonical_and_shown_before_first_poll(monkeypatch: Any) -> None:
     ordering: list[str] = []
@@ -69,3 +75,63 @@ def test_qr_is_safe_canonical_and_shown_before_first_poll(monkeypatch: Any) -> N
     assert ordering == ["shown", "poll"]
     assert result["status"] == "paired"
     assert credentials.values["machine_credential"] == "long-lived"
+    assert flow.PENDING_SESSION_KEY not in credentials.values
+    assert flow.PENDING_SECRET_KEY not in credentials.values
+
+
+def test_no_wait_saves_pending_pairing_for_resume(monkeypatch: Any) -> None:
+    class Client:
+        def __init__(self, _config: Any, _credentials: Any) -> None:
+            pass
+
+        def create_pairing(self, _payload: dict[str, Any]) -> dict[str, str]:
+            return {
+                "pairing_session_id": "pending-session",
+                "challenge": "pending-challenge",
+                "exchange_secret": "pending-secret",
+            }
+
+        def close(self) -> None:
+            pass
+
+    monkeypatch.setattr(flow, "RemoteClient", Client)
+    credentials = Credentials()
+    flow.pair_machine(
+        Config(machine_id="machine-stable"),
+        credentials,  # type: ignore[arg-type]
+        wait=False,
+    )
+    assert credentials.values[flow.PENDING_SESSION_KEY] == "pending-session"
+    assert credentials.values[flow.PENDING_SECRET_KEY] == "pending-secret"
+
+
+def test_resume_pairing_exchanges_saved_pending_secret(monkeypatch: Any) -> None:
+    class Client:
+        def __init__(self, _config: Any, _credentials: Any) -> None:
+            pass
+
+        def pairing_status(self, session: str, secret: str) -> dict[str, str]:
+            assert session == "pending-session"
+            assert secret == "pending-secret"
+            return {"status": "claimed"}
+
+        def exchange_pairing(self, session: str, secret: str) -> dict[str, str]:
+            assert session == "pending-session"
+            assert secret == "pending-secret"
+            return {"machine_credential": "long-lived"}
+
+        def close(self) -> None:
+            pass
+
+    monkeypatch.setattr(flow, "RemoteClient", Client)
+    credentials = Credentials()
+    credentials.set(flow.PENDING_SESSION_KEY, "pending-session")
+    credentials.set(flow.PENDING_SECRET_KEY, "pending-secret")
+    result = flow.resume_pairing(
+        Config(machine_id="machine-stable"),
+        credentials,  # type: ignore[arg-type]
+    )
+    assert result["status"] == "paired"
+    assert credentials.values["machine_credential"] == "long-lived"
+    assert flow.PENDING_SESSION_KEY not in credentials.values
+    assert flow.PENDING_SECRET_KEY not in credentials.values

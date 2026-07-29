@@ -68,6 +68,7 @@ def _live_run(harness: Harness) -> Run:
             },
             phase="solve",
             safe_message="Optimizing",
+            created_at=datetime(2026, 7, 26, 12, 0, tzinfo=UTC),
             started_at=datetime(2026, 7, 26, 12, 0, tzinfo=UTC),
             updated_at=datetime(2026, 7, 26, 12, 0, tzinfo=UTC),
             last_seq=7,
@@ -106,7 +107,8 @@ def test_exact_live_activity_start_payload_and_headers(harness: Harness) -> None
 def test_update_end_stale_and_default_dismissal(harness: Harness) -> None:
     run = _live_run(harness)
     now = datetime(2026, 7, 26, 12, 0, tzinfo=UTC)
-    update = live_payload(run, "LIVE_UPDATE", now, machine_name="Studio Mac")
+    delivered_at = now + timedelta(seconds=30)
+    update = live_payload(run, "LIVE_UPDATE", delivered_at, machine_name="Studio Mac")
     assert update["aps"]["event"] == "update"
     assert update["aps"]["stale-date"] == int((now + timedelta(seconds=60)).timestamp())
     assert "dismissal-date" not in update["aps"]
@@ -116,6 +118,7 @@ def test_update_end_stale_and_default_dismissal(harness: Harness) -> None:
     ended = live_payload(run, "LIVE_END", now, machine_name="Studio Mac")
     assert ended["aps"]["event"] == "end"
     assert ended["aps"]["content-state"]["endedAt"] == now.isoformat()
+    assert "stale-date" not in ended["aps"]
     assert "dismissal-date" not in ended["aps"]
 
 
@@ -169,6 +172,54 @@ def test_heartbeat_enqueues_live_update_with_fresh_timestamp(harness: Harness) -
         assert (
             update.desired_payload["aps"]["content-state"]["updatedAt"] == heartbeat_at.isoformat()
         )
+
+
+def test_machine_rename_updates_active_live_activity_content(harness: Harness) -> None:
+    device, machine = harness.pair()
+    run_id = str(uuid.uuid4())
+    harness.register_run(machine, run_id)
+    created_at = datetime.now(UTC) - timedelta(seconds=30)
+    assert (
+        post_events(
+            harness,
+            machine,
+            run_id,
+            [
+                event(run_id, machine["machine_id"], 1, "run.created", at=created_at),
+                event(run_id, machine["machine_id"], 2, "run.started", at=created_at),
+            ],
+        ).status_code
+        == 200
+    )
+    assert (
+        harness.client.put(
+            "/v1/live-activities/activity-rename/update-token",
+            headers=auth(device["credential"]),
+            json={
+                "token": "rename-update-token",
+                "device_id": device["device_id"],
+                "run_id": run_id,
+                "generation": 1,
+            },
+        ).status_code
+        == 204
+    )
+
+    renamed = harness.client.patch(
+        f"/v1/machines/{machine['machine_id']}",
+        headers=auth(machine["credential"]),
+        json={"display_name": "Build Mac"},
+    )
+    assert renamed.status_code == 200, renamed.text
+    with harness.session_factory() as session:
+        update = session.scalar(
+            select(PushOutbox).where(
+                PushOutbox.run_id == run_id,
+                PushOutbox.kind == "LIVE_UPDATE",
+            )
+        )
+        assert update is not None
+        assert update.desired_payload["aps"]["content-state"]["machineName"] == "Build Mac"
 
 
 def test_outbox_mock_send_records_payload_without_secrets(harness: Harness) -> None:

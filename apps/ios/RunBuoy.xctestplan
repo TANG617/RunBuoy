@@ -1,0 +1,39 @@
+{
+  "configurations" : [
+    {
+      "id" : "2B09D8B0-9F85-4FA1-81B6-ECA1F825513A",
+      "name" : "Default",
+      "options" : {
+        "language" : "en",
+        "region" : "US"
+      }
+    }
+  ],
+  "defaultOptions" : {
+    "codeCoverage" : true,
+    "targetForVariableExpansion" : {
+      "containerPath" : "container:RunBuoy.xcodeproj",
+      "identifier" : "E10000000000000000000001",
+      "name" : "RunBuoyApp"
+    }
+  },
+  "testTargets" : [
+    {
+      "parallelizable" : false,
+      "target" : {
+        "containerPath" : "container:RunBuoy.xcodeproj",
+        "identifier" : "E30000000000000000000001",
+        "name" : "RunBuoyTests"
+      }
+    },
+    {
+      "parallelizable" : false,
+      "target" : {
+        "containerPath" : "container:RunBuoy.xcodeproj",
+        "identifier" : "E40000000000000000000001",
+        "name" : "RunBuoyUITests"
+      }
+    }
+  ],
+  "version" : 1
+}

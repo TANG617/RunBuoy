@@ -1,17 +1,25 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Any
 
-from runbuoy.networking.client import flush_pending
+import httpx
+
+from runbuoy import __version__
+from runbuoy.config import Config, CredentialStore
+from runbuoy.networking.client import RemoteClient, flush_pending
+from runbuoy.paths import AppPaths
 from runbuoy.persistence.store import EventQueue
 
 
 class RecordingClient:
-    def __init__(self, fail_upload: bool = False) -> None:
+    def __init__(self, fail_upload: bool = False, fail_metadata: bool = False) -> None:
         self.fail_upload = fail_upload
+        self.fail_metadata = fail_metadata
         self.upserts: list[dict[str, Any]] = []
         self.batches: list[list[dict[str, Any]]] = []
+        self.machine_updates: list[tuple[str, str]] = []
 
     def upsert_run(self, run: dict[str, Any]) -> None:
         self.upserts.append(run)
@@ -20,6 +28,91 @@ class RecordingClient:
         if self.fail_upload:
             raise OSError("offline")
         self.batches.append([event.model_dump(mode="json") for event in events])
+
+    def update_machine(self, machine_id: str, display_name: str) -> None:
+        if self.fail_metadata:
+            raise OSError("offline")
+        self.machine_updates.append((machine_id, display_name))
+
+
+def test_run_upsert_sends_current_cli_version(tmp_path: Path, monkeypatch: Any) -> None:
+    monkeypatch.setenv("RUNBUOY_DISABLE_KEYRING", "1")
+    paths = AppPaths(
+        tmp_path / "config",
+        tmp_path / "data",
+        tmp_path / "state",
+        tmp_path / "cache",
+    )
+    credentials = CredentialStore(paths)
+    credentials.set("machine_credential", "machine-token")
+    recorded: list[dict[str, Any]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        recorded.append(json.loads(request.content))
+        return httpx.Response(200, json={})
+
+    client = RemoteClient(
+        Config(),
+        credentials,
+        transport=httpx.MockTransport(handler),
+    )
+    try:
+        client.upsert_run(
+            {
+                "run_id": "019fac7f-e12a-7000-8000-000000000001",
+                "machine_id": "machine-local",
+                "title": "Safe title",
+                "source": "cli",
+            }
+        )
+    finally:
+        client.close()
+    assert recorded == [
+        {
+            "machine_id": "machine-local",
+            "title": "Safe title",
+            "source": "cli",
+            "execution_status": "CREATED",
+            "cli_version": __version__,
+        }
+    ]
+
+
+def test_machine_update_uses_dedicated_endpoint(tmp_path: Path, monkeypatch: Any) -> None:
+    monkeypatch.setenv("RUNBUOY_DISABLE_KEYRING", "1")
+    paths = AppPaths(
+        tmp_path / "config",
+        tmp_path / "data",
+        tmp_path / "state",
+        tmp_path / "cache",
+    )
+    credentials = CredentialStore(paths)
+    credentials.set("machine_credential", "machine-token")
+    recorded: list[tuple[str, str, dict[str, Any]]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        recorded.append((request.method, request.url.path, json.loads(request.content)))
+        return httpx.Response(200, json={})
+
+    client = RemoteClient(Config(), credentials, transport=httpx.MockTransport(handler))
+    try:
+        client.update_machine("machine-local", "Build Mac")
+    finally:
+        client.close()
+    assert recorded == [("PATCH", "/v1/machines/machine-local", {"display_name": "Build Mac"})]
+
+
+def test_pending_machine_name_is_last_write_wins_and_flushes_before_events(
+    tmp_path: Path,
+) -> None:
+    queue = EventQueue(tmp_path / "db.sqlite3")
+    queue.queue_machine_metadata("machine", "Old Name")
+    queue.queue_machine_metadata("machine", "Build Mac")
+    client = RecordingClient()
+
+    assert flush_pending(queue, client, batch_size=20) == 0  # type: ignore[arg-type]
+    assert client.machine_updates == [("machine", "Build Mac")]
+    assert queue.pending_machine_metadata() is None
 
 
 def test_fully_offline_terminal_run_replays_from_created(tmp_path: Path) -> None:

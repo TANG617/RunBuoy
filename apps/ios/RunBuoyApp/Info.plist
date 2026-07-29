@@ -39,6 +39,8 @@
     <string>Scan a one-time RunBuoy machine pairing code.</string>
     <key>NSSupportsLiveActivities</key>
     <true/>
+    <key>NSSupportsLiveActivitiesFrequentUpdates</key>
+    <true/>
     <key>RUNBUOY_API_BASE_URL</key>
     <string>$(RUNBUOY_API_BASE_URL)</string>
     <key>UIBackgroundModes</key>

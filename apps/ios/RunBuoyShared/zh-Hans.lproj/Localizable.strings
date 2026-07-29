@@ -30,6 +30,8 @@
 "history.all" = "全部";
 "history.filtered_empty" = "%@ 暂无历史记录";
 "history.filtered_empty_description" = "这台电脑完成的运行和消息会显示在这里。";
+"history.show_less" = "收起";
+"history.show_remaining" = "显示其余 %d 条";
 "history.title" = "历史";
 "machine.architecture" = "架构";
 "machine.appearance" = "外观";
@@ -42,17 +44,15 @@
 "machine.icon.macpro" = "Mac Pro";
 "machine.icon.macpro_server" = "Mac Pro 服务器";
 "machine.icon.macstudio" = "Mac Studio";
-"machine.label_saved" = "已保存本地名称。";
 "machine.last_seen" = "最后在线";
-"machine.local_label" = "本地显示名称";
-"machine.local_label_hint" = "此名称仅在这台 iPhone 上更改。";
+"machine.name" = "名称";
+"machine.name_cli_hint" = "请在这台电脑上通过 RunBuoy CLI 修改名称。";
 "machine.paired" = "配对时间";
 "machine.pairing_removed" = "已从这台 iPhone 移除配对。";
 "machine.platform" = "平台";
 "machine.receiving_stopped" = "这台 iPhone 已停止接收更新。";
 "machine.remove_pairing" = "移除配对";
 "machine.removal_explanation" = "这些操作只会删除这台 iPhone 的接收订阅或本地凭证，绝不会向电脑发送消息。";
-"machine.save_local_label" = "保存本地名称";
 "machine.stop_receiving" = "停止接收";
 "machines.empty" = "没有已配对的电脑";
 "machines.empty_description" = "配对电脑后，可在这里查看运行状态。";
@@ -71,7 +71,7 @@
 "onboarding.notifications_body" = "通知和实时活动只显示有意义的变化，不会暴露完整日志。";
 "onboarding.one_time_code" = "配对码会过期，且不包含长期凭证";
 "onboarding.pair" = "配对电脑";
-"onboarding.pair_body" = "在电脑上运行 runbuoy pair，然后扫描一次性配对码。";
+"onboarding.pair_body" = "在电脑上运行 runbuoy device pair，然后扫描一次性配对码。";
 "onboarding.scan_code" = "扫描配对码";
 "onboarding.tokens_private" = "设备和活动令牌会安全上传，且永远不会写入普通日志";
 "onboarding.welcome" = "让每一次运行都尽收眼底。";
@@ -79,7 +79,7 @@
 "pairing.camera_unavailable" = "此设备无法使用相机扫描。请在允许相机权限的实体 iPhone 上使用。";
 "pairing.camera_unavailable_title" = "相机不可用";
 "pairing.claim" = "配对这台电脑";
-"pairing.code_hint" = "粘贴 runbuoy pair 生成的配对码。";
+"pairing.code_hint" = "粘贴 runbuoy device pair 生成的配对码。";
 "pairing.code_placeholder" = "配对码";
 "pairing.confirm_identity" = "确认电脑身份";
 "pairing.continue" = "继续";
@@ -134,6 +134,7 @@
 "settings.notifications" = "通知与显示";
 "settings.notifications_enabled" = "通知";
 "settings.pair_machine" = "配对新电脑";
+"settings.private_deployment" = "私有部署";
 "settings.privacy" = "隐私";
 "settings.product" = "产品";
 "settings.safe_messages" = "显示安全消息";
@@ -143,6 +144,7 @@
 "settings.server_saved" = "服务器已保存。";
 "settings.storage" = "存储";
 "settings.title" = "设置";
+"settings.website" = "官网";
 "status.cancelled" = "已在电脑端结束";
 "status.created" = "已创建";
 "status.failed" = "失败";
@@ -155,8 +157,8 @@
 "tab.history" = "历史";
 "tab.runs" = "运行";
 "tab.settings" = "设置";
-"widget.attention" = "需要关注";
-"widget.last_update" = "距上次更新";
+"widget.confirmed_elapsed" = "电脑已确认的运行时间";
+"widget.stale" = "数据可能已过期";
 "widget.terminal_time" = "距运行结束";
 "widget.explicit_eta" = "预计完成 %@";
 "widget.progress" = "进度";

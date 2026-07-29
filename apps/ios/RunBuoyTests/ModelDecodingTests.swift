@@ -13,6 +13,7 @@ final class ModelDecodingTests: XCTestCase {
         XCTAssertEqual(detail.run.progress?.boundedFraction, 0.37)
         XCTAssertNotNil(detail.run.estimatedEndAt)
         XCTAssertEqual(detail.run.healthStatus, .healthy)
+        XCTAssertLessThan(detail.run.createdAt, detail.run.startedAt)
         XCTAssertEqual(detail.feed.map(\.sequence), [42, 1])
     }
 
@@ -58,7 +59,64 @@ final class ModelDecodingTests: XCTestCase {
         XCTAssertEqual(state.sequence, 42)
         XCTAssertEqual(state.current, 37)
         XCTAssertEqual(state.healthStatus, "STALE")
+        XCTAssertEqual(state.machineName, "Mac Studio")
+        XCTAssertNotNil(state.createdAt)
         XCTAssertNotNil(state.estimatedEndAt)
+    }
+
+    func testConfirmedDurationUsesCreationAndLastMachineUpdate() {
+        let created = Date(timeIntervalSince1970: 1_000)
+        let started = created.addingTimeInterval(2)
+        let confirmed = created.addingTimeInterval(75)
+
+        XCTAssertEqual(
+            RunActivityDurationText.string(
+                createdAt: created,
+                startedAt: started,
+                updatedAt: confirmed
+            ),
+            "1:15"
+        )
+        XCTAssertEqual(
+            RunActivityDurationText.string(
+                createdAt: created,
+                startedAt: started,
+                updatedAt: created.addingTimeInterval(3_661)
+            ),
+            "1:01:01"
+        )
+    }
+
+    func testLiveActivityContentStateKeepsOldPayloadCompatibility() throws {
+        let data = Data(
+            """
+            {
+              "sequence": 1,
+              "executionStatus": "RUNNING",
+              "healthStatus": "HEALTHY",
+              "attentionStatus": "NONE",
+              "progressKind": "indeterminate",
+              "startedAt": "2026-07-29T08:00:00Z",
+              "updatedAt": "2026-07-29T08:00:15Z"
+            }
+            """.utf8
+        )
+
+        let state = try JSONDecoder().decode(
+            RunActivityAttributes.ContentState.self,
+            from: data
+        )
+
+        XCTAssertNil(state.createdAt)
+        XCTAssertNil(state.machineName)
+        XCTAssertEqual(
+            RunActivityDurationText.string(
+                createdAt: state.createdAt,
+                startedAt: state.startedAt,
+                updatedAt: state.updatedAt
+            ),
+            "0:15"
+        )
     }
 
     func testProgressFractionIsBoundedForRendering() {

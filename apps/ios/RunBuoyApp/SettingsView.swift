@@ -21,14 +21,16 @@ struct SettingsView: View {
                 NavigationLink(value: AppRoute.machines) {
                     LabeledContent {
                         Text(store.machines.count, format: .number)
+                            .foregroundStyle(.primary)
                     } label: {
                         Label("settings.machines", systemImage: "desktopcomputer.and.macbook")
                     }
                 }
+                .accessibilityIdentifier("settings.machines")
 
                 LabeledContent {
                     TextField(
-                        AppConfiguration.defaultServerAddress,
+                        "",
                         text: $draftServerAddress
                     )
                     .multilineTextAlignment(.trailing)
@@ -37,6 +39,7 @@ struct SettingsView: View {
                     .autocorrectionDisabled()
                     .submitLabel(.done)
                     .focused($isServerFieldFocused)
+                    .accessibilityLabel("settings.server")
                     .onSubmit(saveServer)
                 } label: {
                     Label("settings.server", systemImage: "server.rack")
@@ -49,7 +52,7 @@ struct SettingsView: View {
                 } else if let serverMessage {
                     Label(serverMessage, systemImage: "checkmark.circle")
                         .font(.footnote)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.primary)
                 }
             } header: {
                 Text("settings.connections")
@@ -64,34 +67,54 @@ struct SettingsView: View {
 
             Section("settings.notifications") {
                 Toggle("settings.notifications_enabled", isOn: $notificationsEnabled)
+                    .accessibilityIdentifier("settings.notifications")
                 Toggle("settings.live_activities", isOn: $liveActivitiesEnabled)
                     .disabled(!ActivityAuthorizationInfo().areActivitiesEnabled)
+                    .accessibilityIdentifier("settings.liveActivities")
                 Toggle("settings.safe_messages", isOn: $safeMessagesEnabled)
+                    .accessibilityIdentifier("settings.safeMessages")
                 if !ActivityAuthorizationInfo().areActivitiesEnabled {
                     Label("settings.live_activities_system_disabled", systemImage: "exclamationmark.triangle")
                         .font(.footnote)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.primary)
                 }
             }
 
             Section("settings.storage") {
                 Button(action: clearCache) {
                     Label("settings.clear_cache", systemImage: "trash")
+                        .foregroundStyle(.primary)
                 }
+                .tint(.primary)
+                .accessibilityIdentifier("settings.clearCache")
                 if let cacheMessage {
                     Text(cacheMessage)
                         .font(.footnote)
                         .foregroundStyle(.secondary)
+                        .accessibilityIdentifier("settings.cacheCleared")
                 }
             }
 
             Section("settings.about") {
-                LabeledContent("settings.product", value: "RunBuoy")
-                Link(destination: URL(string: "https://runbuoy.dev/privacy")!) {
-                    Label("settings.privacy", systemImage: "hand.raised")
+                Link(destination: RunBuoyLinks.website) {
+                    Label("settings.website", systemImage: "globe")
+                        .foregroundStyle(.primary)
                 }
+                .tint(.primary)
+                Link(destination: RunBuoyLinks.privacy) {
+                    Label("settings.privacy", systemImage: "hand.raised")
+                        .foregroundStyle(.primary)
+                }
+                .tint(.primary)
+                Link(destination: RunBuoyLinks.privateDeployment) {
+                    Label("settings.private_deployment", systemImage: "server.rack")
+                        .foregroundStyle(.primary)
+                }
+                .tint(.primary)
             }
         }
+        .scrollEdgeEffectStyle(.hard, for: .bottom)
+        .accessibilityIdentifier("screen.settings")
         .navigationTitle("settings.title")
         .onChange(of: notificationsEnabled) { _, _ in savePreferences() }
         .onChange(of: liveActivitiesEnabled) { _, _ in savePreferences() }
@@ -153,6 +176,12 @@ struct SettingsView: View {
         serverMessage = "settings.server_saved"
         Task { await store.refresh() }
     }
+}
+
+enum RunBuoyLinks {
+    static let website = URL(string: "https://www.runbuoy.cloud")!
+    static let privacy = URL(string: "https://www.runbuoy.cloud/privacy")!
+    static let privateDeployment = URL(string: "https://www.runbuoy.cloud/self-hosting")!
 }
 
 #Preview {
