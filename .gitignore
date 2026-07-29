@@ -2,6 +2,10 @@
 .env
 .env.*
 !.env.example
+*.p8
+infra/secrets/
+infra/*.pre-*
+server/**/*.pre-*
 .local-packages/
 .pytest_cache/
 .mypy_cache/
