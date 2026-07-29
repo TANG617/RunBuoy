@@ -24,7 +24,7 @@ Mock APNs 不需要 Apple 凭证，会记录确定性的推送载荷，适合开
 ## 配置 CLI
 
 ```bash
-runbuoy config --server-url https://runbuoy.example.com
+runbuoy config set --server-url https://runbuoy.example.com
 runbuoy doctor
 ```
 

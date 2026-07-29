@@ -1,0 +1,15 @@
+[
+  {
+    "text": "Quick Start",
+    "link": "/guide/"
+  },
+  {
+    "text": "Docs",
+    "link": "/docs/",
+    "activeMatch": "^/(docs|guide/(install|pairing|run|progress)|security|self-hosting|download)"
+  },
+  {
+    "text": "Privacy",
+    "link": "/privacy"
+  }
+]

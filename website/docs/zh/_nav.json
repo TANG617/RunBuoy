@@ -1,0 +1,15 @@
+[
+  {
+    "text": "快速开始",
+    "link": "/guide/"
+  },
+  {
+    "text": "使用文档",
+    "link": "/docs/",
+    "activeMatch": "^/(docs|guide/(install|pairing|run|progress)|security|self-hosting|download)"
+  },
+  {
+    "text": "隐私",
+    "link": "/privacy"
+  }
+]
