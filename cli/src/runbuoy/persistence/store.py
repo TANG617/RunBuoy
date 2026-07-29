@@ -97,6 +97,14 @@ class EventQueue:
                 );
                 CREATE INDEX IF NOT EXISTS idx_events_delivery
                     ON events(delivered, next_attempt_at, run_id, seq);
+                CREATE TABLE IF NOT EXISTS machine_metadata_outbox (
+                    machine_id TEXT PRIMARY KEY,
+                    display_name TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    attempt_count INTEGER NOT NULL DEFAULT 0,
+                    next_attempt_at REAL NOT NULL DEFAULT 0,
+                    last_error TEXT
+                );
                 """
             )
             columns = {
@@ -295,9 +303,7 @@ class EventQueue:
         active_only: bool = False,
         limit: int = 20,
     ) -> list[dict[str, Any]]:
-        escaped_reference = (
-            reference.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-        )
+        escaped_reference = reference.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
         clauses = ["(run_id = ? OR run_id LIKE ? ESCAPE '\\')"]
         parameters: list[Any] = [reference, f"{escaped_reference}%"]
         if active_only:
@@ -407,6 +413,70 @@ class EventQueue:
                 WHERE event_id IN ({placeholders})
                 """,
                 (error[:300], time.time() + delay_seconds, *event_ids),
+            )
+
+    def queue_machine_metadata(self, machine_id: str, display_name: str) -> None:
+        with self.connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO machine_metadata_outbox(
+                    machine_id, display_name, updated_at, attempt_count,
+                    next_attempt_at, last_error
+                ) VALUES (?, ?, ?, 0, 0, NULL)
+                ON CONFLICT(machine_id) DO UPDATE SET
+                    display_name = excluded.display_name,
+                    updated_at = excluded.updated_at,
+                    attempt_count = 0,
+                    next_attempt_at = 0,
+                    last_error = NULL
+                """,
+                (machine_id, display_name, utc_now().isoformat()),
+            )
+
+    def pending_machine_metadata(self, *, now: float | None = None) -> dict[str, Any] | None:
+        import time
+
+        with self.connect() as connection:
+            row = connection.execute(
+                """
+                SELECT * FROM machine_metadata_outbox
+                WHERE next_attempt_at <= ?
+                ORDER BY updated_at DESC
+                LIMIT 1
+                """,
+                (time.time() if now is None else now,),
+            ).fetchone()
+        return dict(row) if row is not None else None
+
+    def mark_machine_metadata_delivered(self, machine_id: str, display_name: str) -> None:
+        with self.connect() as connection:
+            connection.execute(
+                """
+                DELETE FROM machine_metadata_outbox
+                WHERE machine_id = ? AND display_name = ?
+                """,
+                (machine_id, display_name),
+            )
+
+    def mark_machine_metadata_failed(
+        self,
+        machine_id: str,
+        display_name: str,
+        error: str,
+        delay_seconds: float,
+    ) -> None:
+        import time
+
+        with self.connect() as connection:
+            connection.execute(
+                """
+                UPDATE machine_metadata_outbox
+                SET attempt_count = attempt_count + 1,
+                    last_error = ?,
+                    next_attempt_at = ?
+                WHERE machine_id = ? AND display_name = ?
+                """,
+                (error[:300], time.time() + delay_seconds, machine_id, display_name),
             )
 
     def event_rows(self, run_id: str) -> list[dict[str, Any]]:

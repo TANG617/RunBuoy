@@ -85,6 +85,8 @@ and no long-lived token. One iPhone installation can pair multiple Machines.
 runbuoy demo live-activity
 runbuoy demo notification
 
+runbuoy config set --machine-name "Build Mac"
+
 runbuoy run -- python3 experiment.py
 
 runbuoy notify \
@@ -143,8 +145,10 @@ runbuoy run \
   -- python3 experiment.py
 ```
 
-Without an explicit source, the Live Activity shows indeterminate state,
-elapsed time, phase, and last update—never a synthetic percent.
+Without an explicit source, the Live Activity shows indeterminate state and
+Machine-confirmed elapsed time—never a synthetic percent. The elapsed value
+advances only when a new Machine event arrives; a frozen value indicates that
+the delivery or display path has not received a fresh confirmation.
 
 ## Local-only commands
 
@@ -224,7 +228,10 @@ without HTML, JavaScript, executable schemes, or WebView.
 - Ordinary progress is coalesced to at most one update every three seconds and
   less than 1% changes are suppressed.
 - Phase, attention, terminal success, and failure update immediately.
-- Heartbeats update health but do not directly cause a push.
+- A heartbeat is emitted every 15 seconds and advances the confirmed elapsed
+  time with a low-priority Live Activity update.
+- Active payloads become stale 60 seconds after the latest confirmed Machine
+  event; terminal payloads end the activity with final state.
 - APNs 410 invalidates the token; retry is bounded.
 
 Production APNs uses HTTP/2, TLS, ES256 provider tokens, current rotating
@@ -276,6 +283,7 @@ See [`docs/development.md`](docs/development.md).
 - [Architecture](docs/architecture.md)
 - [Protocol](docs/protocol.md)
 - [Security](docs/security.md) and [threat model](docs/threat-model.md)
+- [Deployment and release guide](docs/deployment.md)
 - [Self-hosting](docs/self-hosting.md)
 - [APNs setup](docs/apns-setup.md)
 - [CLI distribution and PyPI releases](docs/cli-distribution.md)

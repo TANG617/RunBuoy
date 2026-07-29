@@ -30,8 +30,10 @@ struct RunDetailView: View {
                 ProgressView("run.loading")
             }
         }
+        .accessibilityIdentifier("screen.runDetail")
         .navigationTitle("run.detail_title")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar(.hidden, for: .tabBar)
         .task(id: runID) { await load() }
     }
 
@@ -66,30 +68,32 @@ struct RunDetailContent: View {
             RunOverviewSection(run: detail.run)
 
             Section("run.timeline") {
-                LabeledContent("run.elapsed") {
+                DetailValueRow("run.elapsed") {
                     RunElapsedView(
                         startedAt: detail.run.startedAt,
                         endedAt: detail.run.endedAt
                     )
                 }
                 if let estimate = detail.run.estimatedEndAt {
-                    LabeledContent("run.explicit_eta") {
+                    DetailValueRow("run.explicit_eta") {
                         Text(estimate, format: .dateTime.hour().minute())
                     }
                 }
-                LabeledContent("run.started") {
+                DetailValueRow("run.started") {
                     Text(detail.run.startedAt, format: .dateTime)
                 }
-                LabeledContent("run.updated") {
+                DetailValueRow("run.updated") {
                     Text(detail.run.updatedAt, format: .dateTime)
                 }
                 if let ended = detail.run.endedAt {
-                    LabeledContent("run.ended") {
+                    DetailValueRow("run.ended") {
                         Text(ended, format: .dateTime)
                     }
                 }
                 if let exitCode = detail.run.exitCode {
-                    LabeledContent("run.exit_code", value: exitCode.formatted())
+                    DetailValueRow("run.exit_code") {
+                        Text(exitCode, format: .number)
+                    }
                 }
             }
 
@@ -100,6 +104,7 @@ struct RunDetailContent: View {
                     Button(action: copySafeMessage) {
                         Label("run.copy_message", systemImage: "doc.on.doc")
                     }
+                    .tint(.primary)
                 }
             }
 
@@ -148,6 +153,50 @@ private struct SafeLogLine: Identifiable {
     let text: String
 }
 
+private struct DetailValueRow<Value: View>: View {
+    let title: LocalizedStringKey
+    @ViewBuilder let value: () -> Value
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    init(
+        _ title: LocalizedStringKey,
+        @ViewBuilder value: @escaping () -> Value
+    ) {
+        self.title = title
+        self.value = value
+    }
+
+    var body: some View {
+        Group {
+            if dynamicTypeSize.isAccessibilitySize {
+                VStack(alignment: .leading, spacing: 4) {
+                    titleLabel
+                    valueLabel
+                }
+            } else {
+                HStack(alignment: .firstTextBaseline, spacing: 12) {
+                    titleLabel
+                    Spacer(minLength: 8)
+                    valueLabel
+                }
+            }
+        }
+        .accessibilityElement(children: .combine)
+    }
+
+    private var titleLabel: some View {
+        Text(title)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+
+    private var valueLabel: some View {
+        value()
+            .foregroundStyle(.primary)
+            .fixedSize(horizontal: false, vertical: true)
+            .multilineTextAlignment(dynamicTypeSize.isAccessibilitySize ? .leading : .trailing)
+    }
+}
+
 private struct RunOverviewSection: View {
     let run: RunSnapshot
 
@@ -157,12 +206,13 @@ private struct RunOverviewSection: View {
                 Text(run.title)
                     .font(.title2.bold())
                     .fixedSize(horizontal: false, vertical: true)
-                Label {
-                    Text(run.machineName)
-                } icon: {
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
                     MachineIconImage(machineID: run.machineID)
+                        .accessibilityHidden(true)
+                    Text(run.machineName)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
-                    .foregroundStyle(.secondary)
+                .foregroundStyle(.primary)
                 HStack {
                     StatusBadge(presentation: run.executionStatus.presentation)
                     StatusBadge(presentation: run.healthStatus.presentation)
@@ -173,7 +223,9 @@ private struct RunOverviewSection: View {
                 RunProgressView(
                     progress: run.progress,
                     phase: run.phase,
-                    showsIndeterminate: run.executionStatus.isActive
+                    showsIndeterminate: run.executionStatus.isActive,
+                    emphasis: .prominent,
+                    tint: run.executionStatus.progressTint
                 )
             }
             .padding(.vertical, 8)
@@ -198,6 +250,7 @@ private struct RunElapsedView: View {
     private func durationText(to end: Date) -> some View {
         Text(RunDurationText.string(from: startedAt, to: end))
             .monospacedDigit()
+            .foregroundStyle(.primary)
     }
 }
 
@@ -224,7 +277,8 @@ private struct RunDetailActionBar: View {
 
                 Button(action: copyID) {
                     Image(systemName: "doc.on.doc")
-                        .frame(width: 24, height: 24)
+                        .frame(minWidth: 44, minHeight: 44)
+                        .contentShape(Circle())
                 }
                 .buttonStyle(.glass)
                 .buttonBorderShape(.circle)
@@ -232,7 +286,8 @@ private struct RunDetailActionBar: View {
 
                 ShareLink(item: shareSummary) {
                     Image(systemName: "square.and.arrow.up")
-                        .frame(width: 24, height: 24)
+                        .frame(minWidth: 44, minHeight: 44)
+                        .contentShape(Circle())
                 }
                 .buttonStyle(.glassProminent)
                 .buttonBorderShape(.circle)

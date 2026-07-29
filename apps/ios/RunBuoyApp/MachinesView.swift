@@ -29,9 +29,11 @@ struct MachinesView: View {
                 NavigationLink(value: AppRoute.machine(machine.id)) {
                     MachineRow(machine: machine)
                 }
+                .accessibilityIdentifier("machine.row.\(machine.id)")
             }
         }
         .listStyle(.insetGrouped)
+        .accessibilityIdentifier("screen.machines")
         .navigationTitle("machines.title")
         .overlay {
             if store.machines.isEmpty {
@@ -51,10 +53,12 @@ struct MachinesView: View {
                 Button(action: showPairingCode) {
                     Label("pairing.enter_code", systemImage: "keyboard")
                 }
+                .accessibilityIdentifier("machines.enterPairingCode")
 
                 Button(action: showScanner) {
                     Label("pairing.scan_title", systemImage: "qrcode.viewfinder")
                 }
+                .accessibilityIdentifier("machines.scanPairingCode")
             }
         }
         .sheet(item: $presentedSheet, onDismiss: presentQueuedPairingCode) { sheet in
@@ -178,46 +182,73 @@ private struct PairMachineSheet: View {
 
 struct MachineRow: View {
     let machine: MachineSnapshot
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
-        HStack(spacing: 12) {
-            MachineIconImage(machineID: machine.id)
-                .font(.title2)
-                .foregroundStyle(machine.isSubscribed ? Color.accentColor : .secondary)
-                .frame(width: 34)
-                .overlay(alignment: .bottomTrailing) {
-                    if !machine.isSubscribed {
-                        Image(systemName: "exclamationmark.circle.fill")
-                            .font(.caption2)
-                            .foregroundStyle(.orange)
-                            .background(.background, in: Circle())
-                    }
+        Group {
+            if dynamicTypeSize.isAccessibilitySize {
+                VStack(alignment: .leading, spacing: 8) {
+                    machineIcon
+                    machineMetadata
                 }
-                .accessibilityHidden(true)
-            VStack(alignment: .leading, spacing: 4) {
-                Text(localLabel)
-                    .font(.headline)
-                Text("\(machine.platform) · \(machine.cliVersion)")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                Label {
-                    Text(machine.lastSeenAt, format: .relative(presentation: .named))
-                } icon: {
-                    Image(systemName: machine.isSubscribed ? "bell.fill" : "bell.slash")
+            } else {
+                HStack(spacing: 12) {
+                    machineIcon
+                    machineMetadata
                 }
-                .font(.caption)
-                .foregroundStyle(.secondary)
             }
         }
         .padding(.vertical, 4)
         .accessibilityElement(children: .combine)
     }
 
-    private var localLabel: String {
-        MachineLocalLabel.displayName(
-            machineID: machine.id,
-            serverName: machine.displayName
-        )
+    private var machineIcon: some View {
+        MachineIconImage(machineID: machine.id)
+            .font(.title2)
+            .foregroundStyle(machine.isSubscribed ? Color.accentColor : .secondary)
+            .frame(width: 34)
+            .overlay(alignment: .bottomTrailing) {
+                if !machine.isSubscribed {
+                    Image(systemName: "exclamationmark.circle.fill")
+                        .font(.caption2)
+                        .foregroundStyle(.orange)
+                        .background(.background, in: Circle())
+                }
+            }
+            .accessibilityHidden(true)
+    }
+
+    private var machineMetadata: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(machine.displayName)
+                .font(.headline)
+                .lineLimit(nil)
+                .fixedSize(horizontal: false, vertical: true)
+            Text("\(machine.platform) · \(machine.cliVersion)")
+                .font(.subheadline)
+                .foregroundStyle(.primary)
+                .fixedSize(horizontal: false, vertical: true)
+            Label {
+                Text(machine.lastSeenAt, format: .relative(presentation: .named))
+            } icon: {
+                Image(systemName: machine.isSubscribed ? "bell.fill" : "bell.slash")
+            }
+            .labelStyle(MachineMetadataLabelStyle())
+            .font(.caption)
+            .foregroundStyle(.primary)
+        }
+        .fixedSize(horizontal: false, vertical: true)
+        .layoutPriority(1)
+    }
+
+}
+
+private struct MachineMetadataLabelStyle: LabelStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        HStack(spacing: 4) {
+            configuration.icon
+            configuration.title
+        }
     }
 }
 
@@ -247,18 +278,11 @@ private struct MachineDetailContent: View {
     @Environment(RunBuoyStore.self) private var store
 
     let machine: MachineSnapshot
-    @State private var localLabel: String
     @State private var notice: LocalizedStringKey?
     @AppStorage private var machineIconName: String
 
     init(machine: MachineSnapshot) {
         self.machine = machine
-        _localLabel = State(
-            initialValue: MachineLocalLabel.displayName(
-                machineID: machine.id,
-                serverName: machine.displayName
-            )
-        )
         _machineIconName = AppStorage(
             wrappedValue: MachineIcon.defaultValue.rawValue,
             MachineIcon.key(for: machine.id)
@@ -267,11 +291,8 @@ private struct MachineDetailContent: View {
 
     var body: some View {
         Form {
-            Section("machine.identity") {
-                TextField("machine.local_label", text: $localLabel)
-                    .textInputAutocapitalization(.words)
-                    .accessibilityHint("machine.local_label_hint")
-                Button("machine.save_local_label", action: saveLocalLabel)
+            Section {
+                LabeledContent("machine.name", value: machine.displayName)
                 LabeledContent("machine.platform", value: machine.platform)
                 if let architecture = machine.architecture {
                     LabeledContent("machine.architecture", value: architecture)
@@ -283,6 +304,10 @@ private struct MachineDetailContent: View {
                 LabeledContent("machine.paired") {
                     Text(machine.pairedAt, format: .dateTime)
                 }
+            } header: {
+                Text("machine.identity")
+            } footer: {
+                Text("machine.name_cli_hint")
             }
 
             Section("machine.appearance") {
@@ -328,24 +353,9 @@ private struct MachineDetailContent: View {
                 }
             }
         }
-        .navigationTitle(localLabel.isEmpty ? machine.displayName : localLabel)
+        .accessibilityIdentifier("screen.machineDetail")
+        .navigationTitle(machine.displayName)
         .navigationBarTitleDisplayMode(.inline)
-    }
-
-    private var labelKey: String {
-        MachineLocalLabel.key(for: machine.id)
-    }
-
-    private func saveLocalLabel() {
-        let value = localLabel.trimmingCharacters(in: .whitespacesAndNewlines)
-        if value.isEmpty {
-            UserDefaults.standard.removeObject(forKey: labelKey)
-            localLabel = machine.displayName
-        } else {
-            UserDefaults.standard.set(value, forKey: labelKey)
-            localLabel = value
-        }
-        notice = "machine.label_saved"
     }
 
     private func stopReceiving() {

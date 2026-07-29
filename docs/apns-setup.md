@@ -53,8 +53,9 @@ ActivityKit payloads use epoch-second `timestamp`, `event` set to `start`,
 `RunActivityAttributes.ContentState`. Start payloads also contain an alert,
 `attributes-type`, and `attributes`. End payloads contain the final content
 state. Ordinary progress uses priority 5; terminal and attention transitions
-use 10. Updates carry a stale date. End payloads carry the configured
-dismissal date.
+use 10. Active updates carry a stale date 60 seconds after the latest
+confirmed Machine event. End payloads omit the stale date, carry final state,
+and use ActivityKit's default dismissal behavior.
 
 APNs `410 Unregistered` invalidates the target. Permanent 4xx errors are not
 retried; transient failures use bounded exponential backoff.

@@ -13,6 +13,7 @@ struct AppShellView: View {
                 }
             } label: {
                 Label("tab.active", systemImage: "waveform.path.ecg")
+                    .accessibilityIdentifier("tab.activeRuns")
             }
 
             Tab(value: AppTab.history) {
@@ -22,6 +23,7 @@ struct AppShellView: View {
                 }
             } label: {
                 Label("tab.history", systemImage: "clock.arrow.circlepath")
+                    .accessibilityIdentifier("tab.history")
             }
 
             Tab(value: AppTab.settings) {
@@ -31,6 +33,7 @@ struct AppShellView: View {
                 }
             } label: {
                 Label("tab.settings", systemImage: "gearshape")
+                    .accessibilityIdentifier("tab.settings")
             }
         }
         .tabViewStyle(.automatic)

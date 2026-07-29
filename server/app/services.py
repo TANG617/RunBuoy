@@ -61,6 +61,7 @@ def run_snapshot(run: Run) -> dict[str, Any]:
         "progress": run.progress,
         "phase": run.phase,
         "safe_message": run.safe_message,
+        "created_at": run.created_at,
         "started_at": run.started_at,
         "updated_at": run.updated_at,
         "ended_at": run.ended_at,
@@ -73,7 +74,7 @@ def run_snapshot(run: Run) -> dict[str, Any]:
     }
 
 
-def live_content_state(run: Run) -> dict[str, Any]:
+def live_content_state(run: Run, *, machine_name: str | None = None) -> dict[str, Any]:
     progress = run.progress or {}
     content: dict[str, Any] = {
         "sequence": max(run.last_seq, 1),
@@ -86,8 +87,10 @@ def live_content_state(run: Run) -> dict[str, Any]:
         "total": progress.get("total"),
         "phase": run.phase,
         "message": run.safe_message,
+        "createdAt": aware(run.created_at).isoformat(),
         "startedAt": aware(run.started_at or run.updated_at).isoformat(),
         "updatedAt": aware(run.updated_at).isoformat(),
+        "machineName": machine_name or run.machine_id,
         "estimatedEndAt": progress.get("estimated_end_at"),
         "exitCode": run.exit_code,
     }
@@ -117,9 +120,10 @@ def live_payload(
     aps: dict[str, Any] = {
         "timestamp": int(current.timestamp()),
         "event": {"LIVE_START": "start", "LIVE_UPDATE": "update", "LIVE_END": "end"}[kind],
-        "content-state": live_content_state(run),
-        "stale-date": int((current + timedelta(seconds=60)).timestamp()),
+        "content-state": live_content_state(run, machine_name=machine_name),
     }
+    if kind != "LIVE_END":
+        aps["stale-date"] = int((aware(run.updated_at) + timedelta(seconds=60)).timestamp())
     if kind == "LIVE_START":
         aps.update(
             {
@@ -534,8 +538,13 @@ def ingest_events(
         )
         session.add(record)
 
+        if run.last_seq == 0:
+            run.updated_at = event.occurred_at
+        else:
+            run.updated_at = max(aware(run.updated_at), event.occurred_at)
         run.last_seq = event.seq
-        run.updated_at = event.occurred_at
+        if event.type == "run.created":
+            run.created_at = event.occurred_at
         next_status = EVENT_STATUS.get(event.type)
         if next_status is not None:
             run.execution_status = next_status

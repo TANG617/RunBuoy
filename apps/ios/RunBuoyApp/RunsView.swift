@@ -21,11 +21,13 @@ struct ActiveRunsView: View {
                         NavigationLink(value: AppRoute.runDetail(model.id)) {
                             RunRow(model: model)
                         }
+                        .accessibilityIdentifier("run.row.\(model.id.uuidString.lowercased())")
                     }
                 }
             }
         }
         .listStyle(.insetGrouped)
+        .accessibilityIdentifier("screen.activeRuns")
         .navigationTitle("runs.active")
         .overlay {
             if isEmpty, store.state != .loading {
@@ -63,6 +65,8 @@ struct RunHistoryView: View {
     @Environment(RunBuoyStore.self) private var store
     @AppStorage("runbuoy.safe-messages-enabled") private var safeMessagesEnabled = true
     @State private var selectedMachineID: String?
+    @State private var areRunsExpanded = false
+    @State private var areMessagesExpanded = false
 
     init(initialMachineID: String? = nil) {
         _selectedMachineID = State(initialValue: initialMachineID)
@@ -102,6 +106,24 @@ struct RunHistoryView: View {
         }
     }
 
+    private var visibleRunModels: ArraySlice<RunSummaryModel> {
+        filteredRunModels.prefix(
+            HistorySectionPresentation.visibleCount(
+                totalCount: filteredRunModels.count,
+                isExpanded: areRunsExpanded
+            )
+        )
+    }
+
+    private var visibleMessages: ArraySlice<RichMessage> {
+        filteredMessages.prefix(
+            HistorySectionPresentation.visibleCount(
+                totalCount: filteredMessages.count,
+                isExpanded: areMessagesExpanded
+            )
+        )
+    }
+
     private var isEmpty: Bool {
         filteredRunModels.isEmpty && filteredMessages.isEmpty
     }
@@ -115,23 +137,34 @@ struct RunHistoryView: View {
 
             if !filteredRunModels.isEmpty {
                 Section("runs.recent") {
-                    ForEach(filteredRunModels) { model in
+                    ForEach(visibleRunModels) { model in
                         NavigationLink(value: AppRoute.runDetail(model.id)) {
                             RunRow(model: model)
                         }
+                        .accessibilityIdentifier("run.row.\(model.id.uuidString.lowercased())")
                     }
+                    HistoryExpansionButton(
+                        totalCount: filteredRunModels.count,
+                        isExpanded: $areRunsExpanded
+                    )
                 }
             }
 
             if !filteredMessages.isEmpty {
                 Section("runs.messages") {
-                    ForEach(filteredMessages) { message in
+                    ForEach(visibleMessages) { message in
                         RichMessageRow(message: message)
+                            .accessibilityIdentifier("history.message.\(message.id)")
                     }
+                    HistoryExpansionButton(
+                        totalCount: filteredMessages.count,
+                        isExpanded: $areMessagesExpanded
+                    )
                 }
             }
         }
         .listStyle(.insetGrouped)
+        .accessibilityIdentifier("screen.history")
         .navigationTitle("history.title")
         .navigationBarTitleDisplayMode(.inline)
         .overlay {
@@ -158,6 +191,10 @@ struct RunHistoryView: View {
         }
         .refreshable { await reload() }
         .task { await loadIfNeeded() }
+        .onChange(of: selectedMachineID) { _, _ in
+            areRunsExpanded = false
+            areMessagesExpanded = false
+        }
         .onChange(of: machineOptionIDs) { _, availableIDs in
             guard let selectedMachineID,
                   !availableIDs.contains(selectedMachineID)
@@ -190,6 +227,65 @@ struct RunHistoryView: View {
     }
 }
 
+enum HistorySectionPresentation {
+    static let collapsedCount = 5
+
+    static func visibleCount(totalCount: Int, isExpanded: Bool) -> Int {
+        isExpanded ? totalCount : min(totalCount, collapsedCount)
+    }
+
+    static func remainingCount(totalCount: Int) -> Int {
+        max(0, totalCount - collapsedCount)
+    }
+}
+
+private struct HistoryExpansionButton: View {
+    let totalCount: Int
+    @Binding var isExpanded: Bool
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    private var remainingCount: Int {
+        HistorySectionPresentation.remainingCount(totalCount: totalCount)
+    }
+
+    var body: some View {
+        if remainingCount > 0 {
+            Button(action: toggleExpansion) {
+                Label {
+                    Text(label)
+                } icon: {
+                    Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                }
+                .font(.subheadline.weight(.semibold))
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
+            }
+            .accessibilityLabel(label)
+            .accessibilityIdentifier(
+                isExpanded
+                    ? "history.expansion.collapse"
+                    : "history.expansion.expand"
+            )
+        }
+    }
+
+    private var label: String {
+        if isExpanded {
+            return String(localized: "history.show_less")
+        }
+        return String(
+            format: String(localized: "history.show_remaining"),
+            remainingCount
+        )
+    }
+
+    private func toggleExpansion() {
+        withAnimation(reduceMotion ? nil : .smooth(duration: 0.25)) {
+            isExpanded.toggle()
+        }
+    }
+}
+
 struct HistoryMachineOption: Identifiable, Hashable {
     let id: String
     let name: String
@@ -197,8 +293,7 @@ struct HistoryMachineOption: Identifiable, Hashable {
     static func makeOptions(
         machines: [MachineSnapshot],
         runs: [RunSnapshot],
-        messages: [RichMessage],
-        userDefaults: UserDefaults = .standard
+        messages: [RichMessage]
     ) -> [HistoryMachineOption] {
         var serverNamesByID: [String: String] = [:]
 
@@ -214,14 +309,7 @@ struct HistoryMachineOption: Identifiable, Hashable {
         }
 
         return serverNamesByID.map { machineID, serverName in
-            HistoryMachineOption(
-                id: machineID,
-                name: MachineLocalLabel.displayName(
-                    machineID: machineID,
-                    serverName: serverName,
-                    userDefaults: userDefaults
-                )
-            )
+            HistoryMachineOption(id: machineID, name: serverName)
         }
         .sorted { lhs, rhs in
             let comparison = lhs.name.localizedStandardCompare(rhs.name)
@@ -282,24 +370,29 @@ private struct HistoryMachineFilterBar: View {
                 .font(.subheadline.weight(.semibold))
                 .lineLimit(1)
                 .fixedSize(horizontal: true, vertical: false)
-                .foregroundStyle(
-                    isSelected
-                        ? Color(uiColor: .systemBackground)
-                        : Color.primary
-                )
+                .foregroundStyle(Color.primary)
                 .padding(.horizontal, 14)
                 .padding(.vertical, 9)
                 .background {
                     Capsule()
                         .fill(
                             isSelected
-                                ? Color.primary
+                                ? Color.accentColor.opacity(0.2)
                                 : Color.secondary.opacity(0.16)
                         )
+                }
+                .overlay {
+                    if isSelected {
+                        Capsule()
+                            .stroke(Color.accentColor, lineWidth: 1)
+                    }
                 }
         }
         .buttonStyle(.plain)
         .accessibilityAddTraits(isSelected ? .isSelected : [])
+        .accessibilityIdentifier(
+            id.map { "history.filter.\($0)" } ?? "history.filter.all"
+        )
     }
 }
 
@@ -307,12 +400,30 @@ private struct ActiveRunsEmptyState: View {
     let state: RunBuoyStore.LoadState
 
     var body: some View {
-        ContentUnavailableView {
-            Label(title, systemImage: symbol)
-        } description: {
+        VStack(spacing: 12) {
+            Image(systemName: symbol)
+                .font(.largeTitle)
+                .foregroundStyle(.secondary)
+                .accessibilityHidden(true)
+            Text(title)
+                .font(.title3.weight(.semibold))
+                .lineLimit(nil)
+                .fixedSize(horizontal: false, vertical: true)
             Text(description)
+                .font(.subheadline)
+                .foregroundStyle(.primary)
+                .multilineTextAlignment(.center)
+                .lineLimit(nil)
+                .fixedSize(horizontal: false, vertical: true)
         }
         .padding()
+        .frame(maxWidth: .infinity)
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier(
+            state.isFailure
+                ? "activeRuns.state.failed"
+                : "activeRuns.state.empty"
+        )
     }
 
     private var title: LocalizedStringKey {
@@ -334,6 +445,15 @@ private struct ActiveRunsEmptyState: View {
             return "exclamationmark.icloud"
         }
         return "checkmark.circle"
+    }
+}
+
+private extension RunBuoyStore.LoadState {
+    var isFailure: Bool {
+        if case .failed = self {
+            return true
+        }
+        return false
     }
 }
 
@@ -411,7 +531,7 @@ struct RichMessageRow: View {
                 Spacer()
                 Text(message.createdAt, format: .relative(presentation: .named))
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.primary)
             }
             if let subtitle = message.subtitle {
                 Text(subtitle)
@@ -421,8 +541,14 @@ struct RichMessageRow: View {
                 .font(.body)
                 .textSelection(.enabled)
             ForEach(message.fields) { field in
-                LabeledContent(field.name, value: field.value)
-                    .font(.caption)
+                HStack(alignment: .firstTextBaseline, spacing: 12) {
+                    Text(field.name)
+                    Spacer(minLength: 8)
+                    Text(field.value)
+                        .multilineTextAlignment(.trailing)
+                }
+                .font(.caption)
+                .foregroundStyle(.primary)
             }
         }
         .padding(.vertical, 5)

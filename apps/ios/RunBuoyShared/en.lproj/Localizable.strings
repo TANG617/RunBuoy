@@ -30,6 +30,8 @@
 "history.all" = "All";
 "history.filtered_empty" = "No history for %@";
 "history.filtered_empty_description" = "Completed runs and messages from this machine will appear here.";
+"history.show_less" = "Show Less";
+"history.show_remaining" = "Show Remaining (%d)";
 "history.title" = "History";
 "machine.architecture" = "Architecture";
 "machine.appearance" = "Appearance";
@@ -42,17 +44,15 @@
 "machine.icon.macpro" = "Mac Pro";
 "machine.icon.macpro_server" = "Mac Pro Server";
 "machine.icon.macstudio" = "Mac Studio";
-"machine.label_saved" = "Local label saved.";
 "machine.last_seen" = "Last seen";
-"machine.local_label" = "Local display label";
-"machine.local_label_hint" = "This label changes only on this iPhone.";
+"machine.name" = "Name";
+"machine.name_cli_hint" = "Change this name from the RunBuoy CLI on the machine.";
 "machine.paired" = "Paired";
 "machine.pairing_removed" = "Pairing removed from this iPhone.";
 "machine.platform" = "Platform";
 "machine.receiving_stopped" = "This iPhone stopped receiving updates.";
 "machine.remove_pairing" = "Remove Pairing";
 "machine.removal_explanation" = "These actions only remove this iPhone’s receiving subscription or local credential. They never send a message to the machine.";
-"machine.save_local_label" = "Save Local Label";
 "machine.stop_receiving" = "Stop Receiving";
 "machines.empty" = "No paired machines";
 "machines.empty_description" = "Pair a machine to see its status here.";
@@ -134,6 +134,7 @@
 "settings.notifications" = "Notifications and Display";
 "settings.notifications_enabled" = "Notifications";
 "settings.pair_machine" = "Pair New Machine";
+"settings.private_deployment" = "Self-hosting";
 "settings.privacy" = "Privacy";
 "settings.product" = "Product";
 "settings.safe_messages" = "Show safe messages";
@@ -143,6 +144,7 @@
 "settings.server_saved" = "Server saved.";
 "settings.storage" = "Storage";
 "settings.title" = "Settings";
+"settings.website" = "Website";
 "status.cancelled" = "Ended locally";
 "status.created" = "Created";
 "status.failed" = "Failed";
@@ -155,8 +157,8 @@
 "tab.history" = "History";
 "tab.runs" = "Runs";
 "tab.settings" = "Settings";
-"widget.attention" = "Attention needed";
-"widget.last_update" = "Time since last update";
+"widget.confirmed_elapsed" = "Machine-confirmed elapsed time";
+"widget.stale" = "Data may be out of date";
 "widget.terminal_time" = "Time since run ended";
 "widget.explicit_eta" = "Estimated finish %@";
 "widget.progress" = "Progress";

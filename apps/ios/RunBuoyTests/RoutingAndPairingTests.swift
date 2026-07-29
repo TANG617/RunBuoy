@@ -99,18 +99,47 @@ final class RoutingAndPairingTests: XCTestCase {
             .desktopcomputer
         )
     }
+
+    func testLegacyMachineLabelsAreRemoved() throws {
+        let suiteName = "MachineNameMigrationTests.\(UUID().uuidString)"
+        let userDefaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { userDefaults.removePersistentDomain(forName: suiteName) }
+
+        userDefaults.set("Local Builder", forKey: "runbuoy.machine-label.machine_a")
+        userDefaults.set("keep", forKey: "unrelated")
+
+        MachineNameMigration.removeLegacyLocalLabels(userDefaults: userDefaults)
+
+        XCTAssertNil(userDefaults.string(forKey: "runbuoy.machine-label.machine_a"))
+        XCTAssertEqual(userDefaults.string(forKey: "unrelated"), "keep")
+    }
+
+    func testAboutLinksUseCanonicalWebsite() {
+        XCTAssertEqual(RunBuoyLinks.website.absoluteString, "https://www.runbuoy.cloud")
+        XCTAssertEqual(RunBuoyLinks.privacy.absoluteString, "https://www.runbuoy.cloud/privacy")
+        XCTAssertEqual(
+            RunBuoyLinks.privateDeployment.absoluteString,
+            "https://www.runbuoy.cloud/self-hosting"
+        )
+    }
 }
 
 @MainActor
 final class HistoryFilteringTests: XCTestCase {
-    func testMachineOptionsMergeSourcesAndPreferLocalLabels() throws {
-        let suiteName = "HistoryFilteringTests.\(UUID().uuidString)"
-        let userDefaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
-        defer { userDefaults.removePersistentDomain(forName: suiteName) }
-        userDefaults.set(
-            "A Local Mac",
-            forKey: MachineLocalLabel.key(for: PreviewFixtures.machine.id)
+    func testHistorySectionsShowFiveItemsUntilExpanded() {
+        XCTAssertEqual(
+            HistorySectionPresentation.visibleCount(totalCount: 12, isExpanded: false),
+            5
         )
+        XCTAssertEqual(
+            HistorySectionPresentation.visibleCount(totalCount: 12, isExpanded: true),
+            12
+        )
+        XCTAssertEqual(HistorySectionPresentation.remainingCount(totalCount: 12), 7)
+        XCTAssertEqual(HistorySectionPresentation.remainingCount(totalCount: 4), 0)
+    }
+
+    func testMachineOptionsMergeSourcesAndPreferServerNames() {
         let messageOnly = RichMessage(
             id: "notification_message_only",
             machineID: "machine_message_only",
@@ -126,15 +155,14 @@ final class HistoryFilteringTests: XCTestCase {
         let options = HistoryMachineOption.makeOptions(
             machines: [PreviewFixtures.machine],
             runs: [PreviewFixtures.activeRun, PreviewFixtures.failedRun],
-            messages: [PreviewFixtures.message, messageOnly],
-            userDefaults: userDefaults
+            messages: [PreviewFixtures.message, messageOnly]
         )
 
         XCTAssertEqual(
             options,
             [
-                HistoryMachineOption(id: PreviewFixtures.machine.id, name: "A Local Mac"),
                 HistoryMachineOption(id: PreviewFixtures.failedRun.machineID, name: "CI Builder"),
+                HistoryMachineOption(id: PreviewFixtures.machine.id, name: "Mac Studio"),
                 HistoryMachineOption(id: "machine_message_only", name: "machine_message_only")
             ]
         )

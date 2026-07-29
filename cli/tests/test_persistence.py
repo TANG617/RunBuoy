@@ -64,6 +64,20 @@ def test_outbox_retry_preserves_event_and_attempt_count(tmp_path: Path) -> None:
     assert queue.pending_events() == []
 
 
+def test_machine_metadata_outbox_keeps_only_latest_name(tmp_path: Path) -> None:
+    queue = EventQueue(tmp_path / "state.sqlite3")
+    queue.queue_machine_metadata("machine_a", "First")
+    queue.queue_machine_metadata("machine_a", "Second")
+
+    pending = queue.pending_machine_metadata()
+    assert pending is not None
+    assert pending["display_name"] == "Second"
+    queue.mark_machine_metadata_delivered("machine_a", "First")
+    assert queue.pending_machine_metadata() is not None
+    queue.mark_machine_metadata_delivered("machine_a", "Second")
+    assert queue.pending_machine_metadata() is None
+
+
 def test_default_remote_event_has_no_execution_details(tmp_path: Path) -> None:
     queue = EventQueue(tmp_path / "state.sqlite3")
     create_run(queue, tmp_path)

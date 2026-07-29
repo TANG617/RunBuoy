@@ -48,6 +48,16 @@ New installations use `https://api.runbuoy.cloud` as the default server URL.
 Override it when needed with
 `runbuoy config set --server-url <url>`.
 
+Set the canonical Machine name from the CLI:
+
+```bash
+runbuoy config set --machine-name "Build Mac"
+```
+
+When paired, the CLI synchronizes the name to the Server immediately. If the
+Server is unavailable, the latest name remains queued locally and the next
+Run uploader retries it. iOS intentionally has no Machine-name editor.
+
 Upgrade with the same tool used for installation:
 
 ```bash

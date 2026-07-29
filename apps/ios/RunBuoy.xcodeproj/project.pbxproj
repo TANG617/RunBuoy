@@ -33,6 +33,7 @@
 		A10000000000000000000018 /* RunBuoyWidgets.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = B50000000000000000000002 /* RunBuoyWidgets.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		A10000000000000000000019 /* PairMachineView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000018 /* PairMachineView.swift */; };
 		A1000000000000000000001A /* icon.icon in Resources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000019 /* icon.icon */; };
+		A1000000000000000000001B /* UITestConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000000000000000000001A /* UITestConfiguration.swift */; };
 		A20000000000000000000001 /* RunBuoyWidgets.swift in Sources */ = {isa = PBXBuildFile; fileRef = B30000000000000000000001 /* RunBuoyWidgets.swift */; };
 		A20000000000000000000002 /* RunLiveActivityWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = B30000000000000000000002 /* RunLiveActivityWidget.swift */; };
 		A20000000000000000000003 /* RunActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000001 /* RunActivityAttributes.swift */; };
@@ -47,6 +48,8 @@
 		A30000000000000000000008 /* machines.json in Resources */ = {isa = PBXBuildFile; fileRef = B40000000000000000000008 /* machines.json */; };
 		A30000000000000000000009 /* messages.json in Resources */ = {isa = PBXBuildFile; fileRef = B40000000000000000000009 /* messages.json */; };
 		A3000000000000000000000A /* live-content-state.json in Resources */ = {isa = PBXBuildFile; fileRef = B4000000000000000000000A /* live-content-state.json */; };
+		A3000000000000000000000B /* UITestScenarioTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4000000000000000000000B /* UITestScenarioTests.swift */; };
+		A40000000000000000000001 /* RunBuoyUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B60000000000000000000001 /* RunBuoyUITests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -58,6 +61,13 @@
 			remoteInfo = RunBuoyWidgets;
 		};
 		C10000000000000000000002 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = F00000000000000000000001 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = E10000000000000000000001;
+			remoteInfo = RunBuoyApp;
+		};
+		C10000000000000000000003 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = F00000000000000000000001 /* Project object */;
 			proxyType = 1;
@@ -106,6 +116,7 @@
 		B10000000000000000000017 /* RunBuoyApp.Release.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = RunBuoyApp.Release.entitlements; sourceTree = "<group>"; };
 		B10000000000000000000018 /* PairMachineView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PairMachineView.swift; sourceTree = "<group>"; };
 		B10000000000000000000019 /* icon.icon */ = {isa = PBXFileReference; lastKnownFileType = folder.iconcomposer.icon; path = icon.icon; sourceTree = "<group>"; };
+		B1000000000000000000001A /* UITestConfiguration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UITestConfiguration.swift; sourceTree = "<group>"; };
 		B20000000000000000000001 /* RunActivityAttributes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RunActivityAttributes.swift; sourceTree = "<group>"; };
 		B20000000000000000000003 /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/Localizable.strings; sourceTree = "<group>"; };
 		B20000000000000000000004 /* zh-Hans */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hans"; path = "zh-Hans.lproj/Localizable.strings"; sourceTree = "<group>"; };
@@ -124,9 +135,13 @@
 		B40000000000000000000008 /* machines.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = machines.json; sourceTree = "<group>"; };
 		B40000000000000000000009 /* messages.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = messages.json; sourceTree = "<group>"; };
 		B4000000000000000000000A /* live-content-state.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "live-content-state.json"; sourceTree = "<group>"; };
+		B4000000000000000000000B /* UITestScenarioTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UITestScenarioTests.swift; sourceTree = "<group>"; };
 		B50000000000000000000001 /* RunBuoy.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = RunBuoy.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		B50000000000000000000002 /* RunBuoyWidgets.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = RunBuoyWidgets.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		B50000000000000000000003 /* RunBuoyTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = RunBuoyTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		B50000000000000000000004 /* RunBuoyUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = RunBuoyUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		B60000000000000000000001 /* RunBuoyUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RunBuoyUITests.swift; sourceTree = "<group>"; };
+		B60000000000000000000002 /* RunBuoy.xctestplan */ = {isa = PBXFileReference; lastKnownFileType = text.plist.json.xctestplan; path = RunBuoy.xctestplan; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -151,6 +166,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		D40000000000000000000002 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -158,10 +180,12 @@
 			isa = PBXGroup;
 			children = (
 				B10000000000000000000019 /* icon.icon */,
+				B60000000000000000000002 /* RunBuoy.xctestplan */,
 				B00000000000000000000002 /* RunBuoyApp */,
 				B00000000000000000000003 /* RunBuoyShared */,
 				B00000000000000000000004 /* RunBuoyWidgets */,
 				B00000000000000000000005 /* RunBuoyTests */,
+				B00000000000000000000008 /* RunBuoyUITests */,
 				B00000000000000000000007 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -189,6 +213,7 @@
 				B10000000000000000000012 /* OnboardingView.swift */,
 				B10000000000000000000018 /* PairMachineView.swift */,
 				B10000000000000000000013 /* PreviewFixtures.swift */,
+				B1000000000000000000001A /* UITestConfiguration.swift */,
 				B10000000000000000000014 /* Assets.xcassets */,
 				B10000000000000000000015 /* Info.plist */,
 				B10000000000000000000016 /* RunBuoyApp.Debug.entitlements */,
@@ -226,6 +251,7 @@
 				B40000000000000000000003 /* RoutingAndPairingTests.swift */,
 				B40000000000000000000004 /* CacheStoreTests.swift */,
 				B40000000000000000000005 /* APIClientTests.swift */,
+				B4000000000000000000000B /* UITestScenarioTests.swift */,
 				B00000000000000000000006 /* Fixtures */,
 			);
 			path = RunBuoyTests;
@@ -249,8 +275,17 @@
 				B50000000000000000000001 /* RunBuoy.app */,
 				B50000000000000000000002 /* RunBuoyWidgets.appex */,
 				B50000000000000000000003 /* RunBuoyTests.xctest */,
+				B50000000000000000000004 /* RunBuoyUITests.xctest */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		B00000000000000000000008 /* RunBuoyUITests */ = {
+			isa = PBXGroup;
+			children = (
+				B60000000000000000000001 /* RunBuoyUITests.swift */,
+			);
+			path = RunBuoyUITests;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -310,6 +345,24 @@
 			productReference = B50000000000000000000003 /* RunBuoyTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
 		};
+		E40000000000000000000001 /* RunBuoyUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = F40000000000000000000001 /* Build configuration list for PBXNativeTarget "RunBuoyUITests" */;
+			buildPhases = (
+				D40000000000000000000001 /* Sources */,
+				D40000000000000000000002 /* Frameworks */,
+				D40000000000000000000003 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				C20000000000000000000003 /* PBXTargetDependency */,
+			);
+			name = RunBuoyUITests;
+			productName = RunBuoyUITests;
+			productReference = B50000000000000000000004 /* RunBuoyUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -328,6 +381,10 @@
 					};
 					E30000000000000000000001 = {
 						CreatedOnToolsVersion = 16.0;
+						TestTargetID = E10000000000000000000001;
+					};
+					E40000000000000000000001 = {
+						CreatedOnToolsVersion = 26.0;
 						TestTargetID = E10000000000000000000001;
 					};
 				};
@@ -349,6 +406,7 @@
 				E10000000000000000000001 /* RunBuoyApp */,
 				E20000000000000000000001 /* RunBuoyWidgets */,
 				E30000000000000000000001 /* RunBuoyTests */,
+				E40000000000000000000001 /* RunBuoyUITests */,
 			);
 		};
 /* End PBXProject section */
@@ -385,6 +443,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		D40000000000000000000003 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
@@ -412,6 +477,7 @@
 				A10000000000000000000012 /* OnboardingView.swift in Sources */,
 				A10000000000000000000019 /* PairMachineView.swift in Sources */,
 				A10000000000000000000013 /* PreviewFixtures.swift in Sources */,
+				A1000000000000000000001B /* UITestConfiguration.swift in Sources */,
 				A10000000000000000000014 /* RunActivityAttributes.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -435,6 +501,15 @@
 				A30000000000000000000003 /* RoutingAndPairingTests.swift in Sources */,
 				A30000000000000000000004 /* CacheStoreTests.swift in Sources */,
 				A30000000000000000000005 /* APIClientTests.swift in Sources */,
+				A3000000000000000000000B /* UITestScenarioTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		D40000000000000000000001 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A40000000000000000000001 /* RunBuoyUITests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -450,6 +525,11 @@
 			isa = PBXTargetDependency;
 			target = E10000000000000000000001 /* RunBuoyApp */;
 			targetProxy = C10000000000000000000002 /* PBXContainerItemProxy */;
+		};
+		C20000000000000000000003 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = E10000000000000000000001 /* RunBuoyApp */;
+			targetProxy = C10000000000000000000003 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -631,6 +711,34 @@
 			};
 			name = Release;
 		};
+		F41000000000000000000001 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				PRODUCT_BUNDLE_IDENTIFIER = dev.runbuoy.app.uitests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+				TEST_TARGET_NAME = RunBuoyApp;
+			};
+			name = Debug;
+		};
+		F41000000000000000000002 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				PRODUCT_BUNDLE_IDENTIFIER = dev.runbuoy.app.uitests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+				TEST_TARGET_NAME = RunBuoyApp;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -666,6 +774,15 @@
 			buildConfigurations = (
 				F31000000000000000000001 /* Debug */,
 				F31000000000000000000002 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		F40000000000000000000001 /* Build configuration list for PBXNativeTarget "RunBuoyUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				F41000000000000000000001 /* Debug */,
+				F41000000000000000000002 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

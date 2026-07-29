@@ -76,6 +76,20 @@ class MachineMetadata(APIModel):
     cli_version: str | None = Field(default=None, max_length=64)
 
 
+class MachinePatch(APIModel):
+    model_config = ConfigDict(extra="forbid")
+
+    display_name: str = Field(min_length=1, max_length=120)
+
+    @field_validator("display_name")
+    @classmethod
+    def normalized_display_name(cls, value: str) -> str:
+        cleaned = value.strip()
+        if not cleaned:
+            raise ValueError("display_name must not be empty")
+        return cleaned
+
+
 class PairingClaim(APIModel):
     challenge: str = Field(min_length=16, max_length=128)
 

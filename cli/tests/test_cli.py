@@ -254,6 +254,79 @@ def test_config_is_grouped_without_legacy_mutation_options(
     assert legacy.exit_code != 0
 
 
+def test_paired_machine_name_change_syncs_immediately(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("RUNBUOY_HOME", str(tmp_path))
+    monkeypatch.setenv("RUNBUOY_DISABLE_KEYRING", "1")
+    config_dir = tmp_path / "config"
+    config_dir.mkdir(parents=True)
+    (config_dir / "config.json").write_text('{"machine_id":"machine_a","machine_name":"Old Mac"}')
+    credentials = config_dir / "credentials.json"
+    credentials.write_text('{"machine_credential":"paired"}')
+    credentials.chmod(0o600)
+    updates: list[tuple[str, str]] = []
+
+    class Client:
+        def __init__(self, _config: object, _credentials: object) -> None:
+            pass
+
+        def update_machine(self, machine_id: str, display_name: str) -> None:
+            updates.append((machine_id, display_name))
+
+        def close(self) -> None:
+            pass
+
+    monkeypatch.setattr(cli_app, "RemoteClient", Client)
+    result = runner.invoke(
+        app,
+        ["config", "set", "--machine-name", "Build Mac", "--json"],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert updates == [("machine_a", "Build Mac")]
+    queue = EventQueue(tmp_path / "state" / "runbuoy.sqlite3")
+    assert queue.pending_machine_metadata() is None
+
+
+def test_offline_machine_name_change_is_saved_and_queued(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("RUNBUOY_HOME", str(tmp_path))
+    monkeypatch.setenv("RUNBUOY_DISABLE_KEYRING", "1")
+    config_dir = tmp_path / "config"
+    config_dir.mkdir(parents=True)
+    (config_dir / "config.json").write_text('{"machine_id":"machine_a","machine_name":"Old Mac"}')
+    credentials = config_dir / "credentials.json"
+    credentials.write_text('{"machine_credential":"paired"}')
+    credentials.chmod(0o600)
+
+    class Client:
+        def __init__(self, _config: object, _credentials: object) -> None:
+            pass
+
+        def update_machine(self, _machine_id: str, _display_name: str) -> None:
+            raise OSError("offline")
+
+        def close(self) -> None:
+            pass
+
+    monkeypatch.setattr(cli_app, "RemoteClient", Client)
+    result = runner.invoke(
+        app,
+        ["config", "set", "--machine-name", "Build Mac", "--json"],
+    )
+
+    assert result.exit_code == 1
+    assert json.loads(result.stderr)["error"]["code"] == "machine_name_sync_pending"
+    saved = json.loads((config_dir / "config.json").read_text())
+    assert saved["machine_name"] == "Build Mac"
+    queue = EventQueue(tmp_path / "state" / "runbuoy.sqlite3")
+    pending = queue.pending_machine_metadata(now=time.time() + 2)
+    assert pending is not None
+    assert pending["display_name"] == "Build Mac"
+
+
 def test_run_dry_run_separates_remote_and_local_fields(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

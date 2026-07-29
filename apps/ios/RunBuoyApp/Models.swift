@@ -133,6 +133,7 @@ struct RunSnapshot: Codable, Identifiable, Hashable, Sendable {
     let progress: RunProgress?
     let phase: String?
     let safeMessage: String?
+    let createdAt: Date
     let startedAt: Date
     let updatedAt: Date
     let endedAt: Date?
@@ -153,6 +154,7 @@ struct RunSnapshot: Codable, Identifiable, Hashable, Sendable {
         case progress
         case phase
         case safeMessage = "safe_message"
+        case createdAt = "created_at"
         case startedAt = "started_at"
         case updatedAt = "updated_at"
         case endedAt = "ended_at"
@@ -176,6 +178,7 @@ struct RunSnapshot: Codable, Identifiable, Hashable, Sendable {
         progress: RunProgress?,
         phase: String?,
         safeMessage: String?,
+        createdAt: Date? = nil,
         startedAt: Date,
         updatedAt: Date,
         endedAt: Date?,
@@ -195,6 +198,7 @@ struct RunSnapshot: Codable, Identifiable, Hashable, Sendable {
         self.progress = progress
         self.phase = phase
         self.safeMessage = safeMessage
+        self.createdAt = createdAt ?? startedAt
         self.startedAt = startedAt
         self.updatedAt = updatedAt
         self.endedAt = endedAt
@@ -219,6 +223,7 @@ struct RunSnapshot: Codable, Identifiable, Hashable, Sendable {
         safeMessage = try values.decodeIfPresent(String.self, forKey: .safeMessage)
         updatedAt = try values.decode(Date.self, forKey: .updatedAt)
         startedAt = try values.decodeIfPresent(Date.self, forKey: .startedAt) ?? updatedAt
+        createdAt = try values.decodeIfPresent(Date.self, forKey: .createdAt) ?? startedAt
         endedAt = try values.decodeIfPresent(Date.self, forKey: .endedAt)
         estimatedEndAt = try values.decodeIfPresent(Date.self, forKey: .estimatedEndAt)
             ?? progress?.estimatedEndAt
@@ -243,6 +248,7 @@ struct RunSnapshot: Codable, Identifiable, Hashable, Sendable {
         try values.encodeIfPresent(progress, forKey: .progress)
         try values.encodeIfPresent(phase, forKey: .phase)
         try values.encodeIfPresent(safeMessage, forKey: .safeMessage)
+        try values.encode(createdAt, forKey: .createdAt)
         try values.encode(startedAt, forKey: .startedAt)
         try values.encode(updatedAt, forKey: .updatedAt)
         try values.encodeIfPresent(endedAt, forKey: .endedAt)
@@ -418,17 +424,14 @@ struct MachineSnapshot: Codable, Identifiable, Hashable, Sendable {
     }
 }
 
-enum MachineLocalLabel {
-    static func key(for machineID: String) -> String {
-        "runbuoy.machine-label.\(machineID)"
-    }
+enum MachineNameMigration {
+    private static let legacyPrefix = "runbuoy.machine-label."
 
-    static func displayName(
-        machineID: String,
-        serverName: String,
-        userDefaults: UserDefaults = .standard
-    ) -> String {
-        userDefaults.string(forKey: key(for: machineID)) ?? serverName
+    static func removeLegacyLocalLabels(userDefaults: UserDefaults = .standard) {
+        for key in userDefaults.dictionaryRepresentation().keys
+        where key.hasPrefix(legacyPrefix) {
+            userDefaults.removeObject(forKey: key)
+        }
     }
 }
 

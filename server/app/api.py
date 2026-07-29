@@ -35,6 +35,7 @@ from .schemas import (
     DevicePreferencesPatch,
     EventBatch,
     MachineMetadata,
+    MachinePatch,
     NotificationCreate,
     PairingClaim,
     PairingExchange,
@@ -54,6 +55,7 @@ from .services import (
     ingest_events,
     run_snapshot,
     schedule_binding_end,
+    schedule_run_pushes,
 )
 
 router = APIRouter(prefix="/v1")
@@ -655,6 +657,37 @@ def list_machines(
         }
         for machine in machines
     ]
+
+
+@router.patch("/machines/{machine_id}")
+def update_machine(
+    machine_id: str,
+    body: MachinePatch,
+    request: Request,
+    session: Session = Depends(get_session),
+    principal: Principal = Depends(require_scope("machines:update")),
+) -> dict[str, str]:
+    machine = _machine_owned(session, principal, machine_id)
+    machine.display_name = body.display_name
+    machine.last_seen_at = utcnow()
+    active_runs = list(
+        session.scalars(
+            select(Run).where(
+                Run.machine_id == machine.id,
+                ~Run.execution_status.in_(TERMINAL_STATUSES),
+            )
+        )
+    )
+    for run in active_runs:
+        schedule_run_pushes(
+            session,
+            settings_for(request),
+            run,
+            event_type="machine.renamed",
+            previous_progress=run.progress,
+        )
+    session.commit()
+    return {"id": machine.id, "display_name": machine.display_name}
 
 
 @router.get("/notifications")

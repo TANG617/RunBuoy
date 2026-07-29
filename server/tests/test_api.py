@@ -159,6 +159,61 @@ def test_run_upsert_refreshes_machine_cli_version_and_last_seen(harness: Harness
     assert listed.json()[0]["cli_version"] == "0.1.2"
 
 
+def test_machine_can_update_only_its_own_canonical_name(harness: Harness) -> None:
+    device, machine = harness.pair()
+    updated = harness.client.patch(
+        f"/v1/machines/{machine['machine_id']}",
+        headers=auth(machine["credential"]),
+        json={"display_name": "  Build Mac  "},
+    )
+    assert updated.status_code == 200, updated.text
+    assert updated.json()["display_name"] == "Build Mac"
+
+    forbidden_device = harness.client.patch(
+        f"/v1/machines/{machine['machine_id']}",
+        headers=auth(device["credential"]),
+        json={"display_name": "Phone Override"},
+    )
+    assert forbidden_device.status_code == 403
+    forbidden_other = harness.client.patch(
+        "/v1/machines/machine_other",
+        headers=auth(machine["credential"]),
+        json={"display_name": "Other Override"},
+    )
+    assert forbidden_other.status_code == 403
+
+    listed = harness.client.get("/v1/machines", headers=auth(device["credential"]))
+    assert listed.status_code == 200
+    assert listed.json()[0]["display_name"] == "Build Mac"
+
+
+def test_run_creation_and_confirmed_update_times_are_machine_event_times(
+    harness: Harness,
+) -> None:
+    _device, machine = harness.pair()
+    run_id = str(uuid.uuid4())
+    harness.register_run(machine, run_id)
+    created_at = datetime(2026, 7, 29, 8, 0, tzinfo=UTC)
+    heartbeat_at = created_at + timedelta(seconds=15)
+    regressed_at = created_at + timedelta(seconds=10)
+
+    response = post_events(
+        harness,
+        machine,
+        run_id,
+        [
+            event(run_id, machine["machine_id"], 1, "run.created", at=created_at),
+            event(run_id, machine["machine_id"], 2, "run.started", at=created_at),
+            event(run_id, machine["machine_id"], 3, "run.heartbeat", at=heartbeat_at),
+            event(run_id, machine["machine_id"], 4, "run.message", at=regressed_at),
+        ],
+    )
+    assert response.status_code == 200, response.text
+    snapshot = response.json()["snapshot"]
+    assert datetime.fromisoformat(snapshot["created_at"].replace("Z", "+00:00")) == created_at
+    assert datetime.fromisoformat(snapshot["updated_at"].replace("Z", "+00:00")) == heartbeat_at
+
+
 def test_scope_boundaries_and_encrypted_tokens(harness: Harness) -> None:
     device, machine = harness.pair()
     run_id = str(uuid.uuid4())
@@ -412,9 +467,7 @@ def test_notification_idempotency_and_read_api(harness: Harness) -> None:
     read = harness.client.get("/v1/notifications", headers=auth(device["credential"]))
     assert read.json()[0]["fields"] == [{"label": "Target", "value": "iOS"}]
     with harness.session_factory() as session:
-        pushes = list(
-            session.scalars(select(PushOutbox).where(PushOutbox.kind == "NOTIFICATION"))
-        )
+        pushes = list(session.scalars(select(PushOutbox).where(PushOutbox.kind == "NOTIFICATION")))
         assert len(pushes) == 1
 
 

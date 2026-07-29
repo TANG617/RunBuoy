@@ -146,6 +146,7 @@ class Run(Base):
     phase: Mapped[str | None] = mapped_column(String(120))
     safe_message: Mapped[str | None] = mapped_column(String(500))
     safe_log_tail: Mapped[list[str] | None] = mapped_column(JSON)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

@@ -67,6 +67,19 @@ extension ExecutionStatus {
             StatusPresentation(title: "status.unknown", symbol: "questionmark.circle", color: .secondary)
         }
     }
+
+    var progressTint: Color {
+        switch self {
+        case .succeeded:
+            .green
+        case .failed:
+            .red
+        case .cancelled, .lost:
+            .orange
+        case .created, .starting, .running, .unknown:
+            .accentColor
+        }
+    }
 }
 
 extension HealthStatus {
@@ -110,10 +123,11 @@ struct StatusBadge: View {
         HStack(spacing: 6) {
             Image(systemName: presentation.symbol)
                 .accessibilityHidden(true)
+                .foregroundStyle(presentation.color)
             Text(presentation.title)
+                .foregroundStyle(.primary)
         }
         .font(.caption.weight(.semibold))
-        .foregroundStyle(presentation.color)
         .padding(.horizontal, 9)
         .padding(.vertical, 5)
         .background(
@@ -133,44 +147,223 @@ struct StatusBadge: View {
 }
 
 struct RunProgressView: View {
+    enum Emphasis: Equatable {
+        case compact
+        case prominent
+
+        var barHeight: CGFloat {
+            switch self {
+            case .compact: 9
+            case .prominent: 14
+            }
+        }
+
+        var spacing: CGFloat {
+            switch self {
+            case .compact: 7
+            case .prominent: 10
+            }
+        }
+
+        var phaseFont: Font {
+            switch self {
+            case .compact: .subheadline.weight(.medium)
+            case .prominent: .headline
+            }
+        }
+
+        var percentageFont: Font {
+            switch self {
+            case .compact: .subheadline.weight(.bold)
+            case .prominent: .title.bold()
+            }
+        }
+    }
+
     let progress: RunProgress?
     let phase: String?
     let showsIndeterminate: Bool
+    var emphasis: Emphasis = .compact
+    var tint: Color = .accentColor
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            if let progress {
-                if let fraction = progress.boundedFraction {
-                    ProgressView(value: fraction)
-                        .accessibilityLabel("run.progress")
-                        .accessibilityValue(Text(fraction, format: .percent))
-                    HStack {
-                        if let current = progress.current, let total = progress.total {
-                            Text("\(current, format: .number) / \(total, format: .number)")
-                        }
-                        Spacer()
-                        Text(fraction, format: .percent.precision(.fractionLength(0)))
-                            .fontWeight(.semibold)
-                    }
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                } else if showsIndeterminate {
-                    HStack(spacing: 8) {
-                        Image(systemName: "ellipsis")
-                            .accessibilityHidden(true)
-                        Text("progress.indeterminate")
-                    }
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
+        VStack(alignment: .leading, spacing: emphasis.spacing) {
+            if let fraction = progress?.boundedFraction {
+                determinateContent(fraction: fraction)
+            } else if showsIndeterminate {
+                indeterminateContent
+            } else if let phase, !phase.isEmpty {
+                phaseLabel(phase)
+            }
+        }
+    }
+
+    private func determinateContent(fraction: Double) -> some View {
+        VStack(alignment: .leading, spacing: emphasis.spacing) {
+            if dynamicTypeSize.isAccessibilitySize {
+                VStack(alignment: .leading, spacing: 4) {
+                    progressLabel
+                    percentageLabel(fraction)
+                }
+            } else {
+                HStack(alignment: .firstTextBaseline, spacing: 10) {
+                    progressLabel
+                    Spacer(minLength: 8)
+                    percentageLabel(fraction)
                 }
             }
-            if let phase, !phase.isEmpty {
-                Text(phase)
-                    .font(.subheadline.weight(.medium))
-                    .lineLimit(2)
-                    .accessibilityLabel(String(localized: "run.phase"))
-                    .accessibilityValue(phase)
+
+            DeterminateRunProgressBar(
+                fraction: fraction,
+                tint: tint,
+                height: emphasis.barHeight,
+                addsGlow: emphasis == .prominent
+            )
+
+            if let progress,
+               let current = progress.current,
+               let total = progress.total {
+                let count = "\(current.formatted()) / \(total.formatted())"
+                let value = progress.unit.flatMap { unit in
+                    unit.isEmpty ? nil : "\(count) \(unit)"
+                } ?? count
+                Text(value)
+                .font(.caption)
+                .foregroundStyle(.primary)
             }
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(accessibleProgressLabel)
+        .accessibilityValue(Text(fraction, format: .percent))
+    }
+
+    private var indeterminateContent: some View {
+        VStack(alignment: .leading, spacing: emphasis.spacing) {
+            progressLabel
+            IndeterminateRunProgressBar(
+                tint: tint,
+                height: emphasis.barHeight
+            )
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(accessibleProgressLabel)
+        .accessibilityValue("progress.indeterminate")
+    }
+
+    @ViewBuilder
+    private var progressLabel: some View {
+        if let phase, !phase.isEmpty {
+            phaseLabel(phase)
+        } else {
+            Text("run.progress")
+                .font(emphasis.phaseFont)
+        }
+    }
+
+    private func phaseLabel(_ phase: String) -> some View {
+        Text(phase)
+            .font(emphasis.phaseFont)
+            .lineLimit(emphasis == .prominent ? 3 : 2)
+            .accessibilityLabel(String(localized: "run.phase"))
+            .accessibilityValue(phase)
+    }
+
+    private func percentageLabel(_ fraction: Double) -> some View {
+        Text(
+            fraction.formatted(
+                .percent.precision(.fractionLength(0))
+            )
+        )
+            .font(emphasis.percentageFont)
+            .foregroundStyle(.primary)
+            .accessibilityHidden(true)
+    }
+
+    private var accessibleProgressLabel: String {
+        let label = String(localized: "run.progress")
+        guard let phase, !phase.isEmpty else { return label }
+        return "\(label): \(phase)"
+    }
+}
+
+private struct DeterminateRunProgressBar: View {
+    let fraction: Double
+    let tint: Color
+    let height: CGFloat
+    let addsGlow: Bool
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.colorSchemeContrast) private var contrast
+
+    var body: some View {
+        GeometryReader { proxy in
+            ZStack(alignment: .leading) {
+                Capsule()
+                    .fill(tint.opacity(contrast == .increased ? 0.28 : 0.15))
+                Capsule()
+                    .fill(
+                        LinearGradient(
+                            colors: [tint.opacity(0.78), tint],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
+                    )
+                    .frame(width: proxy.size.width * fraction)
+                    .shadow(
+                        color: addsGlow ? tint.opacity(0.34) : .clear,
+                        radius: addsGlow ? 6 : 0,
+                        y: 1
+                    )
+            }
+        }
+        .frame(height: height)
+        .animation(reduceMotion ? nil : .smooth(duration: 0.4), value: fraction)
+        .accessibilityHidden(true)
+    }
+}
+
+private struct IndeterminateRunProgressBar: View {
+    let tint: Color
+    let height: CGFloat
+    @State private var isAnimating = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.colorSchemeContrast) private var contrast
+
+    var body: some View {
+        GeometryReader { proxy in
+            let segmentWidth = proxy.size.width * 0.36
+            ZStack(alignment: .leading) {
+                Capsule()
+                    .fill(tint.opacity(contrast == .increased ? 0.28 : 0.15))
+                Capsule()
+                    .fill(
+                        LinearGradient(
+                            colors: [tint.opacity(0.62), tint],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
+                    )
+                    .frame(width: segmentWidth)
+                    .offset(
+                        x: reduceMotion
+                            ? (proxy.size.width - segmentWidth) / 2
+                            : (isAnimating ? proxy.size.width : -segmentWidth)
+                    )
+            }
+            .clipShape(Capsule())
+        }
+        .frame(height: height)
+        .animation(
+            reduceMotion
+                ? nil
+                : .linear(duration: 1.15).repeatForever(autoreverses: false),
+            value: isAnimating
+        )
+        .onAppear {
+            isAnimating = !reduceMotion
+        }
+        .onChange(of: reduceMotion) { _, shouldReduceMotion in
+            isAnimating = !shouldReduceMotion
         }
     }
 }
@@ -201,18 +394,19 @@ private struct RunRowContent: View {
                     StatusBadge(presentation: run.executionStatus.presentation)
                 }
             }
-            Label {
-                Text(run.machineName)
-            } icon: {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
                 MachineIconImage(machineID: run.machineID)
+                    .accessibilityHidden(true)
+                Text(run.machineName)
+                    .fixedSize(horizontal: false, vertical: true)
             }
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
+            .font(.subheadline)
+            .foregroundStyle(.primary)
             RunProgressView(
                 progress: run.progress,
                 phase: run.phase,
-                showsIndeterminate: run.executionStatus.isActive
+                showsIndeterminate: run.executionStatus.isActive,
+                tint: run.executionStatus.progressTint
             )
             RunRowMetadataFooter(run: run)
         }
@@ -245,7 +439,7 @@ private struct RunRowMetadataFooter: View {
             }
         }
         .font(.caption)
-        .foregroundStyle(.secondary)
+        .foregroundStyle(.primary)
     }
 
     @ViewBuilder
@@ -279,22 +473,24 @@ private struct RunRowMetadataFooter: View {
 struct OfflineBanner: View {
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @Environment(\.colorSchemeContrast) private var contrast
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     let message: String
 
     var body: some View {
-        Label {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("runs.cached_data")
-                    .fontWeight(.semibold)
-                Text(message)
-                    .font(.caption)
-                    .lineLimit(2)
+        Group {
+            if dynamicTypeSize.isAccessibilitySize {
+                VStack(alignment: .leading, spacing: 8) {
+                    offlineIcon
+                    bannerText
+                }
+            } else {
+                HStack(alignment: .top, spacing: 8) {
+                    offlineIcon
+                    bannerText
+                }
             }
-        } icon: {
-            Image(systemName: "wifi.slash")
         }
-        .foregroundStyle(.orange)
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
@@ -308,5 +504,27 @@ struct OfflineBanner: View {
             }
         }
         .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("runs.offlineBanner")
+    }
+
+    private var offlineIcon: some View {
+        Image(systemName: "wifi.slash")
+            .foregroundStyle(.orange)
+            .accessibilityHidden(true)
+    }
+
+    private var bannerText: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text("runs.cached_data")
+                .fontWeight(.semibold)
+                .lineLimit(nil)
+                .fixedSize(horizontal: false, vertical: true)
+            Text(message)
+                .font(.caption)
+                .lineLimit(nil)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .foregroundStyle(.primary)
+        .layoutPriority(1)
     }
 }

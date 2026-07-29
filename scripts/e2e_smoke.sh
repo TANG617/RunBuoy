@@ -77,8 +77,8 @@ curl --silent --fail \
 device_id="$(json_value 'value["device_id"]' "$bootstrap_file")"
 device_credential="$(json_value 'value["credential"]' "$bootstrap_file")"
 
-"${rb[@]}" config --server-url "$api_url" --machine-name "E2E Machine" >/dev/null
-"${rb[@]}" pair --json >"$pair_log" &
+"${rb[@]}" config set --server-url "$api_url" --machine-name "E2E Machine" >/dev/null
+"${rb[@]}" device pair --json >"$pair_log" &
 pair_pid=$!
 wait_for "CLI pairing QR before poll" \
   "test -s '$pair_log'" \

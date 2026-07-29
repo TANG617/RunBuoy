@@ -240,9 +240,7 @@ def _completion_items(incomplete: str, *, active_only: bool) -> list[CompletionI
     database = AppPaths.discover().database
     if not database.exists():
         return []
-    escaped_incomplete = (
-        incomplete.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-    )
+    escaped_incomplete = incomplete.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
     clauses = ["run_id LIKE ? ESCAPE '\\'"]
     parameters: list[Any] = [f"{escaped_incomplete}%"]
     if active_only:
@@ -261,9 +259,7 @@ def _completion_items(incomplete: str, *, active_only: bool) -> list[CompletionI
             ).fetchall()
     except (OSError, sqlite3.Error):
         return []
-    return [
-        CompletionItem(str(row[0]), help=f"{str(row[2]).lower()} · {row[1]}") for row in rows
-    ]
+    return [CompletionItem(str(row[0]), help=f"{str(row[2]).lower()} · {row[1]}") for row in rows]
 
 
 def _complete_any_run(incomplete: str) -> list[CompletionItem]:
@@ -345,8 +341,7 @@ def run_command(
     command: list[str] = typer.Argument(
         ...,
         help=(
-            "Command and arguments. Put them after `--` so their options are not parsed "
-            "by RunBuoy."
+            "Command and arguments. Put them after `--` so their options are not parsed by RunBuoy."
         ),
     ),
     title: str | None = typer.Option(
@@ -373,8 +368,7 @@ def run_command(
         None,
         "--match",
         help=(
-            "Only matching terminal records advance lines progress. "
-            "All records count when omitted."
+            "Only matching terminal records advance lines progress. All records count when omitted."
         ),
     ),
     unit: str | None = typer.Option(None, "--unit", help="Short progress unit, such as files."),
@@ -1110,9 +1104,7 @@ def doctor(
         console.print(table)
         typer.echo(f"Pending local events: {checks['pending_events']}")
         typer.echo(
-            "Ready for delivery."
-            if ready
-            else "Local CLI works, but delivery setup is incomplete."
+            "Ready for delivery." if ready else "Local CLI works, but delivery setup is incomplete."
         )
         if verbose:
             for key, value in result["paths"].items():
@@ -1198,7 +1190,7 @@ def _update_config(
     if server_url is not None:
         updates["server_url"] = server_url
     if machine_name is not None:
-        cleaned = safe_message(machine_name, 120)
+        cleaned = (safe_message(machine_name, 120) or "").strip()
         if not cleaned:
             raise typer.BadParameter("--machine-name must not be empty")
         updates["machine_name"] = cleaned
@@ -1254,7 +1246,31 @@ def config_set(
     """Change one or more non-secret settings and show the result."""
     if server_url is None and machine_name is None:
         raise typer.BadParameter("provide --server-url and/or --machine-name")
-    _paths, config = _update_config(server_url=server_url, machine_name=machine_name)
+    paths, config = _update_config(server_url=server_url, machine_name=machine_name)
+    if machine_name is not None and config.machine_id is not None:
+        credentials = CredentialStore(paths)
+        if credentials.get("machine_credential") is not None:
+            queue = EventQueue(paths.database)
+            queue.queue_machine_metadata(config.machine_id, config.machine_name)
+            client = RemoteClient(config, credentials)
+            try:
+                client.update_machine(config.machine_id, config.machine_name)
+            except (httpx.HTTPError, RemoteError, OSError) as error:
+                queue.mark_machine_metadata_failed(
+                    config.machine_id,
+                    config.machine_name,
+                    str(error),
+                    1,
+                )
+                _fail(
+                    "Machine name saved locally; server sync is queued.",
+                    code="machine_name_sync_pending",
+                    json_output=json_output,
+                    hint="Repeat this command or start a Run after the connection recovers.",
+                )
+            finally:
+                client.close()
+            queue.mark_machine_metadata_delivered(config.machine_id, config.machine_name)
     _show_config(config, json_output=json_output)
 
 
