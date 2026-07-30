@@ -27,6 +27,7 @@ access.
 | Device token writes Run events | Scope authorization rejects it with 403 |
 | Machine reads APNs tokens | No response schema or endpoint returns token plaintext |
 | QR replay | Five-minute expiry, single claim/exchange, hashed secret |
+| Pairing short-code guessing | Authenticated lookup, five-minute expiry, per-Device rate limit, generic invalid/expired response |
 | Event replay or reordering | Unique event/sequence constraints and monotonic projection |
 | Terminal state regression | Terminal projection is immutable |
 | Process output leaks secrets | Output stays local; opt-in tail is bounded and redacted |

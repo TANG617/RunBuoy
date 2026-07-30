@@ -16,25 +16,28 @@ struct RunLiveActivityWidget: Widget {
                 .widgetURL(deepLink(runID: context.attributes.runID))
         } dynamicIsland: { context in
             DynamicIsland {
-                DynamicIslandExpandedRegion(.center) {
-                    Text(context.attributes.title)
-                        .font(.headline)
-                        .lineLimit(1)
+                DynamicIslandExpandedRegion(.leading) {
+                    LiveStatusIcon(state: context.state, isStale: context.isStale, size: 16)
+                }
+                DynamicIslandExpandedRegion(.trailing) {
+                    LiveActivityTime(state: context.state)
+                        .font(.caption.monospacedDigit().bold())
                 }
                 DynamicIslandExpandedRegion(.bottom) {
-                    VStack(alignment: .leading, spacing: 6) {
-                        LiveProgressBar(state: context.state, isStale: context.isStale)
-                        LiveActivityFooter(
-                            attributes: context.attributes,
-                            state: context.state,
-                            isStale: context.isStale
-                        )
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text(context.attributes.title)
+                            .font(.headline)
+                            .lineLimit(1)
+                        if context.state.progressKind == "determinate",
+                           context.state.progress != nil {
+                            LiveProgressBar(state: context.state, isStale: context.isStale)
+                        }
                     }
                 }
             } compactLeading: {
                 LiveStatusIcon(state: context.state, isStale: context.isStale, size: 18)
             } compactTrailing: {
-                LiveCompactTrailing(state: context.state)
+                LivePrimaryMetric(state: context.state)
                     .font(.caption.monospacedDigit().bold())
             } minimal: {
                 LiveStatusIcon(state: context.state, isStale: context.isStale, size: 16)
@@ -94,21 +97,23 @@ private struct LiveStatusIcon: View {
     }
 }
 
-private struct LiveCompactTrailing: View {
+private struct LivePrimaryMetric: View {
     let state: RunActivityAttributes.ContentState
 
     var body: some View {
-        if isTerminal(state) {
-            Text(state.endedAt ?? state.updatedAt, style: .relative)
-                .lineLimit(1)
-                .minimumScaleFactor(0.8)
-                .accessibilityLabel("widget.terminal_time")
-        } else if state.progressKind == "determinate", let progress = state.progress {
-            Text(min(max(progress, 0), 1), format: .percent.precision(.fractionLength(0)))
-        } else {
-            Text(confirmedDuration)
-                .accessibilityLabel("widget.confirmed_elapsed")
+        Group {
+            if isTerminal(state) {
+                LiveRelativeMinuteText(date: state.endedAt ?? state.updatedAt)
+                    .accessibilityLabel("widget.terminal_time")
+            } else if state.progressKind == "determinate", let progress = state.progress {
+                Text(min(max(progress, 0), 1), format: .percent.precision(.fractionLength(0)))
+            } else {
+                Text(confirmedDuration)
+                    .accessibilityLabel("widget.confirmed_elapsed")
+            }
         }
+        .lineLimit(1)
+        .minimumScaleFactor(0.75)
     }
 
     private var confirmedDuration: String {
@@ -146,7 +151,7 @@ private struct LiveActivityTime: View {
     var body: some View {
         Group {
             if isTerminal(state) {
-                Text(state.endedAt ?? state.updatedAt, style: .relative)
+                LiveRelativeMinuteText(date: state.endedAt ?? state.updatedAt)
                     .accessibilityLabel("widget.terminal_time")
             } else {
                 Text(
@@ -161,6 +166,21 @@ private struct LiveActivityTime: View {
         }
         .monospacedDigit()
         .lineLimit(1)
+    }
+}
+
+private struct LiveRelativeMinuteText: View {
+    let date: Date
+
+    var body: some View {
+        TimelineView(.periodic(from: .now, by: 60)) { context in
+            Text(
+                RunActivityDurationText.relativeString(
+                    since: date,
+                    relativeTo: context.date
+                )
+            )
+        }
     }
 }
 

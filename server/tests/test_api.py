@@ -128,6 +128,85 @@ def test_pairing_expiry(harness: Harness) -> None:
     assert response.status_code == 410
 
 
+def test_short_pairing_code_resolves_to_confirmable_identity(
+    harness: Harness,
+) -> None:
+    device = harness.bootstrap()
+    created = harness.client.post(
+        "/v1/pairing-sessions",
+        json={"display_name": "Code Mac", "platform": "darwin"},
+    ).json()
+
+    resolved = harness.client.post(
+        "/v1/pairing-sessions/resolve",
+        headers=auth(device["credential"]),
+        json={"short_code": created["short_code"]},
+    )
+
+    assert resolved.status_code == 200, resolved.text
+    assert resolved.json() == {
+        "pairing_session_id": created["pairing_session_id"],
+        "challenge": created["challenge"],
+        "machine_display_name": "Code Mac",
+        "platform": "darwin",
+    }
+
+    claimed = harness.client.post(
+        f"/v1/pairing-sessions/{resolved.json()['pairing_session_id']}/claim",
+        headers=auth(device["credential"]),
+        json={"challenge": resolved.json()["challenge"]},
+    )
+    assert claimed.status_code == 200, claimed.text
+
+
+def test_short_pairing_code_hides_expired_and_unknown_sessions(
+    harness: Harness,
+) -> None:
+    device = harness.bootstrap()
+    created = harness.client.post(
+        "/v1/pairing-sessions",
+        json={"display_name": "Expired Code Mac"},
+    ).json()
+    with harness.session_factory() as session:
+        pairing = session.get(PairingSession, created["pairing_session_id"])
+        assert pairing is not None
+        pairing.expires_at = datetime.now(UTC) - timedelta(seconds=1)
+        session.commit()
+
+    expired = harness.client.post(
+        "/v1/pairing-sessions/resolve",
+        headers=auth(device["credential"]),
+        json={"short_code": created["short_code"]},
+    )
+    unknown = harness.client.post(
+        "/v1/pairing-sessions/resolve",
+        headers=auth(device["credential"]),
+        json={"short_code": "999999"},
+    )
+
+    assert expired.status_code == 404
+    assert unknown.status_code == 404
+
+
+def test_short_pairing_code_attempts_are_rate_limited(harness: Harness) -> None:
+    device = harness.bootstrap()
+
+    for attempt in range(harness.settings.pairing_code_attempt_limit):
+        response = harness.client.post(
+            "/v1/pairing-sessions/resolve",
+            headers=auth(device["credential"]),
+            json={"short_code": f"{attempt:06d}"},
+        )
+        assert response.status_code == 404
+
+    limited = harness.client.post(
+        "/v1/pairing-sessions/resolve",
+        headers=auth(device["credential"]),
+        json={"short_code": "999999"},
+    )
+    assert limited.status_code == 429
+
+
 def test_run_upsert_refreshes_machine_cli_version_and_last_seen(harness: Harness) -> None:
     device, machine = harness.pair()
     with harness.session_factory() as session:

@@ -40,6 +40,28 @@ final class RunBuoyUITests: XCTestCase {
         XCTAssertTrue(element("screen.activeRuns").waitForExistence(timeout: 3))
     }
 
+    func testOnboardingCompletesWithSixDigitPairingCode() {
+        launch(onboarding: true)
+
+        XCTAssertTrue(element("onboarding.page.product").waitForExistence(timeout: 5))
+        element("onboarding.primary-action").tap()
+        XCTAssertTrue(element("onboarding.page.permissions").waitForExistence(timeout: 2))
+        element("onboarding.primary-action").tap()
+        XCTAssertTrue(element("onboarding.page.pairing").waitForExistence(timeout: 2))
+
+        element("onboarding.enter-code").tap()
+        let codeField = element("pairing.code")
+        XCTAssertTrue(codeField.waitForExistence(timeout: 3))
+        codeField.typeText("123456")
+        element("pairing.continue").tap()
+
+        XCTAssertTrue(element("onboarding.pairing-identity").waitForExistence(timeout: 3))
+        element("onboarding.primary-action").tap()
+        XCTAssertTrue(element("onboarding.pairing-success").waitForExistence(timeout: 2))
+        element("onboarding.primary-action").tap()
+        XCTAssertTrue(element("screen.activeRuns").waitForExistence(timeout: 3))
+    }
+
     func testActiveRunOpensDetailAndNavigatesBack() {
         launch()
 
@@ -269,12 +291,12 @@ final class RunBuoyUITests: XCTestCase {
 
     private func auditCurrentScreen() throws {
         try app.performAccessibilityAudit { issue in
-            let isKnownSystemSectionHeaderIssue = issue.auditType == .contrast
+            let isKnownSystemFormSupplementaryIssue = issue.auditType == .contrast
                 && issue.compactDescription == "Contrast nearly passed"
                 && (
                     issue.element == nil
                         || issue.element.map {
-                            Self.knownSystemSectionHeaderLabels.contains($0.label)
+                            Self.knownSystemFormSupplementaryLabels.contains($0.label)
                         } == true
                 )
             let isKnownSwiftUIDynamicTypeIssue = issue.auditType == .dynamicType
@@ -296,7 +318,7 @@ final class RunBuoyUITests: XCTestCase {
                     && issue.element == nil
                     && self.element("screen.settings").exists
             let isKnownToolIssue =
-                isKnownSystemSectionHeaderIssue
+                isKnownSystemFormSupplementaryIssue
                     || isKnownSwiftUIDynamicTypeIssue
                     || isCoveredBySystemTabBar
                     || isCoveredBySystemNavigationBar
@@ -325,7 +347,7 @@ final class RunBuoyUITests: XCTestCase {
     private static let failedRunID = "018f0d8a-8c0a-7000-8000-000000000002"
     private static let pairingURL =
         "runbuoy://pair/session_ui_test?challenge=once-only&machine=UI%20Test%20Mac&platform=macOS"
-    private static let knownSystemSectionHeaderLabels: Set<String> = [
+    private static let knownSystemFormSupplementaryLabels: Set<String> = [
         "Active Runs",
         "Timing",
         "Safe Message",
@@ -337,6 +359,7 @@ final class RunBuoyUITests: XCTestCase {
         "Connections",
         "Notifications and Display",
         "Storage",
-        "About"
+        "About",
+        "Leave blank to use the default server: api.runbuoy.cloud"
     ]
 }

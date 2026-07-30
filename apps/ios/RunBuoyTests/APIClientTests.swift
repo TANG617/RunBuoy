@@ -90,6 +90,38 @@ final class APIClientTests: XCTestCase {
         XCTAssertEqual(activities[0]["last_sequence"] as? Int, 42)
     }
 
+    func testShortPairingCodeResolvesToConfirmableIdentity() async throws {
+        var captured: URLRequest?
+        let api = makeAPI { request in
+            captured = request
+            return (
+                200,
+                Data(
+                    """
+                    {
+                      "pairing_session_id": "pair_123",
+                      "challenge": "challenge-safe-value",
+                      "machine_display_name": "Mac Studio",
+                      "platform": "darwin"
+                    }
+                    """.utf8
+                )
+            )
+        }
+
+        let code = try await api.resolvePairingCode("123456")
+
+        XCTAssertEqual(captured?.httpMethod, "POST")
+        XCTAssertEqual(captured?.url?.path, "/v1/pairing-sessions/resolve")
+        XCTAssertEqual(captured?.value(forHTTPHeaderField: "Authorization"), "Bearer device-credential")
+        let data = try XCTUnwrap(captured?.httpBody)
+        let body = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: String])
+        XCTAssertEqual(body["short_code"], "123456")
+        XCTAssertEqual(code.sessionID, "pair_123")
+        XCTAssertEqual(code.machineDisplayName, "Mac Studio")
+        XCTAssertEqual(code.platform, "darwin")
+    }
+
     func testDeviceSurfaceContainsOnlyReadAndReceivingPlaneOperations() {
         let endpoints: [DeviceAPIEndpoint] = [
             .bootstrap,
@@ -97,6 +129,7 @@ final class APIClientTests: XCTestCase {
             .run(UUID()),
             .machines,
             .messages,
+            .resolvePairingCode,
             .claimPairing("pair"),
             .notificationToken("device"),
             .pushToStartToken("device"),
@@ -106,7 +139,7 @@ final class APIClientTests: XCTestCase {
             .subscription("subscription")
         ]
 
-        XCTAssertEqual(endpoints.count, 12)
+        XCTAssertEqual(endpoints.count, 13)
         XCTAssertEqual(endpoints.filter { $0.method == "GET" }.count, 4)
         XCTAssertTrue(endpoints.allSatisfy { $0.path.hasPrefix("/v1/") })
     }

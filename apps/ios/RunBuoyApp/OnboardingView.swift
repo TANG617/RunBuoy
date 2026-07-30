@@ -3,6 +3,7 @@ import UIKit
 
 private enum OnboardingSheet: String, Identifiable {
     case scanner
+    case pairingCode
 
     var id: String { rawValue }
 }
@@ -61,24 +62,44 @@ struct OnboardingView: View {
                     .padding(.horizontal)
             }
 
-            Button(action: advanceAction) {
-                if isWorking {
-                    ProgressView()
-                        .frame(maxWidth: .infinity)
-                } else {
-                    Label(primaryTitle, systemImage: primarySymbol)
-                        .frame(maxWidth: .infinity)
+            VStack(spacing: 12) {
+                Button(action: advanceAction) {
+                    if isWorking {
+                        ProgressView()
+                            .frame(maxWidth: .infinity)
+                    } else {
+                        Label(primaryTitle, systemImage: primarySymbol)
+                            .frame(maxWidth: .infinity)
+                    }
+                }
+                .buttonStyle(.glassProminent)
+                .controlSize(.large)
+                .disabled(isWorking)
+                .accessibilityIdentifier("onboarding.primary-action")
+
+                if page == 2, pairingCode == nil, !pairingSucceeded {
+                    Button {
+                        sheet = .pairingCode
+                    } label: {
+                        Label("pairing.enter_code", systemImage: "keyboard")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.glass)
+                    .controlSize(.large)
+                    .disabled(isWorking)
+                    .accessibilityIdentifier("onboarding.enter-code")
                 }
             }
-            .buttonStyle(.glassProminent)
-            .controlSize(.large)
-            .disabled(isWorking)
-            .accessibilityIdentifier("onboarding.primary-action")
             .padding()
         }
         .background(Color(uiColor: .systemGroupedBackground))
-        .sheet(item: $sheet) { _ in
-            ScannerSheet(onCode: receiveScannedCode)
+        .sheet(item: $sheet) { presentedSheet in
+            switch presentedSheet {
+            case .scanner:
+                ScannerSheet(onCode: receiveScannedCode)
+            case .pairingCode:
+                PairingCodeEntrySheet(code: $pairingCode)
+            }
         }
         .onAppear {
             receivePendingPairingCode(router.pendingPairingCode)

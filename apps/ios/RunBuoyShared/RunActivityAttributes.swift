@@ -190,17 +190,40 @@ enum RunActivityDurationText {
     static func string(
         createdAt: Date?,
         startedAt: Date,
-        updatedAt: Date
+        updatedAt: Date,
+        locale: Locale = .autoupdatingCurrent
     ) -> String {
         let anchor = createdAt ?? startedAt
         let totalSeconds = max(0, Int(updatedAt.timeIntervalSince(anchor)))
-        let hours = totalSeconds / 3_600
-        let minutes = (totalSeconds % 3_600) / 60
-        let seconds = totalSeconds % 60
-        if hours > 0 {
-            return String(format: "%d:%02d:%02d", hours, minutes, seconds)
+        return string(totalSeconds: totalSeconds, locale: locale)
+    }
+
+    static func relativeString(
+        since date: Date,
+        relativeTo referenceDate: Date,
+        locale: Locale = .autoupdatingCurrent
+    ) -> String {
+        string(
+            totalSeconds: max(0, Int(referenceDate.timeIntervalSince(date))),
+            locale: locale
+        )
+    }
+
+    private static func string(totalSeconds: Int, locale: Locale) -> String {
+        guard totalSeconds >= 60 else {
+            return String(localized: "time.just_now", locale: locale)
         }
-        return String(format: "%d:%02d", minutes, seconds)
+
+        let totalMinutes = totalSeconds / 60
+        guard totalMinutes >= 60 else {
+            let format = String(localized: "time.minutes_short", locale: locale)
+            return String(format: format, locale: locale, totalMinutes)
+        }
+
+        let hours = totalMinutes / 60
+        let minutes = totalMinutes % 60
+        let format = String(localized: "time.hours_minutes_short", locale: locale)
+        return String(format: format, locale: locale, hours, minutes)
     }
 }
 

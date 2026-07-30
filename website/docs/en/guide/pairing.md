@@ -18,7 +18,8 @@ The QR code contains a short-lived pairing challenge, not a long-lived machine c
 
 ## Pair without scanning
 
-Choose “Pair with Code” on the pairing screen and paste the code printed by `runbuoy device pair`.
+Choose “Pair with Code” on the pairing screen and enter the six-digit code
+printed by `runbuoy device pair`. Confirm the machine identity before pairing.
 
 If you need to close the terminal and continue later:
 

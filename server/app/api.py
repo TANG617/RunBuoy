@@ -6,7 +6,7 @@ from datetime import timedelta
 from typing import Any
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response, status
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from .auth import DEVICE_SCOPES, MACHINE_SCOPES, Principal, require_scope
@@ -38,6 +38,7 @@ from .schemas import (
     MachinePatch,
     NotificationCreate,
     PairingClaim,
+    PairingCodeResolve,
     PairingExchange,
     RunUpsert,
     TokenRegistration,
@@ -107,6 +108,25 @@ def _webhook_auth(
     ):
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "invalid webhook credential")
     return webhook
+
+
+def _new_pairing_short_code(session: Session) -> str:
+    now = utcnow()
+    for _ in range(20):
+        value = f"{secrets.randbelow(1_000_000):06d}"
+        active = session.scalar(
+            select(PairingSession.id).where(
+                PairingSession.short_code == value,
+                PairingSession.claimed_at.is_(None),
+                PairingSession.expires_at > now,
+            )
+        )
+        if active is None:
+            return value
+    raise HTTPException(
+        status.HTTP_503_SERVICE_UNAVAILABLE,
+        "could not allocate pairing code",
+    )
 
 
 @router.post("/devices/bootstrap", status_code=status.HTTP_201_CREATED)
@@ -373,7 +393,7 @@ def create_pairing_session(
     pairing = PairingSession(
         id=new_id("pair"),
         challenge=secrets.token_urlsafe(24),
-        short_code=f"{secrets.randbelow(1_000_000):06d}",
+        short_code=_new_pairing_short_code(session),
         exchange_secret_hash=token_hash(raw_secret, settings.credential_pepper),
         requested_machine_metadata=body.model_dump(),
         expires_at=utcnow() + timedelta(seconds=settings.pairing_ttl_seconds),
@@ -386,6 +406,68 @@ def create_pairing_session(
         "short_code": pairing.short_code,
         "exchange_secret": raw_secret,
         "expires_at": pairing.expires_at,
+    }
+
+
+@router.post("/pairing-sessions/resolve")
+def resolve_pairing_code(
+    body: PairingCodeResolve,
+    request: Request,
+    session: Session = Depends(get_session),
+    principal: Principal = Depends(require_scope("pairing:claim")),
+) -> dict[str, str | None]:
+    settings = settings_for(request)
+    now = utcnow()
+    attempt_window_start = now - timedelta(
+        seconds=settings.pairing_code_attempt_window_seconds
+    )
+    recent_attempts = session.scalar(
+        select(func.count())
+        .select_from(AuditLog)
+        .where(
+            AuditLog.actor_type == "device",
+            AuditLog.actor_id == principal.subject_id,
+            AuditLog.action == "pairing.code.resolve",
+            AuditLog.created_at >= attempt_window_start,
+        )
+    )
+    if (recent_attempts or 0) >= settings.pairing_code_attempt_limit:
+        raise HTTPException(
+            status.HTTP_429_TOO_MANY_REQUESTS,
+            "too many pairing code attempts",
+        )
+
+    session.add(
+        AuditLog(
+            id=new_id("aud"),
+            workspace_id=principal.workspace_id,
+            actor_type="device",
+            actor_id=principal.subject_id,
+            action="pairing.code.resolve",
+        )
+    )
+    session.commit()
+
+    candidates = session.scalars(
+        select(PairingSession).where(
+            PairingSession.short_code == body.short_code,
+            PairingSession.claimed_at.is_(None),
+            PairingSession.expires_at > now,
+        )
+    ).all()
+    if len(candidates) != 1:
+        raise HTTPException(
+            status.HTTP_404_NOT_FOUND,
+            "pairing code is invalid or expired",
+        )
+
+    pairing = candidates[0]
+    metadata = pairing.requested_machine_metadata
+    return {
+        "pairing_session_id": pairing.id,
+        "challenge": pairing.challenge,
+        "machine_display_name": str(metadata["display_name"]),
+        "platform": metadata.get("platform"),
     }
 
 

@@ -71,7 +71,7 @@
 "onboarding.notifications_body" = "通知和实时活动只显示有意义的变化，不会暴露完整日志。";
 "onboarding.one_time_code" = "配对码会过期，且不包含长期凭证";
 "onboarding.pair" = "配对电脑";
-"onboarding.pair_body" = "在电脑上运行 runbuoy device pair，然后扫描一次性配对码。";
+"onboarding.pair_body" = "在电脑上运行 runbuoy device pair，然后扫描或输入一次性配对码。";
 "onboarding.scan_code" = "扫描配对码";
 "onboarding.tokens_private" = "设备和活动令牌会安全上传，且永远不会写入普通日志";
 "onboarding.welcome" = "让每一次运行都尽收眼底。";
@@ -79,8 +79,10 @@
 "pairing.camera_unavailable" = "此设备无法使用相机扫描。请在允许相机权限的实体 iPhone 上使用。";
 "pairing.camera_unavailable_title" = "相机不可用";
 "pairing.claim" = "配对这台电脑";
-"pairing.code_hint" = "粘贴 runbuoy device pair 生成的配对码。";
+"pairing.code_hint" = "输入 runbuoy device pair 显示的 6 位配对码。";
+"pairing.code_invalid_or_expired" = "配对码无效或已过期。";
 "pairing.code_placeholder" = "配对码";
+"pairing.short_code_placeholder" = "6 位配对码";
 "pairing.confirm_identity" = "确认电脑身份";
 "pairing.continue" = "继续";
 "pairing.enter_code" = "使用配对码";
@@ -91,6 +93,7 @@
 "pairing.name" = "名称";
 "pairing.scan_title" = "扫描配对码";
 "pairing.success" = "电脑已配对。";
+"pairing.too_many_attempts" = "尝试次数过多，请一分钟后再试。";
 "progress.indeterminate" = "正在运行";
 "run.copy_id" = "复制 Run ID";
 "run.copy_message" = "复制安全消息";
@@ -157,6 +160,9 @@
 "tab.history" = "历史";
 "tab.runs" = "运行";
 "tab.settings" = "设置";
+"time.hours_minutes_short" = "%1$d小时%2$02d分钟";
+"time.just_now" = "刚刚";
+"time.minutes_short" = "%d分钟";
 "widget.confirmed_elapsed" = "电脑已确认的运行时间";
 "widget.stale" = "数据可能已过期";
 "widget.terminal_time" = "距运行结束";

@@ -243,6 +243,14 @@ private struct PreviewAPI: RunBuoyAPI {
     }
     func listMachines() async throws -> [MachineSnapshot] { snapshot.machines }
     func listMessages() async throws -> [RichMessage] { snapshot.messages }
+    func resolvePairingCode(_ shortCode: String) async throws -> PairingCode {
+        PairingCode(
+            sessionID: "session_preview",
+            challenge: "preview-challenge-value",
+            machineDisplayName: "Mac Studio",
+            platform: "macOS"
+        )
+    }
     func claimPairing(_ code: PairingCode) async throws {}
     func registerNotificationToken(_ token: String) async throws {}
     func registerPushToStartToken(_ token: String) async throws {}

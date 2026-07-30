@@ -68,22 +68,49 @@ final class ModelDecodingTests: XCTestCase {
         let created = Date(timeIntervalSince1970: 1_000)
         let started = created.addingTimeInterval(2)
         let confirmed = created.addingTimeInterval(75)
+        let locale = Locale(identifier: "en_US")
 
         XCTAssertEqual(
             RunActivityDurationText.string(
                 createdAt: created,
                 startedAt: started,
-                updatedAt: confirmed
+                updatedAt: confirmed,
+                locale: locale
             ),
-            "1:15"
+            "1m"
         )
         XCTAssertEqual(
             RunActivityDurationText.string(
                 createdAt: created,
                 startedAt: started,
-                updatedAt: created.addingTimeInterval(3_661)
+                updatedAt: created.addingTimeInterval(3_661),
+                locale: locale
             ),
-            "1:01:01"
+            "1h 01m"
+        )
+    }
+
+    func testConfirmedDurationUsesJustNowUntilOneMinute() {
+        let created = Date(timeIntervalSince1970: 1_000)
+        let locale = Locale(identifier: "en_US")
+
+        XCTAssertEqual(
+            RunActivityDurationText.string(
+                createdAt: created,
+                startedAt: created,
+                updatedAt: created.addingTimeInterval(59),
+                locale: locale
+            ),
+            "just now"
+        )
+        XCTAssertEqual(
+            RunActivityDurationText.string(
+                createdAt: created,
+                startedAt: created,
+                updatedAt: created.addingTimeInterval(60),
+                locale: locale
+            ),
+            "1m"
         )
     }
 
@@ -113,9 +140,10 @@ final class ModelDecodingTests: XCTestCase {
             RunActivityDurationText.string(
                 createdAt: state.createdAt,
                 startedAt: state.startedAt,
-                updatedAt: state.updatedAt
+                updatedAt: state.updatedAt,
+                locale: Locale(identifier: "en_US")
             ),
-            "0:15"
+            "just now"
         )
     }
 

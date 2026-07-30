@@ -61,6 +61,19 @@ paths:
     post:
       operationId: createPairingSession
       responses: { "201": { description: One-time pairing session } }
+  /v1/pairing-sessions/resolve:
+    post:
+      operationId: resolvePairingCode
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PairingCodeResolve" }
+      responses:
+        "200": { description: Confirmable machine identity and pairing challenge }
+        "404": { description: Pairing code is invalid or expired }
+        "429": { description: Too many pairing code attempts }
   /v1/pairing-sessions/{session_id}:
     get:
       operationId: getPairingSession
@@ -219,6 +232,12 @@ components:
       required: true
       schema: { type: string }
   schemas:
+    PairingCodeResolve:
+      type: object
+      required: [short_code]
+      properties:
+        short_code: { type: string, pattern: '^\d{6}$' }
+      additionalProperties: false
     MachinePatch:
       type: object
       required: [display_name]

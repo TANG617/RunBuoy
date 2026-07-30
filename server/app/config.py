@@ -18,6 +18,8 @@ class Settings:
     credential_pepper: str = "runbuoy-development-only-credential-pepper"
     token_encryption_key: str = _development_fernet_key()
     pairing_ttl_seconds: int = 300
+    pairing_code_attempt_limit: int = 5
+    pairing_code_attempt_window_seconds: int = 60
     event_retention_hours: int = 24
     apns_mode: str = "mock"
     apns_environment: str = "development"
@@ -40,6 +42,18 @@ class Settings:
             token_encryption_key=os.getenv("TOKEN_ENCRYPTION_KEY", _development_fernet_key()),
             pairing_ttl_seconds=int(
                 os.getenv("PAIRING_TTL_SECONDS", str(defaults.pairing_ttl_seconds))
+            ),
+            pairing_code_attempt_limit=int(
+                os.getenv(
+                    "PAIRING_CODE_ATTEMPT_LIMIT",
+                    str(defaults.pairing_code_attempt_limit),
+                )
+            ),
+            pairing_code_attempt_window_seconds=int(
+                os.getenv(
+                    "PAIRING_CODE_ATTEMPT_WINDOW_SECONDS",
+                    str(defaults.pairing_code_attempt_window_seconds),
+                )
             ),
             event_retention_hours=int(
                 os.getenv("EVENT_RETENTION_HOURS", str(defaults.event_retention_hours))
@@ -75,6 +89,10 @@ class Settings:
         )
 
     def validate(self) -> None:
+        if self.pairing_code_attempt_limit < 1:
+            raise ValueError("PAIRING_CODE_ATTEMPT_LIMIT must be at least 1")
+        if self.pairing_code_attempt_window_seconds < 1:
+            raise ValueError("PAIRING_CODE_ATTEMPT_WINDOW_SECONDS must be at least 1")
         if self.apns_mode not in {"mock", "production"}:
             raise ValueError("APNS_MODE must be mock or production")
         if self.apns_environment not in {"development", "production"}:

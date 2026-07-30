@@ -38,7 +38,9 @@ protocol version and are rejected with a stable validation error.
 event. Any event proves that the Machine-to-Server path was alive at that
 time; a heartbeat supplies that proof every 15 seconds while no other event
 does. Live Activities display `updated_at - created_at` as a static,
-Machine-confirmed duration rather than advancing an iPhone-local timer.
+Machine-confirmed duration rather than advancing an iPhone-local timer. The
+Lock Screen and Dynamic Island present this value at minute precision and use
+“just now” for values below one minute.
 
 ## Progress
 

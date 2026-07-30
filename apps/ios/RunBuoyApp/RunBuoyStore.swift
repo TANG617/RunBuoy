@@ -151,6 +151,10 @@ final class RunBuoyStore {
         await refresh()
     }
 
+    func resolvePairingCode(_ shortCode: String) async throws -> PairingCode {
+        try await api.resolvePairingCode(shortCode)
+    }
+
     func savePreferences(_ preferences: DevicePreferences) async {
         try? await api.updatePreferences(preferences)
     }

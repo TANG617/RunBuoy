@@ -6,6 +6,7 @@ enum DeviceAPIEndpoint: Equatable, Sendable {
     case run(UUID)
     case machines
     case messages
+    case resolvePairingCode
     case claimPairing(String)
     case notificationToken(String)
     case pushToStartToken(String)
@@ -24,7 +25,7 @@ enum DeviceAPIEndpoint: Equatable, Sendable {
             "PATCH"
         case .subscription:
             "DELETE"
-        case .bootstrap, .claimPairing, .activitySync:
+        case .bootstrap, .resolvePairingCode, .claimPairing, .activitySync:
             "POST"
         }
     }
@@ -36,6 +37,7 @@ enum DeviceAPIEndpoint: Equatable, Sendable {
         case .run(let id): "/v1/runs/\(id.uuidString.lowercased())"
         case .machines: "/v1/machines"
         case .messages: "/v1/notifications"
+        case .resolvePairingCode: "/v1/pairing-sessions/resolve"
         case .claimPairing(let id): "/v1/pairing-sessions/\(id.pathComponent)/claim"
         case .notificationToken(let id): "/v1/devices/\(id.pathComponent)/notification-token"
         case .pushToStartToken(let id): "/v1/devices/\(id.pathComponent)/push-to-start-token"
@@ -60,6 +62,7 @@ protocol RunBuoyAPI: Sendable {
     func runDetail(id: UUID) async throws -> RunDetail
     func listMachines() async throws -> [MachineSnapshot]
     func listMessages() async throws -> [RichMessage]
+    func resolvePairingCode(_ shortCode: String) async throws -> PairingCode
     func claimPairing(_ code: PairingCode) async throws
     func registerNotificationToken(_ token: String) async throws
     func registerPushToStartToken(_ token: String) async throws
@@ -195,6 +198,14 @@ struct URLSessionRunBuoyAPI: RunBuoyAPI, @unchecked Sendable {
 
     func listMessages() async throws -> [RichMessage] {
         try await requestList(.messages, key: "notifications")
+    }
+
+    func resolvePairingCode(_ shortCode: String) async throws -> PairingCode {
+        let response: ResolvedPairingCode = try await request(
+            .resolvePairingCode,
+            body: ResolvePairingCodeBody(shortCode: shortCode)
+        )
+        return response.code
     }
 
     func claimPairing(_ code: PairingCode) async throws {
@@ -336,6 +347,14 @@ struct URLSessionRunBuoyAPI: RunBuoyAPI, @unchecked Sendable {
         let challenge: String
     }
 
+    private struct ResolvePairingCodeBody: Encodable {
+        let shortCode: String
+
+        private enum CodingKeys: String, CodingKey {
+            case shortCode = "short_code"
+        }
+    }
+
     private struct ActivityTokenBody: Encodable {
         let token: String
         let deviceID: String
@@ -355,6 +374,29 @@ struct URLSessionRunBuoyAPI: RunBuoyAPI, @unchecked Sendable {
     }
 
     private struct EmptyBody: Encodable {}
+}
+
+private struct ResolvedPairingCode: Decodable {
+    let sessionID: String
+    let challenge: String
+    let machineDisplayName: String
+    let platform: String?
+
+    private enum CodingKeys: String, CodingKey {
+        case sessionID = "pairing_session_id"
+        case challenge
+        case machineDisplayName = "machine_display_name"
+        case platform
+    }
+
+    var code: PairingCode {
+        PairingCode(
+            sessionID: sessionID,
+            challenge: challenge,
+            machineDisplayName: machineDisplayName,
+            platform: platform
+        )
+    }
 }
 
 private struct RunDetailEnvelope: Decodable {

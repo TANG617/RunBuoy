@@ -18,7 +18,8 @@ runbuoy device pair
 
 ## 无法扫码
 
-在配对页面选择“使用配对码”，粘贴 `runbuoy device pair` 输出的代码。
+在配对页面选择“使用配对码”，输入 `runbuoy device pair` 输出的 6 位配对码，
+确认电脑身份后完成配对。
 
 需要先退出终端、稍后继续时：
 

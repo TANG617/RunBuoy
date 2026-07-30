@@ -71,7 +71,7 @@
 "onboarding.notifications_body" = "Notifications and Live Activities show meaningful changes without exposing full logs.";
 "onboarding.one_time_code" = "Pairing codes expire and contain no long-term credential";
 "onboarding.pair" = "Pair a machine";
-"onboarding.pair_body" = "Run runbuoy device pair on your computer, then scan its one-time code.";
+"onboarding.pair_body" = "Run runbuoy device pair on your computer, then scan or enter its one-time code.";
 "onboarding.scan_code" = "Scan Pairing Code";
 "onboarding.tokens_private" = "Device and activity tokens are sent securely and never written to ordinary logs";
 "onboarding.welcome" = "Keep every run in sight.";
@@ -79,8 +79,10 @@
 "pairing.camera_unavailable" = "Camera scanning is unavailable on this device. Use a physical iPhone with camera permission.";
 "pairing.camera_unavailable_title" = "Camera unavailable";
 "pairing.claim" = "Pair This Machine";
-"pairing.code_hint" = "Paste the pairing code produced by runbuoy device pair.";
+"pairing.code_hint" = "Enter the 6-digit code shown by runbuoy device pair.";
+"pairing.code_invalid_or_expired" = "This pairing code is invalid or has expired.";
 "pairing.code_placeholder" = "Pairing code";
+"pairing.short_code_placeholder" = "6-digit code";
 "pairing.confirm_identity" = "Confirm machine identity";
 "pairing.continue" = "Continue";
 "pairing.enter_code" = "Pair with Code";
@@ -91,6 +93,7 @@
 "pairing.name" = "Name";
 "pairing.scan_title" = "Scan Pairing Code";
 "pairing.success" = "Machine paired.";
+"pairing.too_many_attempts" = "Too many attempts. Wait a minute and try again.";
 "progress.indeterminate" = "In progress";
 "run.copy_id" = "Copy Run ID";
 "run.copy_message" = "Copy Safe Message";
@@ -157,6 +160,9 @@
 "tab.history" = "History";
 "tab.runs" = "Runs";
 "tab.settings" = "Settings";
+"time.hours_minutes_short" = "%1$dh %2$02dm";
+"time.just_now" = "just now";
+"time.minutes_short" = "%dm";
 "widget.confirmed_elapsed" = "Machine-confirmed elapsed time";
 "widget.stale" = "Data may be out of date";
 "widget.terminal_time" = "Time since run ended";

@@ -333,6 +333,7 @@ struct HistoryContentFilter: Equatable {
 private struct HistoryMachineFilterBar: View {
     let options: [HistoryMachineOption]
     @Binding var selection: String?
+    @Environment(\.colorScheme) private var colorScheme
     @ScaledMetric(relativeTo: .subheadline) private var height = 54
 
     var body: some View {
@@ -370,22 +371,16 @@ private struct HistoryMachineFilterBar: View {
                 .font(.subheadline.weight(.semibold))
                 .lineLimit(1)
                 .fixedSize(horizontal: true, vertical: false)
-                .foregroundStyle(Color.primary)
+                .foregroundStyle(isSelected ? selectedForeground : Color.primary)
                 .padding(.horizontal, 14)
                 .padding(.vertical, 9)
                 .background {
                     Capsule()
                         .fill(
                             isSelected
-                                ? Color.accentColor.opacity(0.2)
+                                ? selectedBackground
                                 : Color.secondary.opacity(0.16)
                         )
-                }
-                .overlay {
-                    if isSelected {
-                        Capsule()
-                            .stroke(Color.accentColor, lineWidth: 1)
-                    }
                 }
         }
         .buttonStyle(.plain)
@@ -393,6 +388,16 @@ private struct HistoryMachineFilterBar: View {
         .accessibilityIdentifier(
             id.map { "history.filter.\($0)" } ?? "history.filter.all"
         )
+    }
+
+    private var selectedBackground: Color {
+        colorScheme == .dark
+            ? Color(red: 0.48, green: 0.76, blue: 1)
+            : Color(red: 0, green: 0.30, blue: 0.64)
+    }
+
+    private var selectedForeground: Color {
+        colorScheme == .dark ? .black : .white
     }
 }
 

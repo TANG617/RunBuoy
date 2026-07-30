@@ -2,15 +2,12 @@ import SwiftUI
 
 private enum PairingStatus: Equatable {
     case success
-    case invalidCode
     case failed
 
     var title: LocalizedStringKey {
         switch self {
         case .success:
             "pairing.success"
-        case .invalidCode:
-            "pairing.invalid_code"
         case .failed:
             "pairing.failed"
         }
@@ -34,10 +31,8 @@ struct PairMachineView: View {
     let dismissesOnSuccess: Bool
 
     @State private var code: PairingCode?
-    @State private var rawCode = ""
     @State private var status: PairingStatus?
     @State private var isWorking = false
-    @FocusState private var isCodeFieldFocused: Bool
 
     init(
         initialCode: PairingCode? = nil,
@@ -72,29 +67,7 @@ struct PairMachineView: View {
                     .accessibilityIdentifier("pairing.claim")
                 }
             } else if allowsCodeEntry {
-                Section {
-                    TextField(
-                        "pairing.code_placeholder",
-                        text: $rawCode,
-                        axis: .vertical
-                    )
-                    .lineLimit(3...6)
-                    .keyboardType(.asciiCapable)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                    .submitLabel(.done)
-                    .focused($isCodeFieldFocused)
-                    .onSubmit(validateCode)
-                    .accessibilityIdentifier("pairing.code")
-
-                    Button("pairing.continue", action: validateCode)
-                        .disabled(trimmedCode.isEmpty)
-                        .accessibilityIdentifier("pairing.continue")
-                } header: {
-                    Text("pairing.enter_code")
-                } footer: {
-                    Text("pairing.code_hint")
-                }
+                PairingCodeEntrySection(code: $code)
             } else {
                 ContentUnavailableView(
                     "pairing.invalid_code_title",
@@ -115,26 +88,9 @@ struct PairMachineView: View {
         .navigationBarTitleDisplayMode(.inline)
         .onAppear {
             receivePendingPairingCode(router.pendingPairingCode)
-            if code == nil, allowsCodeEntry {
-                isCodeFieldFocused = true
-            }
         }
         .onChange(of: router.pendingPairingCode) { _, pendingCode in
             receivePendingPairingCode(pendingCode)
-        }
-    }
-
-    private var trimmedCode: String {
-        rawCode.trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-
-    private func validateCode() {
-        do {
-            code = try PairingCode.decode(trimmedCode)
-            status = nil
-            isCodeFieldFocused = false
-        } catch {
-            status = .invalidCode
         }
     }
 
@@ -142,7 +98,6 @@ struct PairMachineView: View {
         guard let pendingCode else { return }
         code = pendingCode
         status = nil
-        isCodeFieldFocused = false
     }
 
     private func claimPairing() {
@@ -160,6 +115,126 @@ struct PairMachineView: View {
                 }
             } catch {
                 status = .failed
+            }
+            isWorking = false
+        }
+    }
+}
+
+struct PairingCodeEntrySheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @Binding var code: PairingCode?
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                PairingCodeEntrySection(code: $code, dismissesOnResolve: true)
+            }
+            .navigationTitle("pairing.enter_code")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("common.close") {
+                        dismiss()
+                    }
+                }
+            }
+        }
+        .presentationDetents([.medium])
+    }
+}
+
+private struct PairingCodeEntrySection: View {
+    @Environment(\.dismiss) private var dismiss
+    @Environment(RunBuoyStore.self) private var store
+    @Binding var code: PairingCode?
+    let dismissesOnResolve: Bool
+
+    @State private var rawCode = ""
+    @State private var errorMessage: String?
+    @State private var isWorking = false
+    @FocusState private var isCodeFieldFocused: Bool
+
+    init(
+        code: Binding<PairingCode?>,
+        dismissesOnResolve: Bool = false
+    ) {
+        _code = code
+        self.dismissesOnResolve = dismissesOnResolve
+    }
+
+    var body: some View {
+        Section {
+            TextField("pairing.short_code_placeholder", text: $rawCode)
+                .keyboardType(.numberPad)
+                .textContentType(.oneTimeCode)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .font(.title3.monospacedDigit())
+                .multilineTextAlignment(.center)
+                .focused($isCodeFieldFocused)
+                .onSubmit(resolveCode)
+                .accessibilityIdentifier("pairing.code")
+
+            Button(action: resolveCode) {
+                if isWorking {
+                    ProgressView()
+                        .frame(maxWidth: .infinity)
+                } else {
+                    Text("pairing.continue")
+                        .frame(maxWidth: .infinity)
+                }
+            }
+            .disabled(trimmedCode.isEmpty || isWorking)
+            .accessibilityIdentifier("pairing.continue")
+
+            if let errorMessage {
+                Label(errorMessage, systemImage: "exclamationmark.triangle")
+                    .foregroundStyle(.red)
+                    .accessibilityIdentifier("pairing.status")
+            }
+        } header: {
+            Text("pairing.enter_code")
+        } footer: {
+            Text("pairing.code_hint")
+        }
+        .onAppear {
+            isCodeFieldFocused = true
+        }
+    }
+
+    private var trimmedCode: String {
+        rawCode.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private func resolveCode() {
+        guard !trimmedCode.isEmpty, !isWorking else { return }
+        isWorking = true
+        errorMessage = nil
+        Task {
+            do {
+                let resolvedCode: PairingCode
+                if let encodedCode = try? PairingCode.decode(trimmedCode) {
+                    resolvedCode = encodedCode
+                } else {
+                    guard trimmedCode.count == 6,
+                          trimmedCode.allSatisfy(\.isNumber)
+                    else {
+                        throw PairingCodeError.invalidCode
+                    }
+                    resolvedCode = try await store.resolvePairingCode(trimmedCode)
+                }
+                code = resolvedCode
+                isCodeFieldFocused = false
+                if dismissesOnResolve {
+                    dismiss()
+                }
+            } catch APIError.httpStatus(404) {
+                errorMessage = String(localized: "pairing.code_invalid_or_expired")
+            } catch APIError.httpStatus(429) {
+                errorMessage = String(localized: "pairing.too_many_attempts")
+            } catch {
+                errorMessage = error.localizedDescription
             }
             isWorking = false
         }

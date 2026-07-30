@@ -94,6 +94,10 @@ class PairingClaim(APIModel):
     challenge: str = Field(min_length=16, max_length=128)
 
 
+class PairingCodeResolve(APIModel):
+    short_code: str = Field(pattern=r"^\d{6}$")
+
+
 class PairingExchange(APIModel):
     exchange_secret: str = Field(min_length=16, max_length=256)
 

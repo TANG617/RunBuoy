@@ -21,7 +21,9 @@ effective target. An APNs `410 Unregistered` response invalidates the token.
 Pairing sessions expire after five minutes and are single use. The CLI gets a
 one-time exchange secret; the Server keeps only its hash. The iPhone claims a
 challenge using its Device credential. Exchange fails after claim has already
-been consumed, expiry, workspace mismatch, or replay.
+been consumed, expiry, workspace mismatch, or replay. Manual pairing resolves
+the six-digit short code only for an authenticated Device, records each lookup
+in the audit log, and rate-limits attempts per Device.
 
 ## Local process isolation
 
