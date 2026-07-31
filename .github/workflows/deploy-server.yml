@@ -80,7 +80,9 @@ jobs:
             --fail \
             --silent \
             --show-error \
-            --retry 12 \
+            --connect-timeout 5 \
+            --max-time 15 \
+            --retry 6 \
             --retry-all-errors \
             --retry-delay 5 \
             "$HEALTH_URL")"
