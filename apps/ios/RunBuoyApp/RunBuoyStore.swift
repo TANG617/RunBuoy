@@ -147,6 +147,7 @@ final class RunBuoyStore {
     }
 
     func claim(_ code: PairingCode) async throws {
+        try code.requireSelectedRegion()
         try await api.claimPairing(code)
         await refresh()
     }

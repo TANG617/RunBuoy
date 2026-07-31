@@ -44,9 +44,16 @@ runbuoy doctor
 runbuoy capabilities --json
 ```
 
-New installations use `https://api.runbuoy.cloud` as the default server URL.
-Override it when needed with
-`runbuoy config set --server-url <url>`.
+New installations use the Global region at `https://api.runbuoy.cloud` by
+default. Mainland China users should select their hosted region before pairing:
+
+```bash
+runbuoy config set --region cn
+```
+
+The corresponding endpoint is `https://api-cn.runbuoy.cloud`. The region and
+server URL cannot be changed after the Machine is paired. Self-hosted users can
+instead run `runbuoy config set --server-url <url>` before pairing.
 
 Set the canonical Machine name from the CLI:
 

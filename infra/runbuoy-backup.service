@@ -1,0 +1,11 @@
+[Unit]
+Description=Back up RunBuoy PostgreSQL and secrets
+Requires=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/backup-runbuoy
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7

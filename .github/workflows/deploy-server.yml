@@ -9,25 +9,37 @@ on:
 permissions:
   contents: read
 
-concurrency:
-  group: runbuoy-production
-  cancel-in-progress: false
-
 jobs:
   deploy:
+    name: Deploy ${{ matrix.region }}
     if: >-
       github.event.workflow_run.conclusion == 'success' &&
       github.event.workflow_run.event == 'push' &&
       github.event.workflow_run.head_branch == 'main'
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - region: global
+            environment: production
+            health_url: https://api.runbuoy.cloud/healthz
+          - region: cn
+            environment: production-cn
+            health_url: https://api-cn.runbuoy.cloud/healthz
+    concurrency:
+      group: runbuoy-production-${{ matrix.region }}
+      cancel-in-progress: false
 
     environment:
-      name: production
-      url: https://api.runbuoy.cloud/healthz
+      name: ${{ matrix.environment }}
+      url: ${{ matrix.health_url }}
 
     env:
       DEPLOY_SHA: ${{ github.event.workflow_run.head_sha }}
+      DEPLOY_REGION: ${{ matrix.region }}
+      HEALTH_URL: ${{ matrix.health_url }}
       PROD_HOST: ${{ vars.PROD_HOST }}
       PROD_PORT: ${{ vars.PROD_PORT }}
       PROD_USER: ${{ vars.PROD_USER }}
@@ -59,3 +71,18 @@ jobs:
             -p "$PROD_PORT" \
             "$PROD_USER@$PROD_HOST" \
             "deploy $DEPLOY_SHA"
+
+      - name: Verify public region endpoint
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          HEALTH_RESPONSE="$(curl \
+            --fail \
+            --silent \
+            --show-error \
+            --retry 12 \
+            --retry-all-errors \
+            --retry-delay 5 \
+            "$HEALTH_URL")"
+          [[ "$(jq -r '.status' <<<"$HEALTH_RESPONSE")" == "ok" ]]
+          [[ "$(jq -r '.region' <<<"$HEALTH_RESPONSE")" == "$DEPLOY_REGION" ]]

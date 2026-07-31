@@ -1,0 +1,52 @@
+services:
+  db:
+    restart: unless-stopped
+
+  api:
+    env_file: !override
+      - ${RUNBUOY_ENV_FILE:-.env.example}
+    ports: !override
+      - "127.0.0.1:8000:8000"
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - >-
+          import urllib.request;
+          urllib.request.urlopen("http://127.0.0.1:8000/healthz", timeout=2)
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+
+  worker:
+    env_file: !override
+      - ${RUNBUOY_ENV_FILE:-.env.example}
+    volumes:
+      - "${APNS_PRIVATE_KEY_HOST_PATH:?set APNS_PRIVATE_KEY_HOST_PATH}:/run/secrets/apns_key.p8:ro"
+
+  migrate:
+    env_file: !override
+      - ${RUNBUOY_ENV_FILE:-.env.example}
+
+  caddy:
+    image: caddy:2-alpine
+    environment:
+      RUNBUOY_HOST: "${RUNBUOY_HOST:?set RUNBUOY_HOST}"
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - runbuoy-caddy-data:/data
+      - runbuoy-caddy-config:/config
+    restart: unless-stopped
+
+volumes:
+  runbuoy-caddy-data:
+  runbuoy-caddy-config:

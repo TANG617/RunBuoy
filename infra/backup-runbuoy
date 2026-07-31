@@ -1,0 +1,65 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+umask 077
+
+readonly BACKUP_ROOT="${RUNBUOY_BACKUP_ROOT:-/var/backups/runbuoy}"
+readonly DB_CONTAINER="${RUNBUOY_DB_CONTAINER:-runbuoy-db-1}"
+readonly CONFIG_ROOT="${RUNBUOY_CONFIG_ROOT:-/etc/runbuoy}"
+readonly RETENTION_DAYS="${RUNBUOY_BACKUP_RETENTION_DAYS:-14}"
+TIMESTAMP="$(date -u +%Y%m%dT%H%M%SZ)"
+readonly TIMESTAMP
+readonly BACKUP_DIRECTORY="$BACKUP_ROOT/$TIMESTAMP"
+
+[[ "$RETENTION_DAYS" =~ ^[0-9]+$ ]] || {
+  echo "RUNBUOY_BACKUP_RETENTION_DAYS must be a non-negative integer" >&2
+  exit 2
+}
+
+install -d -m 0700 "$BACKUP_ROOT"
+exec 9>"$BACKUP_ROOT/.backup.lock"
+flock -n 9 || {
+  echo "Another RunBuoy backup is running" >&2
+  exit 3
+}
+
+docker inspect "$DB_CONTAINER" >/dev/null
+[[ -d "$CONFIG_ROOT" ]]
+
+TEMP_DIRECTORY="$(mktemp -d "$BACKUP_ROOT/.tmp.XXXXXX")"
+readonly TEMP_DIRECTORY
+cleanup() {
+  if [[ -d "$TEMP_DIRECTORY" ]]; then
+    rm -r -- "$TEMP_DIRECTORY"
+  fi
+}
+trap cleanup EXIT
+
+docker exec "$DB_CONTAINER" sh -c \
+  'exec pg_dump --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" --format custom' \
+  >"$TEMP_DIRECTORY/runbuoy.pg_dump"
+
+test -s "$TEMP_DIRECTORY/runbuoy.pg_dump"
+docker exec -i "$DB_CONTAINER" pg_restore --list \
+  <"$TEMP_DIRECTORY/runbuoy.pg_dump" >/dev/null
+
+tar --create --gzip \
+  --file "$TEMP_DIRECTORY/runbuoy-config.tar.gz" \
+  --directory / "${CONFIG_ROOT#/}"
+
+(
+  cd "$TEMP_DIRECTORY"
+  sha256sum runbuoy.pg_dump runbuoy-config.tar.gz >SHA256SUMS
+)
+chmod 0600 "$TEMP_DIRECTORY"/*
+mv "$TEMP_DIRECTORY" "$BACKUP_DIRECTORY"
+trap - EXIT
+
+find "$BACKUP_ROOT" \
+  -mindepth 1 \
+  -maxdepth 1 \
+  -type d \
+  -name '20??????T??????Z' \
+  -mtime "+$RETENTION_DAYS" \
+  -exec rm -r -- {} +
+
+echo "RunBuoy backup completed: $BACKUP_DIRECTORY"

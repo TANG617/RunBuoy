@@ -17,6 +17,9 @@ services:
     build:
       context: ..
       dockerfile: infra/Dockerfile.api
+      args:
+        PIP_INDEX_URL: ${PIP_INDEX_URL:-https://pypi.org/simple}
+        PIP_DEFAULT_TIMEOUT: ${PIP_DEFAULT_TIMEOUT:-120}
     command: ["alembic", "upgrade", "head"]
     env_file: ${RUNBUOY_ENV_FILE:-.env.example}
     depends_on:
@@ -28,6 +31,9 @@ services:
     build:
       context: ..
       dockerfile: infra/Dockerfile.api
+      args:
+        PIP_INDEX_URL: ${PIP_INDEX_URL:-https://pypi.org/simple}
+        PIP_DEFAULT_TIMEOUT: ${PIP_DEFAULT_TIMEOUT:-120}
     env_file: ${RUNBUOY_ENV_FILE:-.env.example}
     command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
     depends_on:
@@ -41,6 +47,9 @@ services:
     build:
       context: ..
       dockerfile: infra/Dockerfile.worker
+      args:
+        PIP_INDEX_URL: ${PIP_INDEX_URL:-https://pypi.org/simple}
+        PIP_DEFAULT_TIMEOUT: ${PIP_DEFAULT_TIMEOUT:-120}
     env_file: ${RUNBUOY_ENV_FILE:-.env.example}
     depends_on:
       migrate:

@@ -67,10 +67,22 @@ install it with `brew install tmux` on macOS or your Linux system package
 manager. Installation, upgrade, packaging, and release details are in
 [`docs/cli-distribution.md`](docs/cli-distribution.md).
 
-### 3. Bootstrap iPhone and pair
+### 3. Choose a data region, bootstrap iPhone, and pair
 
-Build the native app in `apps/ios`, set the Server HTTPS URL, bootstrap the
-installation, and choose **Pair New Machine**. On the Machine:
+Build the native app in `apps/ios` and choose either **Global** or
+**Mainland China** during onboarding. Select the same region on every Machine
+before pairing:
+
+```bash
+# Choose one. New CLI installations default to global.
+runbuoy config set --region global
+runbuoy config set --region cn
+```
+
+The hosted endpoints are `https://api.runbuoy.cloud` and
+`https://api-cn.runbuoy.cloud`. A phone installation or paired Machine cannot
+switch regions; reinstall/reset and pair as a new installation to make a
+different choice. Then choose **Pair New Machine**. On the Machine:
 
 ```bash
 runbuoy device pair
@@ -180,6 +192,8 @@ runbuoy emit message
 runbuoy emit attention
 runbuoy doctor
 runbuoy config show
+runbuoy config set --region global
+runbuoy config set --region cn
 runbuoy config set --server-url https://runbuoy.example.com
 runbuoy config path
 runbuoy history prune --older-than 30d --dry-run

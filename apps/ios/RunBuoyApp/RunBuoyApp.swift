@@ -19,6 +19,7 @@ struct RunBuoyApp: App {
         let uiTestConfiguration = UITestConfiguration.current
         let isUIPreviewMode = Self.isUIPreviewLaunch || uiTestConfiguration.isEnabled
         let identityStore = KeychainDeviceIdentityStore()
+        AppConfiguration.pinLegacyHostedInstallation(identityStore: identityStore)
         let api = URLSessionRunBuoyAPI(
             baseURLProvider: { AppConfiguration.live.apiBaseURL },
             identityStore: identityStore

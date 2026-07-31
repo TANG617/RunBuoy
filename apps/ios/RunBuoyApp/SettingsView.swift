@@ -3,17 +3,10 @@ import SwiftUI
 
 struct SettingsView: View {
     @Environment(RunBuoyStore.self) private var store
-    @AppStorage(AppConfiguration.serverAddressDefaultsKey) private var serverAddress = ""
     @AppStorage("runbuoy.notifications-enabled") private var notificationsEnabled = true
     @AppStorage("runbuoy.live-activities-enabled") private var liveActivitiesEnabled = true
     @AppStorage("runbuoy.safe-messages-enabled") private var safeMessagesEnabled = true
     @State private var cacheMessage: LocalizedStringKey?
-    @State private var draftServerAddress = UserDefaults.standard.string(
-        forKey: AppConfiguration.serverAddressDefaultsKey
-    ) ?? ""
-    @State private var serverMessage: LocalizedStringKey?
-    @State private var serverValidationAttempted = false
-    @FocusState private var isServerFieldFocused: Bool
 
     var body: some View {
         Form {
@@ -29,40 +22,22 @@ struct SettingsView: View {
                 .accessibilityIdentifier("settings.machines")
 
                 LabeledContent {
-                    TextField(
-                        "",
-                        text: $draftServerAddress
-                    )
-                    .multilineTextAlignment(.trailing)
-                    .keyboardType(.URL)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                    .submitLabel(.done)
-                    .focused($isServerFieldFocused)
-                    .accessibilityLabel("settings.server")
-                    .onSubmit(saveServer)
+                    Text(selectedRegionName)
+                        .foregroundStyle(.secondary)
                 } label: {
-                    Label("settings.server", systemImage: "server.rack")
+                    Label("settings.region", systemImage: "globe.asia.australia")
                 }
 
-                if serverValidationAttempted, !isServerValid {
-                    Label("settings.server_invalid", systemImage: "exclamationmark.triangle")
-                        .font(.footnote)
-                        .foregroundStyle(.red)
-                } else if let serverMessage {
-                    Label(serverMessage, systemImage: "checkmark.circle")
-                        .font(.footnote)
-                        .foregroundStyle(.primary)
+                LabeledContent {
+                    Text(AppConfiguration.displayAddress(for: AppConfiguration.live.apiBaseURL))
+                        .foregroundStyle(.secondary)
+                } label: {
+                    Label("settings.server", systemImage: "server.rack")
                 }
             } header: {
                 Text("settings.connections")
             } footer: {
-                Text(
-                    String(
-                        format: String(localized: "settings.server_default"),
-                        AppConfiguration.defaultServerAddress
-                    )
-                )
+                Text("settings.region_locked")
             }
 
             Section("settings.notifications") {
@@ -119,12 +94,6 @@ struct SettingsView: View {
         .onChange(of: notificationsEnabled) { _, _ in savePreferences() }
         .onChange(of: liveActivitiesEnabled) { _, _ in savePreferences() }
         .onChange(of: safeMessagesEnabled) { _, _ in savePreferences() }
-        .onChange(of: draftServerAddress) { _, _ in
-            serverValidationAttempted = false
-            if hasServerChanges {
-                serverMessage = nil
-            }
-        }
     }
 
     private func savePreferences() {
@@ -143,38 +112,9 @@ struct SettingsView: View {
         }
     }
 
-    private var trimmedServerAddress: String {
-        draftServerAddress.trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-
-    private var resolvedServerURL: URL? {
-        AppConfiguration.resolvedAPIBaseURL(
-            serverAddress: trimmedServerAddress,
-            defaultBaseURL: AppConfiguration.bundledAPIBaseURL
-        )
-    }
-
-    private var isServerValid: Bool {
-        resolvedServerURL != nil
-    }
-
-    private var hasServerChanges: Bool {
-        trimmedServerAddress != serverAddress
-    }
-
-    private func saveServer() {
-        serverValidationAttempted = true
-        guard isServerValid else {
-            serverMessage = nil
-            return
-        }
-        serverValidationAttempted = false
-        isServerFieldFocused = false
-        guard hasServerChanges else { return }
-        serverAddress = trimmedServerAddress
-        draftServerAddress = trimmedServerAddress
-        serverMessage = "settings.server_saved"
-        Task { await store.refresh() }
+    private var selectedRegionName: String {
+        AppConfiguration.selectedRegion()?.displayName
+            ?? String(localized: "region.private_deployment")
     }
 }
 

@@ -23,7 +23,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @application.get("/healthz", include_in_schema=False)
     def health() -> dict[str, str]:
-        return {"status": "ok"}
+        return {"status": "ok", "region": configured.region}
 
     return application
 

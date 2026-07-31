@@ -2,12 +2,24 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from runbuoy.config import Config, CredentialStore, ensure_machine_identity, load_config
+from runbuoy.config import (
+    Config,
+    CredentialStore,
+    RunBuoyRegion,
+    ensure_machine_identity,
+    load_config,
+)
 from runbuoy.paths import AppPaths
 
 
 def test_default_server_uses_production_https_url() -> None:
+    assert Config().region is RunBuoyRegion.GLOBAL
     assert str(Config().server_url) == "https://api.runbuoy.cloud/"
+
+
+def test_regions_map_to_stable_hosted_urls() -> None:
+    assert RunBuoyRegion.GLOBAL.server_url == "https://api.runbuoy.cloud"
+    assert RunBuoyRegion.CHINA.server_url == "https://api-cn.runbuoy.cloud"
 
 
 def test_credential_file_fallback_is_mode_0600(tmp_path: Path, monkeypatch: object) -> None:

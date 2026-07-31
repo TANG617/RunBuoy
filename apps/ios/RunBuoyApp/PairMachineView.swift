@@ -130,7 +130,9 @@ struct PairMachineView: View {
 
     private func validateCode() {
         do {
-            code = try PairingCode.decode(trimmedCode)
+            let decoded = try PairingCode.decode(trimmedCode)
+            try decoded.requireSelectedRegion()
+            code = decoded
             status = nil
             isCodeFieldFocused = false
         } catch {
@@ -140,9 +142,15 @@ struct PairMachineView: View {
 
     private func receivePendingPairingCode(_ pendingCode: PairingCode?) {
         guard let pendingCode else { return }
-        code = pendingCode
-        status = nil
-        isCodeFieldFocused = false
+        do {
+            try pendingCode.requireSelectedRegion()
+            code = pendingCode
+            status = nil
+            isCodeFieldFocused = false
+        } catch {
+            code = nil
+            status = .invalidCode
+        }
     }
 
     private func claimPairing() {

@@ -1,11 +1,48 @@
 import Foundation
 
+enum RunBuoyRegion: String, CaseIterable, Codable, Identifiable, Sendable {
+    case global
+    case china = "cn"
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .global:
+            String(localized: "region.global")
+        case .china:
+            String(localized: "region.china")
+        }
+    }
+
+    var detail: String {
+        switch self {
+        case .global:
+            String(localized: "region.global_detail")
+        case .china:
+            String(localized: "region.china_detail")
+        }
+    }
+}
+
+enum RegionSelectionError: LocalizedError {
+    case alreadySelected
+
+    var errorDescription: String? {
+        String(localized: "region.already_selected")
+    }
+}
+
 struct AppConfiguration: Sendable {
     static let serverAddressDefaultsKey = "runbuoy.server-address"
+    static let regionDefaultsKey = "runbuoy.region"
 
     let apiBaseURL: URL
 
     static var live: AppConfiguration {
+        if let region = selectedRegion() {
+            return AppConfiguration(apiBaseURL: apiBaseURL(for: region))
+        }
         let address = UserDefaults.standard.string(forKey: serverAddressDefaultsKey)
         return AppConfiguration(
             apiBaseURL: resolvedAPIBaseURL(
@@ -13,6 +50,43 @@ struct AppConfiguration: Sendable {
                 defaultBaseURL: bundledAPIBaseURL
             ) ?? bundledAPIBaseURL
         )
+    }
+
+    static func selectedRegion(userDefaults: UserDefaults = .standard) -> RunBuoyRegion? {
+        userDefaults.string(forKey: regionDefaultsKey).flatMap(RunBuoyRegion.init(rawValue:))
+    }
+
+    static func selectRegion(
+        _ region: RunBuoyRegion,
+        userDefaults: UserDefaults = .standard
+    ) throws {
+        if let existing = selectedRegion(userDefaults: userDefaults), existing != region {
+            throw RegionSelectionError.alreadySelected
+        }
+        userDefaults.set(region.rawValue, forKey: regionDefaultsKey)
+        userDefaults.removeObject(forKey: serverAddressDefaultsKey)
+    }
+
+    static func pinLegacyHostedInstallation(
+        identityStore: any DeviceIdentityStoring,
+        userDefaults: UserDefaults = .standard
+    ) {
+        guard selectedRegion(userDefaults: userDefaults) == nil,
+              userDefaults.string(forKey: serverAddressDefaultsKey)?.isEmpty != false,
+              (try? identityStore.load()) != nil
+        else {
+            return
+        }
+        userDefaults.set(RunBuoyRegion.global.rawValue, forKey: regionDefaultsKey)
+    }
+
+    static func apiBaseURL(for region: RunBuoyRegion) -> URL {
+        switch region {
+        case .global:
+            bundledAPIBaseURL
+        case .china:
+            URL(string: "https://api-cn.runbuoy.cloud")!
+        }
     }
 
     static var bundledAPIBaseURL: URL {

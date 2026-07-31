@@ -30,6 +30,7 @@ from runbuoy import __version__, sdk
 from runbuoy.config import (
     Config,
     CredentialStore,
+    RunBuoyRegion,
     ensure_machine_identity,
     ephemeral_token,
     load_config,
@@ -1171,6 +1172,7 @@ def completion_install(
 
 def _config_result(config: Config) -> dict[str, Any]:
     return {
+        "region": config.region.value,
         "server_url": str(config.server_url),
         "machine_id": config.machine_id,
         "machine_name": config.machine_name,
@@ -1182,12 +1184,29 @@ def _config_result(config: Config) -> dict[str, Any]:
 
 def _update_config(
     *,
+    region: RunBuoyRegion | None,
     server_url: str | None,
     machine_name: str | None,
 ) -> tuple[AppPaths, Config]:
-    paths, config, _credentials, _queue = _context()
+    paths, config, credentials, _queue = _context()
     updates: dict[str, Any] = {}
+    is_paired = config.machine_id is not None and credentials.get("machine_credential") is not None
+    if region is not None and server_url is not None:
+        raise typer.BadParameter("--region and --server-url cannot be used together")
+    if region is not None:
+        target_server_url = f"{region.server_url}/"
+        if is_paired and (region != config.region or str(config.server_url) != target_server_url):
+            raise typer.BadParameter("the data region cannot be changed after pairing")
+        updates["region"] = region
+        updates["server_url"] = region.server_url
     if server_url is not None:
+        if is_paired:
+            try:
+                candidate = Config.model_validate({**config.model_dump(), "server_url": server_url})
+            except ValidationError as error:
+                raise typer.BadParameter(str(error)) from error
+            if str(candidate.server_url) != str(config.server_url):
+                raise typer.BadParameter("the server cannot be changed after pairing")
         updates["server_url"] = server_url
     if machine_name is not None:
         cleaned = (safe_message(machine_name, 120) or "").strip()
@@ -1220,7 +1239,7 @@ def config_command(
     """Show configuration when no config subcommand is given."""
     if ctx.invoked_subcommand is not None:
         return
-    _paths, config = _update_config(server_url=None, machine_name=None)
+    _paths, config = _update_config(region=None, server_url=None, machine_name=None)
     _show_config(config, json_output=json_output)
 
 
@@ -1229,12 +1248,17 @@ def config_show(
     json_output: bool = typer.Option(False, "--json", help="Write JSON to stdout."),
 ) -> None:
     """Show effective non-secret configuration."""
-    _paths, config = _update_config(server_url=None, machine_name=None)
+    _paths, config = _update_config(region=None, server_url=None, machine_name=None)
     _show_config(config, json_output=json_output)
 
 
 @config_app.command("set")
 def config_set(
+    region: RunBuoyRegion | None = typer.Option(
+        None,
+        "--region",
+        help="Permanent hosted data region: global or cn.",
+    ),
     server_url: str | None = typer.Option(None, "--server-url", help="RunBuoy server base URL."),
     machine_name: str | None = typer.Option(
         None,
@@ -1244,9 +1268,13 @@ def config_set(
     json_output: bool = typer.Option(False, "--json", help="Write JSON to stdout."),
 ) -> None:
     """Change one or more non-secret settings and show the result."""
-    if server_url is None and machine_name is None:
-        raise typer.BadParameter("provide --server-url and/or --machine-name")
-    paths, config = _update_config(server_url=server_url, machine_name=machine_name)
+    if region is None and server_url is None and machine_name is None:
+        raise typer.BadParameter("provide --region, --server-url, and/or --machine-name")
+    paths, config = _update_config(
+        region=region,
+        server_url=server_url,
+        machine_name=machine_name,
+    )
     if machine_name is not None and config.machine_id is not None:
         credentials = CredentialStore(paths)
         if credentials.get("machine_credential") is not None:

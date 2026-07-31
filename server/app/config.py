@@ -14,6 +14,7 @@ def _development_fernet_key() -> str:
 
 @dataclass(frozen=True, slots=True)
 class Settings:
+    region: str = "global"
     database_url: str = "sqlite:///./runbuoy.db"
     credential_pepper: str = "runbuoy-development-only-credential-pepper"
     token_encryption_key: str = _development_fernet_key()
@@ -35,6 +36,7 @@ class Settings:
     def from_env(cls) -> Settings:
         defaults = cls()
         return cls(
+            region=os.getenv("RUNBUOY_REGION", defaults.region),
             database_url=os.getenv("DATABASE_URL", defaults.database_url),
             credential_pepper=os.getenv("CREDENTIAL_PEPPER", defaults.credential_pepper),
             token_encryption_key=os.getenv("TOKEN_ENCRYPTION_KEY", _development_fernet_key()),
@@ -75,6 +77,8 @@ class Settings:
         )
 
     def validate(self) -> None:
+        if self.region not in {"global", "cn"}:
+            raise ValueError("RUNBUOY_REGION must be global or cn")
         if self.apns_mode not in {"mock", "production"}:
             raise ValueError("APNS_MODE must be mock or production")
         if self.apns_environment not in {"development", "production"}:

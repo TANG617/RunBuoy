@@ -1,0 +1,95 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+umask 027
+
+if [[ $# -lt 1 || $# -gt 2 ]]; then
+  echo "Usage: deploy-runbuoy <40-character-sha> [--check-only]" >&2
+  exit 2
+fi
+
+readonly DEPLOY_SHA="$1"
+readonly DEPLOY_MODE="${2:-deploy}"
+readonly REPOSITORY="/opt/runbuoy"
+readonly RELEASES="/opt/runbuoy-releases"
+readonly RELEASE="${RELEASES}/${DEPLOY_SHA}"
+readonly STATE_DIRECTORY="/var/lib/runbuoy"
+
+[[ "$DEPLOY_SHA" =~ ^[0-9a-f]{40}$ ]] || {
+  echo "Invalid commit SHA" >&2
+  exit 2
+}
+
+[[ "$DEPLOY_MODE" == "deploy" || "$DEPLOY_MODE" == "--check-only" ]] || {
+  echo "Invalid deployment mode" >&2
+  exit 2
+}
+
+exec 9>/run/lock/runbuoy-deploy.lock
+flock -n 9 || {
+  echo "Another RunBuoy deployment is running" >&2
+  exit 3
+}
+
+install -d -m 0750 "$RELEASES" "$STATE_DIRECTORY"
+
+fetch_succeeded=false
+for attempt in 1 2 3 4 5; do
+  if git -c http.version=HTTP/1.1 -C "$REPOSITORY" fetch --prune origin \
+    "+refs/heads/main:refs/remotes/origin/main"; then
+    fetch_succeeded=true
+    break
+  fi
+  sleep "$((attempt * 5))"
+done
+[[ "$fetch_succeeded" == true ]] || {
+  echo "Unable to fetch origin/main after five attempts" >&2
+  exit 6
+}
+
+git -C "$REPOSITORY" cat-file -e "${DEPLOY_SHA}^{commit}"
+git -C "$REPOSITORY" merge-base --is-ancestor "$DEPLOY_SHA" origin/main || {
+  echo "Commit is not reachable from origin/main" >&2
+  exit 4
+}
+
+if [[ -e "$RELEASE" ]]; then
+  [[ -f "$RELEASE/.git" ]] || {
+    echo "Release path exists but is not a Git worktree: $RELEASE" >&2
+    exit 5
+  }
+else
+  git -C "$REPOSITORY" worktree add --detach "$RELEASE" "$DEPLOY_SHA"
+fi
+
+compose=(
+  docker compose
+  -p runbuoy
+  --env-file /etc/runbuoy/runbuoy.env
+  -f "$RELEASE/infra/docker-compose.yml"
+  -f "$RELEASE/infra/docker-compose.prod.yml"
+)
+
+"${compose[@]}" config -q
+
+if [[ "$DEPLOY_MODE" == "--check-only" ]]; then
+  "${compose[@]}" build api worker migrate
+  echo "Build and configuration checks passed for $DEPLOY_SHA"
+  exit 0
+fi
+
+"${compose[@]}" up \
+  -d \
+  --build \
+  --remove-orphans \
+  --wait \
+  --wait-timeout 180
+
+curl --fail --silent --show-error \
+  --retry 12 \
+  --retry-delay 5 \
+  http://127.0.0.1:8000/healthz
+
+printf '%s\n' "$DEPLOY_SHA" >"$STATE_DIRECTORY/deployed-sha"
+"${compose[@]}" ps
+
+echo "Successfully deployed $DEPLOY_SHA"

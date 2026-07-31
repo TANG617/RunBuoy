@@ -58,6 +58,7 @@ def pair_machine(
                 "challenge": challenge,
                 "machine": config.machine_name,
                 "platform": platform.system().lower(),
+                "region": config.region.value,
             },
             quote_via=quote,
         )

@@ -101,7 +101,9 @@ struct MachinesView: View {
 
     private func receiveScannedCode(_ value: String) {
         do {
-            queuedPairingCode = try PairingCode.decode(value)
+            let decoded = try PairingCode.decode(value)
+            try decoded.requireSelectedRegion()
+            queuedPairingCode = decoded
             pairingError = nil
         } catch {
             queuedPairingCode = nil

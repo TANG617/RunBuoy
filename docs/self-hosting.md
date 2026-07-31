@@ -22,6 +22,10 @@ Never expose PostgreSQL publicly. Terminate TLS at a trusted ingress and pass
 only the API port. Back up PostgreSQL and encryption-key material together;
 without the encryption key, restored APNs tokens are intentionally unusable.
 
+Set `RUNBUOY_REGION` to `global` or `cn` on each deployment. A hosted client
+and every Machine paired to it must use the same value; databases, credentials,
+pairing challenges, and user data are not synchronized across regions.
+
 ## Secrets
 
 Generate independent values for database credentials, bearer-token hashing,

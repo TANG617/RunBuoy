@@ -71,18 +71,20 @@ push to main
   -> CI
   -> all CI jobs succeed
   -> Deploy server
-  -> SSH to production
-  -> deploy <tested-commit-sha>
+  -> SSH to production + production-cn in parallel
+  -> deploy <tested-commit-sha> on each region
 ```
 
 The deploy workflow accepts only a successful `push` CI run on `main`. A
-successful pull-request run is not sufficient. The workflow also uses a
-concurrency group so production deployments run one at a time.
+successful pull-request run is not sufficient. Global and Mainland China use
+separate concurrency groups, deployments, databases, credentials, and public
+region health checks. A failure in one region does not cancel the other job.
 
 ### Required GitHub environment
 
-Create a GitHub environment named `production`, restrict it to the `main`
-branch, and configure:
+Create GitHub environments named `production` and `production-cn`, restrict
+both to the `main` branch, and configure the following values independently in
+each environment:
 
 Environment variables:
 
@@ -95,9 +97,12 @@ Environment secrets:
 - `PROD_SSH_KEY`
 - `PROD_KNOWN_HOSTS`
 
-The target host must expose a `deploy` command that accepts one commit SHA,
-checks out exactly that revision, applies migrations, starts or updates the
-API and worker, and exits unsuccessfully if the health checks fail.
+The target host must install `infra/runbuoy-ci-command` and
+`infra/deploy-runbuoy` under `/usr/local/sbin`, and restrict the CI public key
+to the former with an `authorized_keys` forced command. It accepts one commit
+SHA, verifies that it belongs to `origin/main`, checks out exactly that
+revision, applies migrations, starts or updates the API and worker, and exits
+unsuccessfully if health checks fail.
 
 ### Deploy
 
@@ -115,13 +120,29 @@ Verify production after the deployment:
 
 ```bash
 curl --fail --silent --show-error https://api.runbuoy.cloud/healthz
+curl --fail --silent --show-error https://api-cn.runbuoy.cloud/healthz
 ```
 
 Expected response:
 
 ```json
-{"status":"ok"}
+{"status":"ok","region":"global"}
+{"status":"ok","region":"cn"}
 ```
+
+The two installations are intentionally isolated. Do not copy PostgreSQL data,
+device credentials, or pairing sessions between them. The same Apple APNs
+signing `.p8` key may be mounted on both Workers, while each deployment keeps
+independent database, credential-pepper, and token-encryption secrets.
+
+### Backups
+
+Install `infra/backup-runbuoy` as `/usr/local/sbin/backup-runbuoy` and the two
+`runbuoy-backup.*` units in `/etc/systemd/system`. The daily timer writes a
+custom-format PostgreSQL dump, a root-only archive of `/etc/runbuoy`, and
+SHA-256 checksums under `/var/backups/runbuoy`. Backups default to 14-day local
+retention. Periodically copy encrypted backups off-host and perform a private
+restore test; a local backup alone does not protect against loss of the server.
 
 Also verify a representative API operation and check the production API,
 worker, migration, and APNs delivery logs when the release changes those

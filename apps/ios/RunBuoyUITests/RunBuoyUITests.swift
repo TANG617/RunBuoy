@@ -27,6 +27,10 @@ final class RunBuoyUITests: XCTestCase {
 
         XCTAssertTrue(element("onboarding.page.product").waitForExistence(timeout: 5))
         element("onboarding.primary-action").tap()
+        XCTAssertTrue(element("onboarding.page.region").waitForExistence(timeout: 2))
+        app.segmentedControls.buttons["Global"].tap()
+
+        element("onboarding.primary-action").tap()
         XCTAssertTrue(element("onboarding.page.permissions").waitForExistence(timeout: 2))
 
         element("onboarding.primary-action").tap()
@@ -324,7 +328,7 @@ final class RunBuoyUITests: XCTestCase {
     private static let activeRunID = "018f0d8a-8c0a-7000-8000-000000000001"
     private static let failedRunID = "018f0d8a-8c0a-7000-8000-000000000002"
     private static let pairingURL =
-        "runbuoy://pair/session_ui_test?challenge=once-only&machine=UI%20Test%20Mac&platform=macOS"
+        "runbuoy://pair/session_ui_test?challenge=once-only&machine=UI%20Test%20Mac&platform=macOS&region=global"
     private static let knownSystemSectionHeaderLabels: Set<String> = [
         "Active Runs",
         "Timing",

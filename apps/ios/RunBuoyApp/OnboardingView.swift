@@ -16,6 +16,7 @@ struct OnboardingView: View {
 
     @State private var page = 0
     @State private var sheet: OnboardingSheet?
+    @State private var selectedRegion: RunBuoyRegion? = AppConfiguration.selectedRegion()
     @State private var pairingCode: PairingCode?
     @State private var pairingSucceeded = false
     @State private var errorMessage: String?
@@ -37,15 +38,17 @@ struct OnboardingView: View {
             TabView(selection: $page) {
                 ProductIntroduction()
                     .tag(0)
-                PermissionIntroduction()
+                RegionIntroduction(selection: $selectedRegion)
                     .tag(1)
-                PairingIntroduction()
+                PermissionIntroduction()
                     .tag(2)
+                PairingIntroduction()
+                    .tag(3)
             }
             .tabViewStyle(.page(indexDisplayMode: .always))
             .animation(reduceMotion ? nil : .default, value: page)
 
-            if page == 2, let pairingCode {
+            if page == 3, let pairingCode {
                 PairingIdentityCard(code: pairingCode)
             }
             if pairingSucceeded {
@@ -72,7 +75,7 @@ struct OnboardingView: View {
             }
             .buttonStyle(.glassProminent)
             .controlSize(.large)
-            .disabled(isWorking)
+            .disabled(isWorking || (page == 1 && selectedRegion == nil))
             .accessibilityIdentifier("onboarding.primary-action")
             .padding()
         }
@@ -91,7 +94,8 @@ struct OnboardingView: View {
     private var primaryTitle: LocalizedStringKey {
         switch page {
         case 0: "onboarding.continue"
-        case 1: "onboarding.enable_notifications"
+        case 1: "onboarding.confirm_region"
+        case 2: "onboarding.enable_notifications"
         default:
             if pairingSucceeded {
                 "onboarding.finish"
@@ -104,7 +108,8 @@ struct OnboardingView: View {
     private var primarySymbol: String {
         switch page {
         case 0: "arrow.right"
-        case 1: "bell.badge"
+        case 1: "lock.shield"
+        case 2: "bell.badge"
         default: pairingSucceeded ? "checkmark" : (pairingCode == nil ? "qrcode.viewfinder" : "checkmark.shield")
         }
     }
@@ -115,7 +120,9 @@ struct OnboardingView: View {
 
     private func receiveScannedCode(_ value: String) {
         do {
-            pairingCode = try PairingCode.decode(value)
+            let decoded = try PairingCode.decode(value)
+            try decoded.requireSelectedRegion()
+            pairingCode = decoded
             errorMessage = nil
         } catch {
             errorMessage = error.localizedDescription
@@ -128,6 +135,17 @@ struct OnboardingView: View {
         case 0:
             page = 1
         case 1:
+            guard let selectedRegion else { return }
+            do {
+                if pairingCode?.region != selectedRegion {
+                    pairingCode = nil
+                }
+                try AppConfiguration.selectRegion(selectedRegion)
+                page = 2
+            } catch {
+                errorMessage = error.localizedDescription
+            }
+        case 2:
             isWorking = true
             do {
                 if bypassesSystemPermissions {
@@ -137,7 +155,7 @@ struct OnboardingView: View {
                     _ = try await store.bootstrapDevice()
                     UIApplication.shared.registerForRemoteNotifications()
                 }
-                page = 2
+                page = 3
             } catch {
                 errorMessage = error.localizedDescription
             }
@@ -166,8 +184,19 @@ struct OnboardingView: View {
 
     private func receivePendingPairingCode(_ code: PairingCode?) {
         guard let code else { return }
-        pairingCode = code
-        errorMessage = nil
+        guard AppConfiguration.selectedRegion() != nil else {
+            pairingCode = code
+            errorMessage = nil
+            return
+        }
+        do {
+            try code.requireSelectedRegion()
+            pairingCode = code
+            errorMessage = nil
+        } catch {
+            pairingCode = nil
+            errorMessage = error.localizedDescription
+        }
     }
 }
 
@@ -201,6 +230,40 @@ private struct PermissionIntroduction: View {
             }
         }
         .accessibilityIdentifier("onboarding.page.permissions")
+    }
+}
+
+private struct RegionIntroduction: View {
+    @Binding var selection: RunBuoyRegion?
+
+    var body: some View {
+        OnboardingPage(
+            symbol: "globe.asia.australia.fill",
+            title: "onboarding.region",
+            bodyText: "onboarding.region_body"
+        ) {
+            VStack(alignment: .leading, spacing: 16) {
+                Picker("onboarding.region", selection: $selection) {
+                    ForEach(RunBuoyRegion.allCases) { region in
+                        Text(region.displayName)
+                            .tag(Optional(region))
+                    }
+                }
+                .pickerStyle(.segmented)
+                .accessibilityIdentifier("onboarding.region-picker")
+
+                if let selection {
+                    Label(selection.detail, systemImage: "server.rack")
+                        .font(.headline)
+                        .accessibilityIdentifier("onboarding.region-detail")
+                }
+
+                Label("onboarding.region_locked", systemImage: "lock.fill")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .accessibilityIdentifier("onboarding.page.region")
     }
 }
 

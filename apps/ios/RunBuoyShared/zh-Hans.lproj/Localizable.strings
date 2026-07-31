@@ -60,6 +60,7 @@
 "machines.loading" = "正在加载电脑";
 "machines.title" = "电脑";
 "onboarding.confirm_machine" = "确认这台电脑";
+"onboarding.confirm_region" = "使用此区域";
 "onboarding.continue" = "继续";
 "onboarding.enable_notifications" = "启用通知";
 "onboarding.flow_machine" = "电脑发送安全状态更新";
@@ -72,6 +73,9 @@
 "onboarding.one_time_code" = "配对码会过期，且不包含长期凭证";
 "onboarding.pair" = "配对电脑";
 "onboarding.pair_body" = "在电脑上运行 runbuoy device pair，然后扫描一次性配对码。";
+"onboarding.region" = "选择数据区域";
+"onboarding.region_body" = "iPhone 与已配对电脑将使用同一套彼此独立的 RunBuoy 服务。";
+"onboarding.region_locked" = "此安装一经选择便不可切换。";
 "onboarding.scan_code" = "扫描配对码";
 "onboarding.tokens_private" = "设备和活动令牌会安全上传，且永远不会写入普通日志";
 "onboarding.welcome" = "让每一次运行都尽收眼底。";
@@ -89,9 +93,16 @@
 "pairing.invalid_code_title" = "配对码无效";
 "pairing.machine" = "电脑";
 "pairing.name" = "名称";
+"pairing.region_mismatch" = "此配对码属于另一个数据区域。";
 "pairing.scan_title" = "扫描配对码";
 "pairing.success" = "电脑已配对。";
 "progress.indeterminate" = "正在运行";
+"region.already_selected" = "数据区域已经选定。";
+"region.china" = "中国大陆";
+"region.china_detail" = "数据由北京服务存储和处理。";
+"region.global" = "全球";
+"region.global_detail" = "数据由全球服务存储和处理。";
+"region.private_deployment" = "私有部署";
 "run.copy_id" = "复制 Run ID";
 "run.copy_message" = "复制安全消息";
 "run.detail_title" = "运行详情";
@@ -138,10 +149,9 @@
 "settings.privacy" = "隐私";
 "settings.product" = "产品";
 "settings.safe_messages" = "显示安全消息";
+"settings.region" = "数据区域";
+"settings.region_locked" = "选定的数据区域不可更改。";
 "settings.server" = "服务器";
-"settings.server_default" = "留空则使用默认服务器：%@";
-"settings.server_invalid" = "请输入有效的 IP 地址或 HTTP(S) URL。";
-"settings.server_saved" = "服务器已保存。";
 "settings.storage" = "存储";
 "settings.title" = "设置";
 "settings.website" = "官网";

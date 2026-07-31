@@ -579,6 +579,28 @@ struct PairingCode: Equatable, Sendable {
     let challenge: String
     let machineDisplayName: String
     let platform: String?
+    let region: RunBuoyRegion
+
+    init(
+        sessionID: String,
+        challenge: String,
+        machineDisplayName: String,
+        platform: String?,
+        region: RunBuoyRegion = .global
+    ) {
+        self.sessionID = sessionID
+        self.challenge = challenge
+        self.machineDisplayName = machineDisplayName
+        self.platform = platform
+        self.region = region
+    }
+
+    func requireSelectedRegion(userDefaults: UserDefaults = .standard) throws {
+        let selectedRegion = AppConfiguration.selectedRegion(userDefaults: userDefaults) ?? .global
+        guard region == selectedRegion else {
+            throw PairingCodeError.regionMismatch
+        }
+    }
 
     static func decode(_ value: String) throws -> PairingCode {
         if let data = value.data(using: .utf8),
@@ -602,7 +624,10 @@ struct PairingCode: Equatable, Sendable {
             sessionID: sessionID,
             challenge: challenge,
             machineDisplayName: machineName,
-            platform: components.queryItems?.first(where: { $0.name == "platform" })?.value
+            platform: components.queryItems?.first(where: { $0.name == "platform" })?.value,
+            region: components.queryItems?
+                .first(where: { $0.name == "region" })?.value
+                .flatMap(RunBuoyRegion.init(rawValue:)) ?? .global
         )
     }
 
@@ -611,6 +636,7 @@ struct PairingCode: Equatable, Sendable {
         let challenge: String
         let machineDisplayName: String
         let platform: String?
+        let region: RunBuoyRegion
 
         private enum CodingKeys: String, CodingKey {
             case sessionID = "pairing_session_id"
@@ -618,6 +644,7 @@ struct PairingCode: Equatable, Sendable {
             case machineDisplayName = "machine_display_name"
             case machine
             case platform
+            case region
         }
 
         init(from decoder: Decoder) throws {
@@ -627,6 +654,7 @@ struct PairingCode: Equatable, Sendable {
             machineDisplayName = try values.decodeIfPresent(String.self, forKey: .machineDisplayName)
                 ?? values.decode(String.self, forKey: .machine)
             platform = try values.decodeIfPresent(String.self, forKey: .platform)
+            region = try values.decodeIfPresent(RunBuoyRegion.self, forKey: .region) ?? .global
         }
 
         var code: PairingCode {
@@ -634,7 +662,8 @@ struct PairingCode: Equatable, Sendable {
                 sessionID: sessionID,
                 challenge: challenge,
                 machineDisplayName: machineDisplayName,
-                platform: platform
+                platform: platform,
+                region: region
             )
         }
     }
@@ -642,8 +671,14 @@ struct PairingCode: Equatable, Sendable {
 
 enum PairingCodeError: LocalizedError {
     case invalidCode
+    case regionMismatch
 
     var errorDescription: String? {
-        String(localized: "pairing.invalid_code")
+        switch self {
+        case .invalidCode:
+            String(localized: "pairing.invalid_code")
+        case .regionMismatch:
+            String(localized: "pairing.region_mismatch")
+        }
     }
 }

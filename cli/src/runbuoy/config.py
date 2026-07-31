@@ -5,6 +5,7 @@ import os
 import platform
 import secrets
 from contextlib import suppress
+from enum import StrEnum
 from typing import Any, cast
 
 from pydantic import BaseModel, Field, HttpUrl
@@ -13,7 +14,19 @@ from runbuoy.ids import uuid7
 from runbuoy.paths import AppPaths
 
 
+class RunBuoyRegion(StrEnum):
+    GLOBAL = "global"
+    CHINA = "cn"
+
+    @property
+    def server_url(self) -> str:
+        if self is RunBuoyRegion.CHINA:
+            return "https://api-cn.runbuoy.cloud"
+        return "https://api.runbuoy.cloud"
+
+
 class Config(BaseModel):
+    region: RunBuoyRegion = RunBuoyRegion.GLOBAL
     server_url: HttpUrl = Field(default=HttpUrl("https://api.runbuoy.cloud"))
     machine_id: str | None = None
     machine_name: str = Field(default_factory=platform.node)

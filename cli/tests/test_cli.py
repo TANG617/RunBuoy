@@ -254,6 +254,30 @@ def test_config_is_grouped_without_legacy_mutation_options(
     assert legacy.exit_code != 0
 
 
+def test_region_selects_hosted_server_and_is_locked_after_pairing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("RUNBUOY_HOME", str(tmp_path))
+    monkeypatch.setenv("RUNBUOY_DISABLE_KEYRING", "1")
+
+    selected = runner.invoke(app, ["config", "set", "--region", "cn", "--json"])
+    assert selected.exit_code == 0, selected.output
+    payload = json.loads(selected.stdout)
+    assert payload["region"] == "cn"
+    assert payload["server_url"] == "https://api-cn.runbuoy.cloud/"
+
+    config_file = tmp_path / "config" / "config.json"
+    saved_config = json.loads(config_file.read_text())
+    saved_config["machine_id"] = "machine_a"
+    config_file.write_text(json.dumps(saved_config))
+    credential_file = tmp_path / "config" / "credentials.json"
+    credential_file.write_text('{"machine_credential":"paired"}')
+    credential_file.chmod(0o600)
+    rejected = runner.invoke(app, ["config", "set", "--region", "global"])
+    assert rejected.exit_code != 0
+    assert "cannot be changed after pairing" in rejected.output
+
+
 def test_paired_machine_name_change_syncs_immediately(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

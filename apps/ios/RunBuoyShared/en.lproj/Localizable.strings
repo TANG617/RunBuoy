@@ -60,6 +60,7 @@
 "machines.loading" = "Loading machines";
 "machines.title" = "Machines";
 "onboarding.confirm_machine" = "Confirm This Machine";
+"onboarding.confirm_region" = "Use This Region";
 "onboarding.continue" = "Continue";
 "onboarding.enable_notifications" = "Enable Notifications";
 "onboarding.flow_machine" = "Your machine sends safe status updates";
@@ -72,6 +73,9 @@
 "onboarding.one_time_code" = "Pairing codes expire and contain no long-term credential";
 "onboarding.pair" = "Pair a machine";
 "onboarding.pair_body" = "Run runbuoy device pair on your computer, then scan its one-time code.";
+"onboarding.region" = "Choose your data region";
+"onboarding.region_body" = "Your iPhone and paired machines will use the same independent RunBuoy service.";
+"onboarding.region_locked" = "This choice is permanent for this installation and cannot be switched later.";
 "onboarding.scan_code" = "Scan Pairing Code";
 "onboarding.tokens_private" = "Device and activity tokens are sent securely and never written to ordinary logs";
 "onboarding.welcome" = "Keep every run in sight.";
@@ -89,9 +93,16 @@
 "pairing.invalid_code_title" = "Invalid Pairing Code";
 "pairing.machine" = "Machine";
 "pairing.name" = "Name";
+"pairing.region_mismatch" = "This pairing code belongs to a different data region.";
 "pairing.scan_title" = "Scan Pairing Code";
 "pairing.success" = "Machine paired.";
 "progress.indeterminate" = "In progress";
+"region.already_selected" = "The data region has already been selected.";
+"region.china" = "Mainland China";
+"region.china_detail" = "Data is stored and processed by the Beijing service.";
+"region.global" = "Global";
+"region.global_detail" = "Data is stored and processed by the global service.";
+"region.private_deployment" = "Private deployment";
 "run.copy_id" = "Copy Run ID";
 "run.copy_message" = "Copy Safe Message";
 "run.detail_title" = "Run Detail";
@@ -138,10 +149,9 @@
 "settings.privacy" = "Privacy";
 "settings.product" = "Product";
 "settings.safe_messages" = "Show safe messages";
+"settings.region" = "Data Region";
+"settings.region_locked" = "The selected data region cannot be changed.";
 "settings.server" = "Server";
-"settings.server_default" = "Leave blank to use the default server: %@";
-"settings.server_invalid" = "Enter a valid IP address or HTTP(S) URL.";
-"settings.server_saved" = "Server saved.";
 "settings.storage" = "Storage";
 "settings.title" = "Settings";
 "settings.website" = "Website";

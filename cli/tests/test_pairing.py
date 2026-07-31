@@ -65,6 +65,7 @@ def test_qr_is_safe_canonical_and_shown_before_first_poll(monkeypatch: Any) -> N
         query = parse_qs(parsed.query)
         assert query["challenge"] == ["challenge + /"]
         assert query["machine"] == ["Mac Studio / Lab"]
+        assert query["region"] == ["global"]
         assert "never-in-qr" not in qr
 
     result, _qr = flow.pair_machine(

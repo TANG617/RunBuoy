@@ -45,6 +45,47 @@ final class RoutingAndPairingTests: XCTestCase {
         XCTAssertEqual(code.challenge, "once-only")
         XCTAssertEqual(code.machineDisplayName, "Mac Studio")
         XCTAssertEqual(code.platform, "macOS")
+        XCTAssertEqual(code.region, .global)
+    }
+
+    func testChinaPairingCodeCarriesRegion() throws {
+        let code = try PairingCode.decode(
+            "runbuoy://pair/session_cn?challenge=c&machine=Builder&region=cn"
+        )
+
+        XCTAssertEqual(code.region, .china)
+    }
+
+    func testRegionSelectionCannotBeChanged() throws {
+        let suiteName = "RegionSelectionTests.\(UUID().uuidString)"
+        let userDefaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { userDefaults.removePersistentDomain(forName: suiteName) }
+
+        try AppConfiguration.selectRegion(.china, userDefaults: userDefaults)
+
+        XCTAssertEqual(AppConfiguration.selectedRegion(userDefaults: userDefaults), .china)
+        XCTAssertEqual(
+            AppConfiguration.apiBaseURL(for: .china).absoluteString,
+            "https://api-cn.runbuoy.cloud"
+        )
+        let chinaCode = PairingCode(
+            sessionID: "session_cn",
+            challenge: "c",
+            machineDisplayName: "Builder",
+            platform: "linux",
+            region: .china
+        )
+        let globalCode = PairingCode(
+            sessionID: "session_global",
+            challenge: "c",
+            machineDisplayName: "Builder",
+            platform: "linux"
+        )
+        XCTAssertNoThrow(try chinaCode.requireSelectedRegion(userDefaults: userDefaults))
+        XCTAssertThrowsError(try globalCode.requireSelectedRegion(userDefaults: userDefaults))
+        XCTAssertThrowsError(
+            try AppConfiguration.selectRegion(.global, userDefaults: userDefaults)
+        )
     }
 
     func testQuerySessionPairingURLCompatibility() throws {

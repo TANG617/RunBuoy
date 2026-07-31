@@ -60,6 +60,13 @@ def post_events(
     )
 
 
+def test_healthz_reports_data_region(harness: Harness) -> None:
+    response = harness.client.get("/healthz")
+
+    assert response.status_code == 200
+    assert response.json() == {"status": "ok", "region": "global"}
+
+
 def test_pairing_create_poll_claim_exchange_and_replay(harness: Harness) -> None:
     device = harness.bootstrap()
     created = harness.client.post(
