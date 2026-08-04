@@ -64,6 +64,21 @@ final class ModelDecodingTests: XCTestCase {
         XCTAssertNotNil(state.estimatedEndAt)
     }
 
+    func testRunSnapshotProjectsToMatchingLiveActivityContent() throws {
+        let detail = try JSONDecoder.runBuoy.decode(
+            RunDetail.self,
+            from: FixtureLoader.data("run-detail")
+        )
+
+        let state = RunLiveActivityProjection.contentState(for: detail.run)
+
+        XCTAssertEqual(state.sequence, detail.run.sequence)
+        XCTAssertEqual(state.executionStatus, detail.run.executionStatus.rawValue)
+        XCTAssertEqual(state.progress, detail.run.progress?.fraction)
+        XCTAssertEqual(state.updatedAt, detail.run.updatedAt)
+        XCTAssertEqual(state.machineName, detail.run.machineName)
+    }
+
     func testConfirmedDurationUsesCreationAndLastMachineUpdate() {
         let created = Date(timeIntervalSince1970: 1_000)
         let started = created.addingTimeInterval(2)
@@ -82,6 +97,25 @@ final class ModelDecodingTests: XCTestCase {
                 createdAt: created,
                 startedAt: started,
                 updatedAt: created.addingTimeInterval(3_661)
+            ),
+            "1:01:01"
+        )
+    }
+
+    func testRunDurationUsesStartAndLatestMachineConfirmation() {
+        let started = Date(timeIntervalSince1970: 1_000)
+
+        XCTAssertEqual(
+            RunDurationText.string(
+                from: started,
+                to: started.addingTimeInterval(75)
+            ),
+            "1:15"
+        )
+        XCTAssertEqual(
+            RunDurationText.string(
+                from: started,
+                to: started.addingTimeInterval(3_661)
             ),
             "1:01:01"
         )

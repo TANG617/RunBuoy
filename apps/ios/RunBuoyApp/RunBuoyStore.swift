@@ -34,6 +34,7 @@ final class RunBuoyStore {
     private(set) var machines: [MachineSnapshot] = []
     private(set) var messages: [RichMessage] = []
     private(set) var state: LoadState = .idle
+    private(set) var isRefreshing = false
     private(set) var lastRefreshAt: Date?
     private(set) var deviceIdentity: DeviceIdentity?
     private(set) var activeRunModels: [RunSummaryModel] = []
@@ -43,6 +44,7 @@ final class RunBuoyStore {
     private let identityStore: any DeviceIdentityStoring
     private let cache: LocalCacheStore
     private let userDefaults: UserDefaults
+    @ObservationIgnored private var refreshTask: Task<Void, Never>?
     @ObservationIgnored private var runModelsByID: [UUID: RunSummaryModel] = [:]
 
     init(
@@ -108,11 +110,33 @@ final class RunBuoyStore {
     }
 
     func refresh() async {
+        if let refreshTask {
+            await refreshTask.value
+            return
+        }
+
+        let task = Task { @MainActor [weak self] in
+            guard let self else { return }
+            await self.performRefresh()
+        }
+        refreshTask = task
+        await task.value
+        refreshTask = nil
+    }
+
+    private func performRefresh() async {
         guard deviceIdentity != nil || (try? identityStore.load()) != nil else {
             state = .idle
             return
         }
-        state = .loading
+
+        let stateBeforeRefresh = state
+        isRefreshing = true
+        if state == .idle {
+            state = .loading
+        }
+        defer { isRefreshing = false }
+
         do {
             async let loadedRuns = api.listRuns()
             async let loadedMachines = api.listMachines()
@@ -133,6 +157,7 @@ final class RunBuoyStore {
                 )
             )
         } catch is CancellationError {
+            state = stateBeforeRefresh
             return
         } catch {
             let description = error.localizedDescription

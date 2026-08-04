@@ -25,9 +25,6 @@ jobs:
           - region: global
             environment: production
             health_url: https://api.runbuoy.cloud/healthz
-          - region: cn
-            environment: production-cn
-            health_url: https://api-cn.runbuoy.cloud/healthz
     concurrency:
       group: runbuoy-production-${{ matrix.region }}
       cancel-in-progress: false

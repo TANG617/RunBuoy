@@ -68,16 +68,19 @@ final class APIClientTests: XCTestCase {
             return (204, Data())
         }
 
-        try await api.syncActivities([
-            ActivityRegistration(
-                activityID: "activity_1",
-                runID: "018f0d8a-8c0a-7000-8000-000000000001",
-                updateToken: "feedface",
-                tokenGeneration: 3,
-                state: "stale",
-                lastSequence: 42
-            )
-        ])
+        try await api.syncActivities(
+            [
+                ActivityRegistration(
+                    activityID: "activity_1",
+                    runID: "018f0d8a-8c0a-7000-8000-000000000001",
+                    updateToken: "feedface",
+                    tokenGeneration: 3,
+                    state: "stale",
+                    lastSequence: 42
+                )
+            ],
+            frequentPushesEnabled: false
+        )
 
         XCTAssertEqual(captured?.httpMethod, "POST")
         XCTAssertEqual(captured?.url?.path, "/v1/devices/device_1/activity-sync")
@@ -88,6 +91,22 @@ final class APIClientTests: XCTestCase {
         XCTAssertEqual(activities[0]["token_generation"] as? Int, 3)
         XCTAssertEqual(activities[0]["state"] as? String, "stale")
         XCTAssertEqual(activities[0]["last_sequence"] as? Int, 42)
+        XCTAssertEqual(body["frequent_pushes_enabled"] as? Bool, false)
+    }
+
+    func testPushToStartRegistrationCarriesGeneration() async throws {
+        var captured: URLRequest?
+        let api = makeAPI { request in
+            captured = request
+            return (204, Data())
+        }
+
+        try await api.registerPushToStartToken("feedface", generation: 4)
+
+        let data = try XCTUnwrap(captured?.httpBody)
+        let body = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        XCTAssertEqual(body["token"] as? String, "feedface")
+        XCTAssertEqual(body["generation"] as? Int, 4)
     }
 
     func testDeviceSurfaceContainsOnlyReadAndReceivingPlaneOperations() {

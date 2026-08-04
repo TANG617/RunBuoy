@@ -244,7 +244,7 @@ private struct RegionIntroduction: View {
         ) {
             VStack(alignment: .leading, spacing: 16) {
                 Picker("onboarding.region", selection: $selection) {
-                    ForEach(RunBuoyRegion.allCases) { region in
+                    ForEach(AppConfiguration.hostedRegions) { region in
                         Text(region.displayName)
                             .tag(Optional(region))
                     }

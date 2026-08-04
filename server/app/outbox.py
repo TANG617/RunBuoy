@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from .apns import (
     APNsProvider,
     APNsRequest,
+    live_activity_expiration,
     live_activity_headers,
     normal_notification_headers,
 )
@@ -59,9 +60,11 @@ class OutboxProcessor:
         if item.kind == "NOTIFICATION":
             headers = normal_notification_headers(self.settings, item.priority)
         else:
+            expiration = live_activity_expiration(item.desired_payload)
             headers = live_activity_headers(
                 self.settings,
                 item.priority,
+                expiration=expiration,
                 collapse_id=f"{item.run_id}:{item.target_id}" if item.run_id else None,
             )
         return APNsRequest(token=token, payload=item.desired_payload, headers=headers)
@@ -74,7 +77,7 @@ class OutboxProcessor:
             .select_from(LiveActivityBinding)
             .where(
                 LiveActivityBinding.device_id == item.target_id,
-                LiveActivityBinding.state == "active",
+                LiveActivityBinding.state.in_(("active", "stale")),
                 LiveActivityBinding.invalidated_at.is_(None),
             )
         )
@@ -94,6 +97,22 @@ class OutboxProcessor:
         )
         if item is None:
             return False
+        if item.kind.startswith("LIVE_"):
+            expiration = live_activity_expiration(
+                item.desired_payload,
+                now=int(now.timestamp()),
+            )
+            if expiration <= int(now.timestamp()):
+                item.status = "expired"
+                item.last_error = "Live Activity payload expired before APNs delivery"
+                item.updated_at = now
+                if item.kind == "LIVE_END" and item.target_type == "activity":
+                    binding = session.get(LiveActivityBinding, item.target_id)
+                    if binding is not None:
+                        binding.state = "expired"
+                        binding.ended_at = now
+                session.commit()
+                return True
         if not self._has_live_activity_capacity(session, item):
             item.status = "suppressed"
             item.last_error = "per-device Live Activity limit reached"

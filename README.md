@@ -67,22 +67,19 @@ install it with `brew install tmux` on macOS or your Linux system package
 manager. Installation, upgrade, packaging, and release details are in
 [`docs/cli-distribution.md`](docs/cli-distribution.md).
 
-### 3. Choose a data region, bootstrap iPhone, and pair
+### 3. Bootstrap iPhone and pair
 
-Build the native app in `apps/ios` and choose either **Global** or
-**Mainland China** during onboarding. Select the same region on every Machine
-before pairing:
+Build the native app in `apps/ios`. The hosted service currently uses the
+**Global** region for every installation. Configure the same region on every
+Machine before pairing:
 
 ```bash
-# Choose one. New CLI installations default to global.
 runbuoy config set --region global
-runbuoy config set --region cn
 ```
 
-The hosted endpoints are `https://api.runbuoy.cloud` and
-`https://api-cn.runbuoy.cloud`. A phone installation or paired Machine cannot
-switch regions; reinstall/reset and pair as a new installation to make a
-different choice. Then choose **Pair New Machine**. On the Machine:
+The hosted endpoint is `https://api.runbuoy.cloud`. Independent Mainland China
+hosting remains disabled until its network path is production-ready. Then
+choose **Pair New Machine**. On the Machine:
 
 ```bash
 runbuoy device pair
@@ -246,6 +243,10 @@ without HTML, JavaScript, executable schemes, or WebView.
   time with a low-priority Live Activity update.
 - Active payloads become stale 60 seconds after the latest confirmed Machine
   event; terminal payloads end the activity with final state.
+- When the iOS app refreshes in the foreground, it compares monotonic Run
+  sequences and locally repairs or ends any older Live Activity.
+- APNs stores start, update, and end snapshots only for their bounded useful
+  lifetime; collapse IDs retain the newest snapshot while a device is offline.
 - APNs 410 invalidates the token; retry is bounded.
 
 Production APNs uses HTTP/2, TLS, ES256 provider tokens, current rotating

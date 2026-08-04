@@ -55,7 +55,17 @@ ActivityKit payloads use epoch-second `timestamp`, `event` set to `start`,
 state. Ordinary progress uses priority 5; terminal and attention transitions
 use 10. Active updates carry a stale date 60 seconds after the latest
 confirmed Machine event. End payloads omit the stale date, carry final state,
-and use ActivityKit's default dismissal behavior.
+and use ActivityKit's default dismissal behavior. APNs expiration is bounded
+by event semantics: starts remain useful for five minutes, updates until their
+stale date, and terminal updates for four hours. A per-activity collapse ID
+allows APNs to retain the newest useful snapshot while a device is offline.
+
+The app also reconciles locally whenever a foreground API refresh completes.
+It applies only a newer Run sequence, ends terminal activities, and reports the
+ActivityKit sequence and lifecycle state to the server. Active and stale
+bindings remain eligible for push delivery; a lagging sequence causes the
+server to enqueue the current full snapshot. Pending remote starts that never
+materialize are released after `LIVE_ACTIVITY_PENDING_TTL_SECONDS`.
 
 APNs `410 Unregistered` invalidates the target. Permanent 4xx errors are not
 retried; transient failures use bounded exponential backoff.

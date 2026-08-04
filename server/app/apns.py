@@ -151,15 +151,42 @@ def normal_notification_headers(settings: Settings, priority: int) -> dict[str, 
 
 
 def live_activity_headers(
-    settings: Settings, priority: int, *, collapse_id: str | None = None
+    settings: Settings,
+    priority: int,
+    *,
+    expiration: int,
+    collapse_id: str | None = None,
 ) -> dict[str, str]:
     # Apple requires the liveactivity push type and the bundle topic suffix.
     headers = {
         "apns-push-type": "liveactivity",
         "apns-topic": f"{settings.apns_bundle_id}.push-type.liveactivity",
         "apns-priority": str(priority),
-        "apns-expiration": "0",
+        "apns-expiration": str(expiration),
     }
     if collapse_id is not None:
         headers["apns-collapse-id"] = collapse_id[:64]
     return headers
+
+
+def live_activity_expiration(
+    payload: dict[str, Any],
+    *,
+    now: int | None = None,
+) -> int:
+    """Return the last useful APNs delivery time for a state snapshot."""
+    current = int(time.time()) if now is None else now
+    aps = payload.get("aps")
+    if not isinstance(aps, dict):
+        return current + 60
+    timestamp = aps.get("timestamp")
+    sent_at = int(timestamp) if isinstance(timestamp, int | float) else current
+    event = aps.get("event")
+    if event == "start":
+        return sent_at + 300
+    if event == "end":
+        return sent_at + 4 * 60 * 60
+    stale_date = aps.get("stale-date")
+    if isinstance(stale_date, int | float):
+        return int(stale_date)
+    return sent_at + 60

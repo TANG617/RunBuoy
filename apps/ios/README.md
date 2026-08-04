@@ -8,7 +8,9 @@ no command, process, terminal, approval, or agent-response surface.
 
 - `RunBuoyApp`: SwiftUI app, read API, Keychain identity, lightweight cache,
   onboarding, QR pairing, notification registration, and ActivityKit token
-  lifecycle.
+  lifecycle. Successful foreground reads reconcile newer Run sequences into
+  existing Live Activities locally and end terminal Runs without waiting for a
+  second APNs delivery.
 - `RunBuoyWidgets`: WidgetKit Live Activity UI for the Lock Screen and Dynamic
   Island. Its elapsed value advances only with Machine-confirmed events and
   becomes stale after 60 seconds without an update. A tap opens
@@ -79,6 +81,10 @@ The implementation follows Apple’s current documentation for
 [Activity token updates](https://developer.apple.com/documentation/activitykit/activity),
 [Live Activity deep links](https://developer.apple.com/documentation/widgetkit/linking-to-specific-app-scenes-from-your-widget-or-live-activity),
 and [APNs registration](https://developer.apple.com/documentation/usernotifications/registering-your-app-with-apns).
+ActivityKit token and activity-sync registrations retry with exponential
+backoff and are re-sent when the app returns to the foreground. The current
+`frequentPushesEnabled` setting is included in reconciliation so the server can
+reduce ordinary progress cadence when the user disables frequent updates.
 
 ## Physical-device verification
 

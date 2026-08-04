@@ -6,7 +6,7 @@ from typing import Any
 
 from sqlalchemy import select
 
-from app.models import Notification, Run, RunEvent, Webhook
+from app.models import LiveActivityBinding, Notification, Run, RunEvent, Webhook
 from app.schemas import RunEvent as RunEventInput
 from app.services import cleanup_retention, ingest_events
 from tests.conftest import Harness
@@ -80,7 +80,7 @@ def test_webhook_notification_run_progress_end_and_revocation(harness: Harness) 
 
 
 def test_retention_cleanup(harness: Harness) -> None:
-    _, machine = harness.pair()
+    device, machine = harness.pair()
     run_id = str(uuid.uuid4())
     harness.register_run(machine, run_id)
     old = datetime.now(UTC) - timedelta(hours=48)
@@ -116,8 +116,25 @@ def test_retention_cleanup(harness: Harness) -> None:
                 expires_at=old,
             )
         )
+        session.add(
+            LiveActivityBinding(
+                id="lab_expired_pending",
+                run_id=run_id,
+                device_id=device["device_id"],
+                activity_id="pending:expired-start",
+                state="active",
+                started_at=old,
+            )
+        )
         session.commit()
         result = cleanup_retention(session, harness.settings)
         session.commit()
-        assert result == {"notifications": 1, "events": 1, "safe_log_tails": 1}
+        assert result == {
+            "notifications": 1,
+            "events": 1,
+            "safe_log_tails": 1,
+            "pending_live_activities": 1,
+        }
         assert session.get(Run, run_id).safe_log_tail is None  # type: ignore[union-attr]
+        binding = session.get(LiveActivityBinding, "lab_expired_pending")
+        assert binding is not None and binding.state == "expired"

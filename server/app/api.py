@@ -49,12 +49,14 @@ from .schemas import (
 )
 from .security import cipher_for, is_expired, new_bearer_token, new_id, token_hash
 from .services import (
+    LIVE_ACTIVITY_DELIVERABLE_STATES,
     TERMINAL_STATUSES,
     create_notification,
     deterministic_webhook_run_id,
     ingest_events,
     run_snapshot,
     schedule_binding_end,
+    schedule_binding_update,
     schedule_run_pushes,
 )
 
@@ -216,8 +218,11 @@ def sync_activities(
     session: Session = Depends(get_session),
     principal: Principal = Depends(require_scope("live-activities:register-token")),
 ) -> Response:
-    _device_owned(session, principal, device_id)
-    cipher = cipher_for(settings_for(request))
+    device = _device_owned(session, principal, device_id)
+    settings = settings_for(request)
+    cipher = cipher_for(settings)
+    if body.frequent_pushes_enabled is not None:
+        device.frequent_live_activity_updates_enabled = body.frequent_pushes_enabled
     supplied_ids = {item.activity_id for item in body.activities}
     for item in body.activities:
         run = session.get(Run, item.run_id)
@@ -255,15 +260,20 @@ def sync_activities(
         ):
             binding.update_push_token_encrypted = cipher.encrypt(item.update_token)
             binding.token_generation = item.token_generation
-            if run.execution_status in TERMINAL_STATUSES:
-                schedule_binding_end(session, run, binding)
-        if item.state != "active":
+        if item.state in LIVE_ACTIVITY_DELIVERABLE_STATES:
+            binding.ended_at = None
+            if binding.update_push_token_encrypted is not None:
+                if run.execution_status in TERMINAL_STATUSES:
+                    schedule_binding_end(session, run, binding)
+                elif item.last_sequence < run.last_seq:
+                    schedule_binding_update(session, run, binding)
+        else:
             binding.ended_at = utcnow()
     existing = list(
         session.scalars(
             select(LiveActivityBinding).where(
                 LiveActivityBinding.device_id == device_id,
-                LiveActivityBinding.state == "active",
+                LiveActivityBinding.state.in_(LIVE_ACTIVITY_DELIVERABLE_STATES),
                 ~LiveActivityBinding.activity_id.like("pending:%"),
             )
         )
@@ -323,6 +333,8 @@ def register_activity_update_token(
         binding.state = "active"
         if run.execution_status in TERMINAL_STATUSES:
             schedule_binding_end(session, run, binding)
+        elif (binding.last_sequence or 0) < run.last_seq:
+            schedule_binding_update(session, run, binding)
     session.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 

@@ -108,9 +108,11 @@
 "run.detail_title" = "Run Detail";
 "run.elapsed" = "Elapsed";
 "run.ended" = "Ended";
+"run.execution_time" = "Run time";
 "run.exit_code" = "Exit code";
 "run.explicit_eta" = "Estimated finish";
 "run.feed" = "Run Feed";
+"run.heartbeat_time" = "Heartbeat";
 "run.identifier" = "Run ID";
 "run.loading" = "Loading run";
 "run.phase" = "Phase";
