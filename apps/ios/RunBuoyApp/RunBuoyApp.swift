@@ -78,7 +78,7 @@ struct RunBuoyApp: App {
             .task {
                 guard !isUIPreviewMode else { return }
                 notificationCoordinator.onRefreshRequested = {
-                    Task { await store.refresh() }
+                    Task { await refreshState() }
                 }
                 notificationCoordinator.onDeviceToken = { token in
                     Task { try? await registerNotificationToken(token) }
@@ -91,19 +91,23 @@ struct RunBuoyApp: App {
                 if onboardingComplete {
                     UIApplication.shared.registerForRemoteNotifications()
                     activityCoordinator.start()
-                    await store.refresh()
+                    await refreshState()
                 }
             }
             .onChange(of: onboardingComplete) { _, completed in
                 if completed, !isUIPreviewMode {
                     activityCoordinator.start()
-                    Task { await store.refresh() }
+                    Task { await refreshState() }
                 }
             }
             .onChange(of: scenePhase) { _, phase in
                 guard phase == .active, onboardingComplete, !isUIPreviewMode else { return }
                 activityCoordinator.reconcileCurrentActivities()
-                Task { await store.refresh() }
+                Task { await refreshState() }
+            }
+            .task(id: automaticRefreshIsEnabled) {
+                guard automaticRefreshIsEnabled else { return }
+                await runAutomaticRefreshLoop()
             }
         }
     }
@@ -115,6 +119,32 @@ struct RunBuoyApp: App {
             identityStore: identityStore
         )
         try await api.registerNotificationToken(token)
+    }
+
+    private func refreshState() async {
+        await store.refresh()
+        await activityCoordinator.reconcile(with: store.runs)
+    }
+
+    private func runAutomaticRefreshLoop() async {
+        while !Task.isCancelled {
+            do {
+                try await Task.sleep(for: .seconds(3))
+            } catch is CancellationError {
+                return
+            } catch {
+                return
+            }
+
+            guard !Task.isCancelled else { return }
+            await refreshState()
+        }
+    }
+
+    private var automaticRefreshIsEnabled: Bool {
+        scenePhase == .active
+            && onboardingComplete
+            && !isUIPreviewMode
     }
 
     private var shouldShowAppShell: Bool {

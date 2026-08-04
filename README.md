@@ -246,6 +246,10 @@ without HTML, JavaScript, executable schemes, or WebView.
   time with a low-priority Live Activity update.
 - Active payloads become stale 60 seconds after the latest confirmed Machine
   event; terminal payloads end the activity with final state.
+- When the iOS app refreshes in the foreground, it compares monotonic Run
+  sequences and locally repairs or ends any older Live Activity.
+- APNs stores start, update, and end snapshots only for their bounded useful
+  lifetime; collapse IDs retain the newest snapshot while a device is offline.
 - APNs 410 invalidates the token; retry is bounded.
 
 Production APNs uses HTTP/2, TLS, ES256 provider tokens, current rotating

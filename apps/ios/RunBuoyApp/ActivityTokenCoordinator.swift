@@ -7,6 +7,8 @@ final class ActivityTokenCoordinator {
     private let userDefaults: UserDefaults
     private var lifecycleTasks: [Task<Void, Never>] = []
     private var activityTokenTasks: [String: Task<Void, Never>] = [:]
+    private var retryTasks: [String: Task<Void, Never>] = [:]
+    private var retryVersions: [String: UUID] = [:]
     private var generations: [String: Int] = [:]
     private var observedTokens: [String: Data] = [:]
 
@@ -18,22 +20,29 @@ final class ActivityTokenCoordinator {
     func start() {
         guard lifecycleTasks.isEmpty else { return }
         reconcileCurrentActivities()
-        if let token = Activity<RunActivityAttributes>.pushToStartToken {
-            Task { try? await api.registerPushToStartToken(token.hexadecimalString) }
-        }
 
         lifecycleTasks = [
             Task { [weak self] in
                 for await token in Activity<RunActivityAttributes>.pushToStartTokenUpdates {
                     guard !Task.isCancelled else { return }
-                    try? await self?.api.registerPushToStartToken(token.hexadecimalString)
+                    self?.registerPushToStartToken(token)
                 }
             },
             Task { [weak self] in
                 for await activity in Activity<RunActivityAttributes>.activityUpdates {
                     guard !Task.isCancelled else { return }
+                    if let token = activity.pushToken {
+                        self?.registerUpdateToken(token, for: activity)
+                    }
                     self?.observeUpdateToken(for: activity)
-                    await self?.syncCurrentActivities()
+                    self?.syncCurrentActivities()
+                }
+            },
+            Task { [weak self] in
+                let authorization = ActivityAuthorizationInfo()
+                for await _ in authorization.frequentPushEnablementUpdates {
+                    guard !Task.isCancelled else { return }
+                    self?.syncCurrentActivities()
                 }
             }
         ]
@@ -44,20 +53,54 @@ final class ActivityTokenCoordinator {
         lifecycleTasks = []
         activityTokenTasks.values.forEach { $0.cancel() }
         activityTokenTasks = [:]
+        retryTasks.values.forEach { $0.cancel() }
+        retryTasks = [:]
+        retryVersions = [:]
     }
 
     func reconcileCurrentActivities() {
+        if let token = Activity<RunActivityAttributes>.pushToStartToken {
+            registerPushToStartToken(token)
+        }
         for activity in Activity<RunActivityAttributes>.activities {
+            if let token = activity.pushToken {
+                registerUpdateToken(token, for: activity)
+            }
             observeUpdateToken(for: activity)
         }
-        Task { await syncCurrentActivities() }
+        syncCurrentActivities()
+    }
+
+    func reconcile(with runs: [RunSnapshot]) async {
+        let snapshots = Dictionary(uniqueKeysWithValues: runs.map { ($0.id, $0) })
+        for activity in Activity<RunActivityAttributes>.activities {
+            guard let runID = UUID(uuidString: activity.attributes.runID),
+                  let snapshot = snapshots[runID]
+            else {
+                continue
+            }
+            let currentSequence = activity.content.state.sequence
+            let content = ActivityContent(
+                state: RunLiveActivityProjection.contentState(for: snapshot),
+                staleDate: snapshot.executionStatus.isActive
+                    ? snapshot.updatedAt.addingTimeInterval(60)
+                    : nil
+            )
+            if snapshot.executionStatus.isActive,
+               snapshot.sequence > currentSequence {
+                await activity.update(content)
+            } else if snapshot.executionStatus.isTerminal,
+                      snapshot.sequence >= currentSequence,
+                      activity.activityState != .ended,
+                      activity.activityState != .dismissed {
+                await activity.end(content, dismissalPolicy: .default)
+            }
+        }
+        reconcileCurrentActivities()
     }
 
     private func observeUpdateToken(for activity: Activity<RunActivityAttributes>) {
         guard activityTokenTasks[activity.id] == nil else { return }
-        if let token = activity.pushToken {
-            registerUpdateToken(token, for: activity)
-        }
         activityTokenTasks[activity.id] = Task { [weak self] in
             for await token in activity.pushTokenUpdates {
                 guard !Task.isCancelled else { return }
@@ -66,7 +109,7 @@ final class ActivityTokenCoordinator {
         }
     }
 
-    private func syncCurrentActivities() async {
+    private func syncCurrentActivities() {
         let current = Activity<RunActivityAttributes>.activities.map { activity in
             let token = activity.pushToken
             return ActivityRegistration(
@@ -80,7 +123,13 @@ final class ActivityTokenCoordinator {
                 lastSequence: activity.content.state.sequence
             )
         }
-        try? await api.syncActivities(current)
+        let frequentPushesEnabled = ActivityAuthorizationInfo().frequentPushesEnabled
+        scheduleRetry(key: "activity-sync") { [api] in
+            try await api.syncActivities(
+                current,
+                frequentPushesEnabled: frequentPushesEnabled
+            )
+        }
     }
 
     private func stateName(_ state: ActivityState) -> String {
@@ -117,14 +166,90 @@ final class ActivityTokenCoordinator {
         for activity: Activity<RunActivityAttributes>
     ) {
         let generation = generation(for: activity.id, token: token)
-        Task { [weak self] in
-            try? await self?.api.registerActivityToken(
-                token.hexadecimalString,
-                activityID: activity.id,
-                runID: activity.attributes.runID,
+        let tokenString = token.hexadecimalString
+        let activityID = activity.id
+        let runID = activity.attributes.runID
+        scheduleRetry(key: "activity-token:\(activity.id)") { [api] in
+            try await api.registerActivityToken(
+                tokenString,
+                activityID: activityID,
+                runID: runID,
                 generation: generation
             )
         }
+    }
+
+    private func registerPushToStartToken(_ token: Data) {
+        let generation = generation(for: "push-to-start", token: token)
+        let tokenString = token.hexadecimalString
+        scheduleRetry(key: "push-to-start") { [api] in
+            try await api.registerPushToStartToken(
+                tokenString,
+                generation: generation
+            )
+        }
+    }
+
+    private func scheduleRetry(
+        key: String,
+        operation: @escaping @Sendable () async throws -> Void
+    ) {
+        retryTasks[key]?.cancel()
+        let version = UUID()
+        retryVersions[key] = version
+        retryTasks[key] = Task { [weak self] in
+            await Self.retry(operation)
+            guard !Task.isCancelled, self?.retryVersions[key] == version else { return }
+            self?.retryTasks[key] = nil
+            self?.retryVersions[key] = nil
+        }
+    }
+
+    private nonisolated static func retry(
+        _ operation: @escaping @Sendable () async throws -> Void
+    ) async {
+        var delay: UInt64 = 500_000_000
+        for attempt in 0..<6 {
+            guard !Task.isCancelled else { return }
+            do {
+                try await operation()
+                return
+            } catch {
+                guard attempt < 5 else { return }
+                do {
+                    try await Task.sleep(nanoseconds: delay)
+                } catch {
+                    return
+                }
+                delay = min(delay * 2, 8_000_000_000)
+            }
+        }
+    }
+}
+
+enum RunLiveActivityProjection {
+    static func contentState(
+        for snapshot: RunSnapshot
+    ) -> RunActivityAttributes.ContentState {
+        RunActivityAttributes.ContentState(
+            sequence: snapshot.sequence,
+            executionStatus: snapshot.executionStatus.rawValue,
+            healthStatus: snapshot.healthStatus.rawValue,
+            attentionStatus: snapshot.attentionStatus.rawValue,
+            progressKind: snapshot.progress?.kind.rawValue ?? "indeterminate",
+            progress: snapshot.progress?.fraction,
+            current: snapshot.progress?.current,
+            total: snapshot.progress?.total,
+            phase: snapshot.phase,
+            message: snapshot.safeMessage,
+            createdAt: snapshot.createdAt,
+            startedAt: snapshot.startedAt,
+            updatedAt: snapshot.updatedAt,
+            machineName: snapshot.machineName,
+            endedAt: snapshot.endedAt,
+            estimatedEndAt: snapshot.estimatedEndAt,
+            exitCode: snapshot.exitCode
+        )
     }
 }
 

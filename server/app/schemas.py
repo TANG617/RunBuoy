@@ -60,6 +60,7 @@ class ActivitySyncItem(APIModel):
 
 class ActivitySyncRequest(APIModel):
     activities: list[ActivitySyncItem] = Field(default_factory=list, max_length=20)
+    frequent_pushes_enabled: bool | None = None
 
 
 class ActivityTokenRegistration(TokenRegistration):

@@ -33,6 +33,13 @@ enum ExecutionStatus: String, CaseIterable, ForwardCompatibleStatus {
         default: false
         }
     }
+
+    var isTerminal: Bool {
+        switch self {
+        case .succeeded, .failed, .cancelled, .lost: true
+        default: false
+        }
+    }
 }
 
 enum HealthStatus: String, CaseIterable, ForwardCompatibleStatus {
@@ -680,5 +687,18 @@ enum PairingCodeError: LocalizedError {
         case .regionMismatch:
             String(localized: "pairing.region_mismatch")
         }
+    }
+}
+
+enum RunDurationText {
+    static func string(from start: Date, to end: Date) -> String {
+        let totalSeconds = max(0, Int(end.timeIntervalSince(start)))
+        let hours = totalSeconds / 3_600
+        let minutes = (totalSeconds % 3_600) / 60
+        let seconds = totalSeconds % 60
+        if hours > 0 {
+            return String(format: "%d:%02d:%02d", hours, minutes, seconds)
+        }
+        return String(format: "%d:%02d", minutes, seconds)
     }
 }

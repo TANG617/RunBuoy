@@ -370,14 +370,19 @@ private struct IndeterminateRunProgressBar: View {
 
 struct RunRow: View {
     let model: RunSummaryModel
+    var showsLiveTiming = false
 
     var body: some View {
-        RunRowContent(run: model.snapshot)
+        RunRowContent(
+            run: model.snapshot,
+            showsLiveTiming: showsLiveTiming
+        )
     }
 }
 
 private struct RunRowContent: View {
     let run: RunSnapshot
+    let showsLiveTiming: Bool
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
@@ -408,7 +413,10 @@ private struct RunRowContent: View {
                 showsIndeterminate: run.executionStatus.isActive,
                 tint: run.executionStatus.progressTint
             )
-            RunRowMetadataFooter(run: run)
+            RunRowMetadataFooter(
+                run: run,
+                showsLiveTiming: showsLiveTiming
+            )
         }
         .padding(.vertical, 6)
         .contentShape(Rectangle())
@@ -424,8 +432,41 @@ private struct RunRowContent: View {
 
 private struct RunRowMetadataFooter: View {
     let run: RunSnapshot
+    let showsLiveTiming: Bool
 
     var body: some View {
+        Group {
+            if showsLiveTiming {
+                activeTiming
+            } else {
+                historyMetadata
+            }
+        }
+        .font(.caption)
+        .foregroundStyle(.primary)
+    }
+
+    private var activeTiming: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            if hasStatusLabels {
+                statusLabels
+            }
+
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 16) {
+                    executionTime
+                    heartbeatTime
+                }
+
+                VStack(alignment: .leading, spacing: 6) {
+                    executionTime
+                    heartbeatTime
+                }
+            }
+        }
+    }
+
+    private var historyMetadata: some View {
         ViewThatFits(in: .horizontal) {
             HStack {
                 statusLabels
@@ -438,8 +479,10 @@ private struct RunRowMetadataFooter: View {
                 updateTime
             }
         }
-        .font(.caption)
-        .foregroundStyle(.primary)
+    }
+
+    private var hasStatusLabels: Bool {
+        run.healthStatus != .healthy || run.attentionStatus != .none
     }
 
     @ViewBuilder
@@ -467,6 +510,38 @@ private struct RunRowMetadataFooter: View {
     private var updateTime: some View {
         Text(run.updatedAt, format: .relative(presentation: .named))
             .fixedSize(horizontal: true, vertical: false)
+    }
+
+    private var executionTime: some View {
+        HStack(spacing: 4) {
+            Image(systemName: "timer")
+                .foregroundStyle(.secondary)
+                .accessibilityHidden(true)
+            Text("run.execution_time")
+                .foregroundStyle(.secondary)
+            Text(RunDurationText.string(from: run.startedAt, to: run.updatedAt))
+                .fontWeight(.semibold)
+                .monospacedDigit()
+        }
+        .fixedSize(horizontal: true, vertical: false)
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("run.timing.execution")
+    }
+
+    private var heartbeatTime: some View {
+        HStack(spacing: 4) {
+            Image(systemName: "waveform.path.ecg")
+                .foregroundStyle(run.healthStatus.presentation.color)
+                .accessibilityHidden(true)
+            Text("run.heartbeat_time")
+                .foregroundStyle(.secondary)
+            Text(run.updatedAt, style: .relative)
+                .fontWeight(.semibold)
+                .monospacedDigit()
+        }
+        .fixedSize(horizontal: true, vertical: false)
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("run.timing.heartbeat")
     }
 }
 

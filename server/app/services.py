@@ -26,6 +26,7 @@ from .schemas import RunEvent as RunEventInput
 from .security import new_id
 
 TERMINAL_STATUSES = frozenset({"SUCCEEDED", "FAILED", "CANCELLED", "LOST"})
+LIVE_ACTIVITY_DELIVERABLE_STATES = frozenset({"active", "stale"})
 EVENT_STATUS = {
     "run.created": "CREATED",
     "run.starting": "STARTING",
@@ -313,6 +314,25 @@ def schedule_binding_end(
     )
 
 
+def schedule_binding_update(
+    session: Session,
+    run: Run,
+    binding: LiveActivityBinding,
+) -> PushOutbox:
+    machine_name = run.machine.display_name
+    return _coalesce_outbox(
+        session,
+        kind="LIVE_UPDATE",
+        target_type="activity",
+        target_id=binding.id,
+        run_id=run.id,
+        payload=live_payload(run, "LIVE_UPDATE", machine_name=machine_name),
+        priority=_priority(run, "LIVE_UPDATE"),
+        available_at=utcnow(),
+        coalesce_key=f"live:{run.id}:{binding.device_id}",
+    )
+
+
 def schedule_run_pushes(
     session: Session,
     settings: Settings,
@@ -432,7 +452,7 @@ def schedule_run_pushes(
         session.scalars(
             select(LiveActivityBinding).where(
                 LiveActivityBinding.run_id == run.id,
-                LiveActivityBinding.state == "active",
+                LiveActivityBinding.state.in_(LIVE_ACTIVITY_DELIVERABLE_STATES),
                 LiveActivityBinding.invalidated_at.is_(None),
                 LiveActivityBinding.update_push_token_encrypted.is_not(None),
             )
@@ -442,6 +462,13 @@ def schedule_run_pushes(
     for binding in bindings:
         available_at = now
         if kind == "LIVE_UPDATE" and event_type == "run.progress":
+            delivery_device = session.get(Device, binding.device_id)
+            update_interval = settings.live_activity_update_interval_seconds
+            if (
+                delivery_device is not None
+                and not delivery_device.frequent_live_activity_updates_enabled
+            ):
+                update_interval = max(update_interval, 15)
             coalesce_key = f"live:{run.id}:{binding.device_id}"
             latest_sent = session.scalar(
                 select(PushOutbox)
@@ -455,8 +482,7 @@ def schedule_run_pushes(
             if latest_sent is not None:
                 available_at = max(
                     now,
-                    aware(latest_sent.updated_at)
-                    + timedelta(seconds=settings.live_activity_update_interval_seconds),
+                    aware(latest_sent.updated_at) + timedelta(seconds=update_interval),
                 )
             previous_fraction = (previous_progress or {}).get("fraction")
             current_fraction = (run.progress or {}).get("fraction")
@@ -465,9 +491,7 @@ def schedule_run_pushes(
                 and isinstance(current_fraction, int | float)
                 and abs(current_fraction - previous_fraction) < 0.01
             ):
-                available_at = now + timedelta(
-                    seconds=settings.live_activity_update_interval_seconds
-                )
+                available_at = now + timedelta(seconds=update_interval)
         _coalesce_outbox(
             session,
             kind=kind,
@@ -621,10 +645,24 @@ def cleanup_retention(
             .values(safe_log_tail=None)
         ),
     ).rowcount
+    expired_pending_activities = cast(
+        CursorResult[Any],
+        session.execute(
+            update(LiveActivityBinding)
+            .where(
+                LiveActivityBinding.activity_id.like("pending:%"),
+                LiveActivityBinding.state == "active",
+                LiveActivityBinding.started_at
+                < current - timedelta(seconds=settings.live_activity_pending_ttl_seconds),
+            )
+            .values(state="expired", ended_at=current)
+        ),
+    ).rowcount
     return {
         "notifications": int(expired_notifications or 0),
         "events": int(old_events or 0),
         "safe_log_tails": int(cleared_tails or 0),
+        "pending_live_activities": int(expired_pending_activities or 0),
     }
 
 

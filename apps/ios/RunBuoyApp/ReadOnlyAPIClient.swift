@@ -62,14 +62,17 @@ protocol RunBuoyAPI: Sendable {
     func listMessages() async throws -> [RichMessage]
     func claimPairing(_ code: PairingCode) async throws
     func registerNotificationToken(_ token: String) async throws
-    func registerPushToStartToken(_ token: String) async throws
+    func registerPushToStartToken(_ token: String, generation: Int) async throws
     func registerActivityToken(
         _ token: String,
         activityID: String,
         runID: String,
         generation: Int
     ) async throws
-    func syncActivities(_ activities: [ActivityRegistration]) async throws
+    func syncActivities(
+        _ activities: [ActivityRegistration],
+        frequentPushesEnabled: Bool
+    ) async throws
     func updatePreferences(_ preferences: DevicePreferences) async throws
     func deleteSubscription(_ id: String) async throws
 }
@@ -210,11 +213,11 @@ struct URLSessionRunBuoyAPI: RunBuoyAPI, @unchecked Sendable {
         )
     }
 
-    func registerPushToStartToken(_ token: String) async throws {
+    func registerPushToStartToken(_ token: String, generation: Int) async throws {
         let identity = try requireIdentity()
         try await requestWithoutResponse(
             .pushToStartToken(identity.deviceID),
-            body: TokenBody(token: token)
+            body: TokenBody(token: token, generation: generation)
         )
     }
 
@@ -236,11 +239,17 @@ struct URLSessionRunBuoyAPI: RunBuoyAPI, @unchecked Sendable {
         )
     }
 
-    func syncActivities(_ activities: [ActivityRegistration]) async throws {
+    func syncActivities(
+        _ activities: [ActivityRegistration],
+        frequentPushesEnabled: Bool
+    ) async throws {
         let identity = try requireIdentity()
         try await requestWithoutResponse(
             .activitySync(identity.deviceID),
-            body: ActivitySyncBody(activities: activities)
+            body: ActivitySyncBody(
+                activities: activities,
+                frequentPushesEnabled: frequentPushesEnabled
+            )
         )
     }
 
@@ -330,6 +339,12 @@ struct URLSessionRunBuoyAPI: RunBuoyAPI, @unchecked Sendable {
 
     private struct TokenBody: Encodable {
         let token: String
+        let generation: Int?
+
+        init(token: String, generation: Int? = nil) {
+            self.token = token
+            self.generation = generation
+        }
     }
 
     private struct ClaimBody: Encodable {
@@ -352,6 +367,12 @@ struct URLSessionRunBuoyAPI: RunBuoyAPI, @unchecked Sendable {
 
     private struct ActivitySyncBody: Encodable {
         let activities: [ActivityRegistration]
+        let frequentPushesEnabled: Bool
+
+        private enum CodingKeys: String, CodingKey {
+            case activities
+            case frequentPushesEnabled = "frequent_pushes_enabled"
+        }
     }
 
     private struct EmptyBody: Encodable {}

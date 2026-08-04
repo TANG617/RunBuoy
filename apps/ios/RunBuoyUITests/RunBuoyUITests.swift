@@ -49,9 +49,13 @@ final class RunBuoyUITests: XCTestCase {
 
         let activeRow = element("run.row.\(Self.activeRunID)")
         XCTAssertTrue(activeRow.waitForExistence(timeout: 5))
+        XCTAssertTrue(activeRow.label.contains("Run time"))
+        XCTAssertTrue(activeRow.label.contains("Heartbeat"))
         activeRow.tap()
 
         XCTAssertTrue(element("screen.runDetail").waitForExistence(timeout: 3))
+        element("screen.runDetail").swipeDown()
+        XCTAssertTrue(element("screen.runDetail").exists)
         app.navigationBars.buttons.element(boundBy: 0).tap()
         XCTAssertTrue(element("screen.activeRuns").waitForExistence(timeout: 3))
     }

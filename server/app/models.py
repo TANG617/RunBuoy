@@ -44,6 +44,11 @@ class Device(Base):
     push_to_start_token_encrypted: Mapped[str | None] = mapped_column(Text)
     push_to_start_token_generation: Mapped[int] = mapped_column(Integer, default=0)
     live_activities_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    frequent_live_activity_updates_enabled: Mapped[bool] = mapped_column(
+        Boolean,
+        default=True,
+        server_default=true(),
+    )
     failure_notifications_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     success_notifications_enabled: Mapped[bool] = mapped_column(
         Boolean,

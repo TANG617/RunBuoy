@@ -108,9 +108,11 @@
 "run.detail_title" = "运行详情";
 "run.elapsed" = "已用时间";
 "run.ended" = "结束时间";
+"run.execution_time" = "执行时间";
 "run.exit_code" = "退出码";
 "run.explicit_eta" = "预计完成";
 "run.feed" = "运行动态";
+"run.heartbeat_time" = "心跳";
 "run.identifier" = "Run ID";
 "run.loading" = "正在加载运行";
 "run.phase" = "阶段";

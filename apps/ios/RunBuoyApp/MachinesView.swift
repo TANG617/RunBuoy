@@ -46,7 +46,7 @@ struct MachinesView: View {
         .toolbar {
             ToolbarItemGroup(placement: .topBarTrailing) {
                 RefreshButton(
-                    isRefreshing: store.state == .loading,
+                    isRefreshing: store.isRefreshing,
                     action: refresh
                 )
 

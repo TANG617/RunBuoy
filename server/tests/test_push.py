@@ -17,6 +17,7 @@ from app.apns import (
     APNsRequest,
     APNsResult,
     ProductionAPNsProvider,
+    live_activity_expiration,
     live_activity_headers,
 )
 from app.models import (
@@ -96,11 +97,13 @@ def test_exact_live_activity_start_payload_and_headers(harness: Harness) -> None
     }
     assert "alert" in payload["aps"]
     assert payload["aps"]["input-push-token"] == 1
-    assert live_activity_headers(harness.settings, 5) == {
+    expiration = live_activity_expiration(payload, now=int(now.timestamp()))
+    assert expiration == int(now.timestamp()) + 300
+    assert live_activity_headers(harness.settings, 5, expiration=expiration) == {
         "apns-push-type": "liveactivity",
         "apns-topic": "dev.runbuoy.app.push-type.liveactivity",
         "apns-priority": "5",
-        "apns-expiration": "0",
+        "apns-expiration": str(int(now.timestamp()) + 300),
     }
 
 
@@ -111,6 +114,9 @@ def test_update_end_stale_and_default_dismissal(harness: Harness) -> None:
     update = live_payload(run, "LIVE_UPDATE", delivered_at, machine_name="Studio Mac")
     assert update["aps"]["event"] == "update"
     assert update["aps"]["stale-date"] == int((now + timedelta(seconds=60)).timestamp())
+    assert live_activity_expiration(update, now=int(now.timestamp())) == int(
+        (now + timedelta(seconds=60)).timestamp()
+    )
     assert "dismissal-date" not in update["aps"]
 
     run.execution_status = "FAILED"
@@ -120,6 +126,9 @@ def test_update_end_stale_and_default_dismissal(harness: Harness) -> None:
     assert ended["aps"]["content-state"]["endedAt"] == now.isoformat()
     assert "stale-date" not in ended["aps"]
     assert "dismissal-date" not in ended["aps"]
+    assert live_activity_expiration(ended, now=int(now.timestamp())) == int(
+        (now + timedelta(hours=4)).timestamp()
+    )
 
 
 def test_heartbeat_enqueues_live_update_with_fresh_timestamp(harness: Harness) -> None:
@@ -249,6 +258,7 @@ def test_outbox_mock_send_records_payload_without_secrets(harness: Harness) -> N
         assert attempt is not None
         assert attempt.request_payload["aps"]["event"] == "start"
         assert "authorization" not in attempt.request_headers
+        assert int(attempt.request_headers["apns-expiration"]) > int(old.timestamp())
         assert "sensitive-push-token" not in json.dumps(attempt.request_payload)
     assert provider.requests[0].token == "sensitive-push-token"
 
@@ -292,6 +302,48 @@ def test_apns_410_invalidates_activity_token(harness: Harness) -> None:
         assert fetched_binding.state == "invalidated"
         assert fetched_binding.update_push_token_encrypted is None
         assert fetched_binding.invalidated_at is not None
+
+
+def test_expired_end_releases_server_binding(harness: Harness) -> None:
+    device, machine = harness.pair()
+    run_id = str(uuid.uuid4())
+    harness.register_run(machine, run_id)
+    expired_at = datetime.now(UTC) - timedelta(hours=5)
+    with harness.session_factory() as session:
+        binding = LiveActivityBinding(
+            id=new_id("lab"),
+            run_id=run_id,
+            device_id=device["device_id"],
+            activity_id="activity-expired-end",
+            update_push_token_encrypted=cipher_for(harness.settings).encrypt("update-token"),
+            token_generation=1,
+        )
+        session.add(binding)
+        session.add(
+            PushOutbox(
+                id=new_id("out"),
+                kind="LIVE_END",
+                target_type="activity",
+                target_id=binding.id,
+                run_id=run_id,
+                desired_payload={"aps": {"event": "end", "timestamp": int(expired_at.timestamp())}},
+                priority=10,
+                available_at=utcnow(),
+                status="pending",
+                coalesce_key="expired-end",
+            )
+        )
+        session.commit()
+        binding_id = binding.id
+    provider = ResultProvider(APNsResult(200))
+    processor = OutboxProcessor(harness.settings, provider, cipher_for(harness.settings))
+    with harness.session_factory() as session:
+        assert processor.process_one(session)
+        binding = session.get(LiveActivityBinding, binding_id)
+        assert binding is not None
+        assert binding.state == "expired"
+        assert binding.ended_at is not None
+    assert provider.requests == []
 
 
 def test_outbox_retry_is_bounded(harness: Harness) -> None:
@@ -385,6 +437,105 @@ def test_token_rotation_keeps_latest_generation(harness: Harness) -> None:
         json={"token": "stale-token-value", "generation": 1},
     )
     assert stale.status_code == 409
+
+
+def test_stale_activity_sync_catches_up_and_remains_deliverable(harness: Harness) -> None:
+    device, machine = harness.pair()
+    run_id = str(uuid.uuid4())
+    harness.register_run(machine, run_id)
+    started = datetime.now(UTC) - timedelta(seconds=30)
+    assert (
+        post_events(
+            harness,
+            machine,
+            run_id,
+            [event(run_id, machine["machine_id"], 1, "run.started", at=started)],
+        ).status_code
+        == 200
+    )
+    assert (
+        harness.client.put(
+            "/v1/live-activities/activity-stale/update-token",
+            headers=auth(device["credential"]),
+            json={
+                "token": "stale-update-token",
+                "device_id": device["device_id"],
+                "run_id": run_id,
+                "generation": 1,
+            },
+        ).status_code
+        == 204
+    )
+    assert (
+        post_events(
+            harness,
+            machine,
+            run_id,
+            [
+                event(
+                    run_id,
+                    machine["machine_id"],
+                    2,
+                    "run.progress",
+                    at=started + timedelta(seconds=15),
+                    payload={"progress": {"kind": "determinate", "fraction": 0.5}},
+                )
+            ],
+        ).status_code
+        == 200
+    )
+
+    synced = harness.client.post(
+        f"/v1/devices/{device['device_id']}/activity-sync",
+        headers=auth(device["credential"]),
+        json={
+            "frequent_pushes_enabled": False,
+            "activities": [
+                {
+                    "activity_id": "activity-stale",
+                    "run_id": run_id,
+                    "update_token": "stale-update-token",
+                    "token_generation": 1,
+                    "state": "stale",
+                    "last_sequence": 1,
+                }
+            ],
+        },
+    )
+    assert synced.status_code == 204
+    with harness.session_factory() as session:
+        binding = session.scalar(
+            select(LiveActivityBinding).where(LiveActivityBinding.activity_id == "activity-stale")
+        )
+        assert binding is not None
+        assert binding.state == "stale"
+        assert binding.ended_at is None
+        device_model = session.get(Device, device["device_id"])
+        assert device_model is not None
+        assert not device_model.frequent_live_activity_updates_enabled
+        pending = session.scalar(
+            select(PushOutbox).where(
+                PushOutbox.target_id == binding.id,
+                PushOutbox.status == "pending",
+            )
+        )
+        assert pending is not None
+        assert pending.desired_payload["aps"]["content-state"]["sequence"] == 2
+
+    assert (
+        post_events(
+            harness,
+            machine,
+            run_id,
+            [event(run_id, machine["machine_id"], 3, "run.failed")],
+        ).status_code
+        == 200
+    )
+    with harness.session_factory() as session:
+        pending = session.scalar(select(PushOutbox).where(PushOutbox.status == "pending"))
+        assert pending is not None
+        assert pending.kind == "LIVE_END"
+        assert pending.desired_payload["aps"]["content-state"]["sequence"] == 3
 
 
 def test_start_terminal_then_late_update_token_enqueues_end(harness: Harness) -> None:

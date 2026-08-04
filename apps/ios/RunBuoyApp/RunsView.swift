@@ -19,7 +19,7 @@ struct ActiveRunsView: View {
                 Section("runs.active") {
                     ForEach(store.activeRunModels) { model in
                         NavigationLink(value: AppRoute.runDetail(model.id)) {
-                            RunRow(model: model)
+                            RunRow(model: model, showsLiveTiming: true)
                         }
                         .accessibilityIdentifier("run.row.\(model.id.uuidString.lowercased())")
                     }
@@ -40,7 +40,7 @@ struct ActiveRunsView: View {
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 RefreshButton(
-                    isRefreshing: store.state == .loading,
+                    isRefreshing: store.isRefreshing,
                     action: refresh
                 )
             }
@@ -206,7 +206,7 @@ struct RunHistoryView: View {
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 RefreshButton(
-                    isRefreshing: store.state == .loading,
+                    isRefreshing: store.isRefreshing,
                     action: refresh
                 )
             }

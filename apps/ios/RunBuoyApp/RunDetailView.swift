@@ -7,25 +7,40 @@ struct RunDetailView: View {
     @State private var detail: RunDetail?
     @State private var errorMessage: String?
 
+    private var presentedDetail: RunDetail? {
+        guard let detail else { return nil }
+        guard let latestSnapshot = store.runs.first(where: { $0.id == runID }),
+              latestSnapshot.sequence >= detail.run.sequence
+        else {
+            return detail
+        }
+        return RunDetail(run: latestSnapshot, feed: detail.feed)
+    }
+
     var body: some View {
         ZStack {
             Color.clear
-            if let detail {
+            if let detail = presentedDetail {
                 RunDetailContent(detail: detail)
+                    .overlay(alignment: .top) {
+                        refreshErrorBanner
+                    }
             } else if let cached = store.runs.first(where: { $0.id == runID }) {
                 RunDetailContent(detail: RunDetail(run: cached, feed: []))
-                    .overlay(alignment: .bottom) {
-                        if let errorMessage {
-                            OfflineBanner(message: errorMessage)
-                                .padding()
-                        }
+                    .overlay(alignment: .top) {
+                        refreshErrorBanner
                     }
             } else if let errorMessage {
-                ContentUnavailableView {
-                    Label("run.unavailable", systemImage: "exclamationmark.icloud")
-                } description: {
-                    Text(errorMessage)
+                List {
+                    ContentUnavailableView {
+                        Label("run.unavailable", systemImage: "exclamationmark.icloud")
+                    } description: {
+                        Text(errorMessage)
+                    }
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
                 }
+                .listStyle(.plain)
             } else {
                 ProgressView("run.loading")
             }
@@ -35,16 +50,30 @@ struct RunDetailView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.hidden, for: .tabBar)
         .task(id: runID) { await load() }
+        .refreshable { await load() }
     }
 
     private func load() async {
         do {
-            detail = try await store.detail(for: runID)
+            let loadedDetail = try await store.detail(for: runID)
+            guard !Task.isCancelled else { return }
+            if let detail, loadedDetail.run.sequence < detail.run.sequence {
+                return
+            }
+            detail = loadedDetail
             errorMessage = nil
         } catch is CancellationError {
             return
         } catch {
             errorMessage = error.localizedDescription
+        }
+    }
+
+    @ViewBuilder
+    private var refreshErrorBanner: some View {
+        if let errorMessage {
+            OfflineBanner(message: errorMessage)
+                .padding()
         }
     }
 }
@@ -251,19 +280,6 @@ private struct RunElapsedView: View {
         Text(RunDurationText.string(from: startedAt, to: end))
             .monospacedDigit()
             .foregroundStyle(.primary)
-    }
-}
-
-private enum RunDurationText {
-    static func string(from start: Date, to end: Date) -> String {
-        let totalSeconds = max(0, Int(end.timeIntervalSince(start)))
-        let hours = totalSeconds / 3_600
-        let minutes = (totalSeconds % 3_600) / 60
-        let seconds = totalSeconds % 60
-        if hours > 0 {
-            return String(format: "%d:%02d:%02d", hours, minutes, seconds)
-        }
-        return String(format: "%d:%02d", minutes, seconds)
     }
 }
 

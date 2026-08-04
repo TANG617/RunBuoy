@@ -78,7 +78,11 @@ push to main
 The deploy workflow accepts only a successful `push` CI run on `main`. A
 successful pull-request run is not sufficient. Global and Mainland China use
 separate concurrency groups, deployments, databases, credentials, and public
-region health checks. A failure in one region does not cancel the other job.
+region endpoints. A failure in one region does not cancel the other job. Both
+deployments must pass migration, API, and worker health checks on the target
+host. The global job also verifies its public endpoint from the GitHub runner;
+the Mainland China job does not use that cross-border probe because hosted
+GitHub runners cannot reliably connect to the China endpoint.
 
 ### Required GitHub environment
 

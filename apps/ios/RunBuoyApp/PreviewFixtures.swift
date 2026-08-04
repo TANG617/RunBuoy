@@ -245,14 +245,17 @@ private struct PreviewAPI: RunBuoyAPI {
     func listMessages() async throws -> [RichMessage] { snapshot.messages }
     func claimPairing(_ code: PairingCode) async throws {}
     func registerNotificationToken(_ token: String) async throws {}
-    func registerPushToStartToken(_ token: String) async throws {}
+    func registerPushToStartToken(_ token: String, generation: Int) async throws {}
     func registerActivityToken(
         _ token: String,
         activityID: String,
         runID: String,
         generation: Int
     ) async throws {}
-    func syncActivities(_ activities: [ActivityRegistration]) async throws {}
+    func syncActivities(
+        _ activities: [ActivityRegistration],
+        frequentPushesEnabled: Bool
+    ) async throws {}
     func updatePreferences(_ preferences: DevicePreferences) async throws {}
     func deleteSubscription(_ id: String) async throws {}
 }

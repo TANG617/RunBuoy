@@ -30,6 +30,7 @@ class Settings:
     live_activity_start_delay_seconds: int = 5
     live_activity_update_interval_seconds: int = 3
     live_activity_max_per_device: int = 2
+    live_activity_pending_ttl_seconds: int = 300
     outbox_max_attempts: int = 6
 
     @classmethod
@@ -69,6 +70,12 @@ class Settings:
                 os.getenv(
                     "LIVE_ACTIVITY_MAX_PER_DEVICE",
                     str(defaults.live_activity_max_per_device),
+                )
+            ),
+            live_activity_pending_ttl_seconds=int(
+                os.getenv(
+                    "LIVE_ACTIVITY_PENDING_TTL_SECONDS",
+                    str(defaults.live_activity_pending_ttl_seconds),
                 )
             ),
             outbox_max_attempts=int(
