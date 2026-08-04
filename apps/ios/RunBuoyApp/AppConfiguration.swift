@@ -36,6 +36,7 @@ enum RegionSelectionError: LocalizedError {
 struct AppConfiguration: Sendable {
     static let serverAddressDefaultsKey = "runbuoy.server-address"
     static let regionDefaultsKey = "runbuoy.region"
+    static let hostedRegions: [RunBuoyRegion] = [.global]
 
     let apiBaseURL: URL
 
@@ -53,17 +54,23 @@ struct AppConfiguration: Sendable {
     }
 
     static func selectedRegion(userDefaults: UserDefaults = .standard) -> RunBuoyRegion? {
-        userDefaults.string(forKey: regionDefaultsKey).flatMap(RunBuoyRegion.init(rawValue:))
+        guard let region = userDefaults.string(forKey: regionDefaultsKey)
+            .flatMap(RunBuoyRegion.init(rawValue:))
+        else {
+            return nil
+        }
+        return region.hostedRegion
     }
 
     static func selectRegion(
         _ region: RunBuoyRegion,
         userDefaults: UserDefaults = .standard
     ) throws {
-        if let existing = selectedRegion(userDefaults: userDefaults), existing != region {
+        let hostedRegion = region.hostedRegion
+        if let existing = selectedRegion(userDefaults: userDefaults), existing != hostedRegion {
             throw RegionSelectionError.alreadySelected
         }
-        userDefaults.set(region.rawValue, forKey: regionDefaultsKey)
+        userDefaults.set(hostedRegion.rawValue, forKey: regionDefaultsKey)
         userDefaults.removeObject(forKey: serverAddressDefaultsKey)
     }
 
@@ -80,13 +87,8 @@ struct AppConfiguration: Sendable {
         userDefaults.set(RunBuoyRegion.global.rawValue, forKey: regionDefaultsKey)
     }
 
-    static func apiBaseURL(for region: RunBuoyRegion) -> URL {
-        switch region {
-        case .global:
-            bundledAPIBaseURL
-        case .china:
-            URL(string: "https://api-cn.runbuoy.cloud")!
-        }
+    static func apiBaseURL(for _: RunBuoyRegion) -> URL {
+        bundledAPIBaseURL
     }
 
     static var bundledAPIBaseURL: URL {
@@ -182,6 +184,12 @@ struct AppConfiguration: Sendable {
             }
             return 0...255 ~= number
         }
+    }
+}
+
+private extension RunBuoyRegion {
+    var hostedRegion: RunBuoyRegion {
+        .global
     }
 }
 

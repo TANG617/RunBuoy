@@ -56,17 +56,18 @@ final class RoutingAndPairingTests: XCTestCase {
         XCTAssertEqual(code.region, .china)
     }
 
-    func testRegionSelectionCannotBeChanged() throws {
+    func testHostedRegionUsesGlobalWhileChinaDeploymentIsDeferred() throws {
         let suiteName = "RegionSelectionTests.\(UUID().uuidString)"
         let userDefaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
         defer { userDefaults.removePersistentDomain(forName: suiteName) }
 
         try AppConfiguration.selectRegion(.china, userDefaults: userDefaults)
 
-        XCTAssertEqual(AppConfiguration.selectedRegion(userDefaults: userDefaults), .china)
+        XCTAssertEqual(AppConfiguration.hostedRegions, [.global])
+        XCTAssertEqual(AppConfiguration.selectedRegion(userDefaults: userDefaults), .global)
         XCTAssertEqual(
             AppConfiguration.apiBaseURL(for: .china).absoluteString,
-            "https://api-cn.runbuoy.cloud"
+            AppConfiguration.bundledAPIBaseURL.absoluteString
         )
         let chinaCode = PairingCode(
             sessionID: "session_cn",
@@ -81,11 +82,9 @@ final class RoutingAndPairingTests: XCTestCase {
             machineDisplayName: "Builder",
             platform: "linux"
         )
-        XCTAssertNoThrow(try chinaCode.requireSelectedRegion(userDefaults: userDefaults))
-        XCTAssertThrowsError(try globalCode.requireSelectedRegion(userDefaults: userDefaults))
-        XCTAssertThrowsError(
-            try AppConfiguration.selectRegion(.global, userDefaults: userDefaults)
-        )
+        XCTAssertThrowsError(try chinaCode.requireSelectedRegion(userDefaults: userDefaults))
+        XCTAssertNoThrow(try globalCode.requireSelectedRegion(userDefaults: userDefaults))
+        XCTAssertNoThrow(try AppConfiguration.selectRegion(.global, userDefaults: userDefaults))
     }
 
     func testQuerySessionPairingURLCompatibility() throws {

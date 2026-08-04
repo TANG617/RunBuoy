@@ -71,24 +71,21 @@ push to main
   -> CI
   -> all CI jobs succeed
   -> Deploy server
-  -> SSH to production + production-cn in parallel
-  -> deploy <tested-commit-sha> on each region
+  -> SSH to production
+  -> deploy <tested-commit-sha> to Global
 ```
 
 The deploy workflow accepts only a successful `push` CI run on `main`. A
-successful pull-request run is not sufficient. Global and Mainland China use
-separate concurrency groups, deployments, databases, credentials, and public
-region endpoints. A failure in one region does not cancel the other job. Both
-deployments must pass migration, API, and worker health checks on the target
-host. The global job also verifies its public endpoint from the GitHub runner;
-the Mainland China job does not use that cross-border probe because hosted
-GitHub runners cannot reliably connect to the China endpoint.
+successful pull-request run is not sufficient. The hosted service currently
+deploys only the Global region. It must pass migration, API, and worker health
+checks on the target host, followed by a public endpoint check from the GitHub
+runner. The independent Mainland China deployment remains disabled until its
+network path is production-ready.
 
 ### Required GitHub environment
 
-Create GitHub environments named `production` and `production-cn`, restrict
-both to the `main` branch, and configure the following values independently in
-each environment:
+Create a GitHub environment named `production`, restrict it to the `main`
+branch, and configure the following values:
 
 Environment variables:
 
@@ -124,20 +121,13 @@ Verify production after the deployment:
 
 ```bash
 curl --fail --silent --show-error https://api.runbuoy.cloud/healthz
-curl --fail --silent --show-error https://api-cn.runbuoy.cloud/healthz
 ```
 
 Expected response:
 
 ```json
 {"status":"ok","region":"global"}
-{"status":"ok","region":"cn"}
 ```
-
-The two installations are intentionally isolated. Do not copy PostgreSQL data,
-device credentials, or pairing sessions between them. The same Apple APNs
-signing `.p8` key may be mounted on both Workers, while each deployment keeps
-independent database, credential-pepper, and token-encryption secrets.
 
 ### Backups
 

@@ -25,11 +25,6 @@ jobs:
           - region: global
             environment: production
             health_url: https://api.runbuoy.cloud/healthz
-            verify_from_runner: true
-          - region: cn
-            environment: production-cn
-            health_url: https://api-cn.runbuoy.cloud/healthz
-            verify_from_runner: false
     concurrency:
       group: runbuoy-production-${{ matrix.region }}
       cancel-in-progress: false
@@ -75,7 +70,6 @@ jobs:
             "deploy $DEPLOY_SHA"
 
       - name: Verify public region endpoint
-        if: matrix.verify_from_runner
         shell: bash
         run: |
           set -Eeuo pipefail
