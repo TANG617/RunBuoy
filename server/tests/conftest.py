@@ -62,7 +62,13 @@ class Harness:
         assert exchanged.json()["machine_id"] == "machine_stable_test"
         return device, {**pairing, **exchanged.json()}
 
-    def register_run(self, machine: dict[str, Any], run_id: str) -> None:
+    def register_run(
+        self,
+        machine: dict[str, Any],
+        run_id: str,
+        *,
+        live_activity_policy: str = "automatic",
+    ) -> None:
         response = self.client.put(
             f"/v1/runs/{run_id}",
             headers={"Authorization": f"Bearer {machine['credential']}"},
@@ -72,6 +78,7 @@ class Harness:
                 "source": "cli",
                 "execution_status": "SUCCEEDED",
                 "progress": {"kind": "determinate", "fraction": 1.0},
+                "live_activity_policy": live_activity_policy,
             },
         )
         assert response.status_code == 200, response.text

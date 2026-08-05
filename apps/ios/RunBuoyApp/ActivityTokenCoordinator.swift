@@ -9,6 +9,8 @@ final class ActivityTokenCoordinator {
     private var activityTokenTasks: [String: Task<Void, Never>] = [:]
     private var retryTasks: [String: Task<Void, Never>] = [:]
     private var retryVersions: [String: UUID] = [:]
+    private var retryFingerprints: [String: String] = [:]
+    private var successfulFingerprints: [String: String] = [:]
     private var generations: [String: Int] = [:]
     private var observedTokens: [String: Data] = [:]
 
@@ -56,6 +58,8 @@ final class ActivityTokenCoordinator {
         retryTasks.values.forEach { $0.cancel() }
         retryTasks = [:]
         retryVersions = [:]
+        retryFingerprints = [:]
+        successfulFingerprints = [:]
     }
 
     func reconcileCurrentActivities() {
@@ -124,7 +128,11 @@ final class ActivityTokenCoordinator {
             )
         }
         let frequentPushesEnabled = ActivityAuthorizationInfo().frequentPushesEnabled
-        scheduleRetry(key: "activity-sync") { [api] in
+        let fingerprint = activitySyncFingerprint(
+            current,
+            frequentPushesEnabled: frequentPushesEnabled
+        )
+        scheduleRetry(key: "activity-sync", fingerprint: fingerprint) { [api] in
             try await api.syncActivities(
                 current,
                 frequentPushesEnabled: frequentPushesEnabled
@@ -169,7 +177,10 @@ final class ActivityTokenCoordinator {
         let tokenString = token.hexadecimalString
         let activityID = activity.id
         let runID = activity.attributes.runID
-        scheduleRetry(key: "activity-token:\(activity.id)") { [api] in
+        scheduleRetry(
+            key: "activity-token:\(activity.id)",
+            fingerprint: String(generation)
+        ) { [api] in
             try await api.registerActivityToken(
                 tokenString,
                 activityID: activityID,
@@ -182,7 +193,7 @@ final class ActivityTokenCoordinator {
     private func registerPushToStartToken(_ token: Data) {
         let generation = generation(for: "push-to-start", token: token)
         let tokenString = token.hexadecimalString
-        scheduleRetry(key: "push-to-start") { [api] in
+        scheduleRetry(key: "push-to-start", fingerprint: String(generation)) { [api] in
             try await api.registerPushToStartToken(
                 tokenString,
                 generation: generation
@@ -192,38 +203,70 @@ final class ActivityTokenCoordinator {
 
     private func scheduleRetry(
         key: String,
+        fingerprint: String,
         operation: @escaping @Sendable () async throws -> Void
     ) {
+        guard retryFingerprints[key] != fingerprint,
+              successfulFingerprints[key] != fingerprint
+        else {
+            return
+        }
         retryTasks[key]?.cancel()
         let version = UUID()
         retryVersions[key] = version
+        retryFingerprints[key] = fingerprint
         retryTasks[key] = Task { [weak self] in
-            await Self.retry(operation)
+            let succeeded = await Self.retry(operation)
             guard !Task.isCancelled, self?.retryVersions[key] == version else { return }
+            if succeeded {
+                self?.successfulFingerprints[key] = fingerprint
+            }
             self?.retryTasks[key] = nil
             self?.retryVersions[key] = nil
+            self?.retryFingerprints[key] = nil
         }
+    }
+
+    private func activitySyncFingerprint(
+        _ activities: [ActivityRegistration],
+        frequentPushesEnabled: Bool
+    ) -> String {
+        let activityValues = activities
+            .sorted { $0.activityID < $1.activityID }
+            .map { activity in
+                [
+                    activity.activityID,
+                    activity.runID,
+                    String(activity.tokenGeneration),
+                    activity.state,
+                    String(activity.lastSequence),
+                    activity.updateToken == nil ? "0" : "1"
+                ].joined(separator: "|")
+            }
+            .joined(separator: ",")
+        return "\(frequentPushesEnabled ? 1 : 0):\(activityValues)"
     }
 
     private nonisolated static func retry(
         _ operation: @escaping @Sendable () async throws -> Void
-    ) async {
+    ) async -> Bool {
         var delay: UInt64 = 500_000_000
         for attempt in 0..<6 {
-            guard !Task.isCancelled else { return }
+            guard !Task.isCancelled else { return false }
             do {
                 try await operation()
-                return
+                return true
             } catch {
-                guard attempt < 5 else { return }
+                guard attempt < 5 else { return false }
                 do {
                     try await Task.sleep(nanoseconds: delay)
                 } catch {
-                    return
+                    return false
                 }
                 delay = min(delay * 2, 8_000_000_000)
             }
         }
+        return false
     }
 }
 

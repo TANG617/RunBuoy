@@ -53,6 +53,7 @@ class RemoteClient:
             "source": run["source"],
             "execution_status": "CREATED",
             "cli_version": __version__,
+            "live_activity_policy": run.get("live_activity_policy", "automatic"),
         }
         assert_safe_remote_payload(payload)
         self._request("PUT", f"/v1/runs/{run['run_id']}", json=payload)
@@ -144,4 +145,29 @@ def flush_pending(
             continue
         queue.mark_delivered(event_ids)
         delivered += len(batch)
+    return delivered
+
+
+def drain_pending(
+    queue: EventQueue,
+    client: RemoteClient,
+    *,
+    batch_size: int,
+    run_id: str | None = None,
+    max_batches: int | None = 100,
+) -> int:
+    """Upload every currently deliverable batch without sleeping between batches."""
+    delivered = 0
+    batch_count = 0
+    while max_batches is None or batch_count < max_batches:
+        batch_delivered = flush_pending(
+            queue,
+            client,
+            batch_size=batch_size,
+            run_id=run_id,
+        )
+        batch_count += 1
+        delivered += batch_delivered
+        if batch_delivered < batch_size:
+            break
     return delivered

@@ -80,7 +80,8 @@ class EventQueue:
                     tmux_session TEXT,
                     worker_pid INTEGER,
                     process_group INTEGER,
-                    remote_initialized INTEGER NOT NULL DEFAULT 0
+                    remote_initialized INTEGER NOT NULL DEFAULT 0,
+                    live_activity_policy TEXT NOT NULL DEFAULT 'automatic'
                 );
                 CREATE TABLE IF NOT EXISTS events (
                     event_id TEXT PRIMARY KEY,
@@ -114,6 +115,11 @@ class EventQueue:
                 connection.execute(
                     "ALTER TABLE runs ADD COLUMN remote_initialized INTEGER NOT NULL DEFAULT 0"
                 )
+            if "live_activity_policy" not in columns:
+                connection.execute(
+                    "ALTER TABLE runs ADD COLUMN "
+                    "live_activity_policy TEXT NOT NULL DEFAULT 'automatic'"
+                )
 
     def create_run(
         self,
@@ -122,6 +128,7 @@ class EventQueue:
         machine_id: str,
         title: str,
         source: str = "cli",
+        live_activity_policy: str = "automatic",
         manifest_path: str,
         log_path: str,
         result_path: str,
@@ -134,8 +141,9 @@ class EventQueue:
                 """
                 INSERT INTO runs(
                     run_id, machine_id, title, source, status, updated_at, manifest_path,
-                    log_path, result_path, socket_path, tmux_session
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    log_path, result_path, socket_path, tmux_session,
+                    live_activity_policy
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     run_id,
@@ -149,6 +157,7 @@ class EventQueue:
                     result_path,
                     socket_path,
                     tmux_session,
+                    live_activity_policy,
                 ),
             )
             return self._append_event_in_transaction(

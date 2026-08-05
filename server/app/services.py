@@ -5,7 +5,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any, cast
 
 from fastapi import HTTPException, status
-from sqlalchemy import delete, select, update
+from sqlalchemy import delete, select, text, update
 from sqlalchemy.engine import CursorResult
 from sqlalchemy.orm import Session
 
@@ -161,14 +161,39 @@ def normal_payload(notification: Notification) -> dict[str, Any]:
     return payload
 
 
-def _priority(run: Run, kind: str) -> int:
+def _priority(
+    run: Run,
+    kind: str,
+    *,
+    event_type: str | None = None,
+    previous_progress: dict[str, Any] | None = None,
+) -> int:
     if (
         kind in {"LIVE_START", "LIVE_END"}
         or run.attention_status in {"WARNING", "ACTION_REQUIRED"}
         or run.execution_status in {"FAILED", "LOST"}
+        or event_type == "run.phase_changed"
     ):
         return 10
+    if event_type == "run.progress":
+        previous_fraction = (previous_progress or {}).get("fraction")
+        current_fraction = (run.progress or {}).get("fraction")
+        if not isinstance(previous_fraction, int | float):
+            return 10
+        if (
+            isinstance(current_fraction, int | float)
+            and abs(current_fraction - previous_fraction) >= 0.1
+        ):
+            return 10
     return 5
+
+
+def _signal_outbox_worker(session: Session) -> None:
+    """Wake PostgreSQL workers after commit; SQLite workers keep their poll fallback."""
+    if session.get_bind().dialect.name == "postgresql":
+        session.execute(
+            text("SELECT pg_notify('runbuoy_push_outbox', '')"),
+        )
 
 
 def _coalesce_outbox(
@@ -195,6 +220,7 @@ def _coalesce_outbox(
         existing.priority = max(existing.priority, priority)
         existing.available_at = min(aware(existing.available_at), aware(available_at))
         existing.updated_at = utcnow()
+        _signal_outbox_worker(session)
         return existing
     outbox = PushOutbox(
         id=new_id("out"),
@@ -209,6 +235,7 @@ def _coalesce_outbox(
         coalesce_key=coalesce_key,
     )
     session.add(outbox)
+    _signal_outbox_worker(session)
     return outbox
 
 
@@ -351,9 +378,12 @@ def schedule_run_pushes(
                 and device.live_activities_enabled
                 and device.push_to_start_token_encrypted
             ):
-                available = (run.started_at or now) + timedelta(
-                    seconds=settings.live_activity_start_delay_seconds
+                start_delay = (
+                    0
+                    if run.live_activity_policy == "immediate"
+                    else settings.live_activity_start_delay_seconds
                 )
+                available = (run.started_at or now) + timedelta(seconds=start_delay)
                 _coalesce_outbox(
                     session,
                     kind="LIVE_START",
@@ -409,8 +439,8 @@ def schedule_run_pushes(
             )
             is not None
         )
-        should_fallback_failure = run.execution_status in {"FAILED", "LOST"} and (
-            (duration is not None and duration <= 5) or not sent_start_exists
+        should_fallback_failure = (
+            run.execution_status in {"FAILED", "LOST"} and not sent_start_exists
         )
         if should_fallback_failure:
             body = NotificationCreate(
@@ -445,9 +475,6 @@ def schedule_run_pushes(
                 ),
                 dedupe_key=f"terminal-fallback:{run.id}",
             )
-        if duration is not None and duration <= 5:
-            return
-
     bindings = list(
         session.scalars(
             select(LiveActivityBinding).where(
@@ -499,7 +526,12 @@ def schedule_run_pushes(
             target_id=binding.id,
             run_id=run.id,
             payload=live_payload(run, kind, now, machine_name=machine_name),
-            priority=_priority(run, kind),
+            priority=_priority(
+                run,
+                kind,
+                event_type=event_type,
+                previous_progress=previous_progress,
+            ),
             available_at=available_at,
             coalesce_key=f"live:{run.id}:{binding.device_id}",
         )

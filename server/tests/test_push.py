@@ -257,6 +257,10 @@ def test_outbox_mock_send_records_payload_without_secrets(harness: Harness) -> N
         attempt = session.scalar(select(PushAttempt))
         assert attempt is not None
         assert attempt.request_payload["aps"]["event"] == "start"
+        assert attempt.queue_latency_ms is not None
+        assert attempt.queue_latency_ms >= 0
+        assert attempt.provider_latency_ms is not None
+        assert attempt.provider_latency_ms >= 0
         assert "authorization" not in attempt.request_headers
         assert int(attempt.request_headers["apns-expiration"]) > int(old.timestamp())
         assert "sensitive-push-token" not in json.dumps(attempt.request_payload)
@@ -606,6 +610,74 @@ def test_start_terminal_then_late_update_token_enqueues_end(harness: Harness) ->
         assert pending_end.priority == 10
 
 
+def test_immediate_start_for_short_run_still_enqueues_end(harness: Harness) -> None:
+    device, machine = harness.pair()
+    harness.client.put(
+        f"/v1/devices/{device['device_id']}/push-to-start-token",
+        headers=auth(device["credential"]),
+        json={"token": "immediate-push-token"},
+    )
+    run_id = str(uuid.uuid4())
+    harness.register_run(machine, run_id, live_activity_policy="immediate")
+    started_at = datetime.now(UTC)
+    assert (
+        post_events(
+            harness,
+            machine,
+            run_id,
+            [event(run_id, machine["machine_id"], 1, "run.started", at=started_at)],
+        ).status_code
+        == 200
+    )
+    provider = ResultProvider(APNsResult(200))
+    processor = OutboxProcessor(harness.settings, provider, cipher_for(harness.settings))
+    with harness.session_factory() as session:
+        start = session.scalar(select(PushOutbox).where(PushOutbox.kind == "LIVE_START"))
+        assert start is not None
+        assert start.available_at.replace(tzinfo=UTC) <= datetime.now(UTC)
+        assert processor.process_one(session)
+
+    assert (
+        harness.client.put(
+            "/v1/live-activities/activity-immediate/update-token",
+            headers=auth(device["credential"]),
+            json={
+                "token": "immediate-update-token",
+                "device_id": device["device_id"],
+                "run_id": run_id,
+                "generation": 1,
+            },
+        ).status_code
+        == 204
+    )
+    assert (
+        post_events(
+            harness,
+            machine,
+            run_id,
+            [
+                event(
+                    run_id,
+                    machine["machine_id"],
+                    2,
+                    "run.succeeded",
+                    at=started_at + timedelta(seconds=2),
+                )
+            ],
+        ).status_code
+        == 200
+    )
+    with harness.session_factory() as session:
+        pending_end = session.scalar(
+            select(PushOutbox).where(
+                PushOutbox.kind == "LIVE_END",
+                PushOutbox.status == "pending",
+            )
+        )
+        assert pending_end is not None
+        assert pending_end.priority == 10
+
+
 def test_multiple_updates_then_end_reuse_coalesce_key(harness: Harness) -> None:
     device, machine = harness.pair()
     run_id = str(uuid.uuid4())
@@ -723,4 +795,43 @@ def test_production_provider_es256_jwt_and_http_request(harness: Harness) -> Non
     }
     claims = jwt.decode(raw_jwt, options={"verify_signature": False})
     assert claims["iss"] == "KLMNOPQRST"
+    provider.close()
+
+
+def test_production_provider_turns_network_errors_into_retryable_result(
+    harness: Harness,
+) -> None:
+    key = ec.generate_private_key(ec.SECP256R1())
+    pem = key.private_bytes(
+        serialization.Encoding.PEM,
+        serialization.PrivateFormat.PKCS8,
+        serialization.NoEncryption(),
+    ).decode()
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("temporary APNs connection failure", request=request)
+
+    settings = replace(
+        harness.settings,
+        apns_mode="production",
+        apns_key_id="ABCDEFGHIJ",
+        apns_team_id="KLMNOPQRST",
+        apns_private_key=pem,
+    )
+    provider = ProductionAPNsProvider(
+        settings,
+        client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+
+    result = provider.send(
+        APNsRequest(
+            token="device-token",
+            payload={"aps": {"event": "update"}},
+            headers={"apns-topic": settings.apns_bundle_id},
+        )
+    )
+
+    assert result.status_code == 503
+    assert result.reason == "ConnectError"
+    assert result.retryable
     provider.close()

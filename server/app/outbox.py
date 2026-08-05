@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from datetime import timedelta
+import time
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -127,12 +128,25 @@ class OutboxProcessor:
             session.commit()
             return True
 
+        attempt_started_at = utcnow()
+        provider_started_at = time.perf_counter()
         result = self.provider.send(request)
+        provider_latency_ms = max(0, round((time.perf_counter() - provider_started_at) * 1000))
+        created_at = item.created_at
+        if created_at.tzinfo is None:
+            created_at = created_at.replace(tzinfo=UTC)
+        queue_latency_ms = max(
+            0,
+            round((attempt_started_at - created_at).total_seconds() * 1000),
+        )
         item.attempt_count += 1
         session.add(
             PushAttempt(
                 id=new_id("pat"),
                 outbox_id=item.id,
+                attempted_at=attempt_started_at,
+                queue_latency_ms=queue_latency_ms,
+                provider_latency_ms=provider_latency_ms,
                 status_code=result.status_code,
                 apns_id=result.apns_id,
                 reason=result.reason,
@@ -189,3 +203,13 @@ class OutboxProcessor:
         while processed < limit and self.process_one(session):
             processed += 1
         return processed
+
+    def seconds_until_next(self, session: Session, *, maximum: float = 60.0) -> float:
+        next_available = session.scalar(
+            select(func.min(PushOutbox.available_at)).where(PushOutbox.status == "pending")
+        )
+        if not isinstance(next_available, datetime):
+            return maximum
+        if next_available.tzinfo is None:
+            next_available = next_available.replace(tzinfo=UTC)
+        return min(maximum, max(0.0, (next_available - utcnow()).total_seconds()))

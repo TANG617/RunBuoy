@@ -111,7 +111,7 @@ class RunUpsert(APIModel):
     phase: str | None = Field(default=None, max_length=120)
     safe_message: str | None = Field(default=None, max_length=500)
     started_at: datetime | None = None
-    live_activity_policy: Literal["automatic", "disabled"] = "automatic"
+    live_activity_policy: Literal["automatic", "immediate", "disabled"] = "automatic"
     notification_policy: Literal["failures", "all", "none"] = "failures"
 
 

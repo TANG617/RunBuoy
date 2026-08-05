@@ -232,11 +232,13 @@ without HTML, JavaScript, executable schemes, or WebView.
 
 ## Live Activity policy
 
-- A Run still active after five seconds may start a Live Activity.
+- Automatic Runs still active after five seconds may start a Live Activity;
+  CLI Runs can opt into immediate start with `--live-activity immediate`.
 - Short success is history-only; short failure receives a normal alert.
 - Each Device gets at most two active activities, prioritized by attention,
   failure/warning, then recency.
-- Ordinary progress is coalesced to at most one update every three seconds and
+- With frequent updates enabled, ordinary progress is coalesced to at most one
+  update every second; devices that disable frequent updates use 15 seconds, and
   less than 1% changes are suppressed.
 - Phase, attention, terminal success, and failure update immediately.
 - A heartbeat is emitted every 15 seconds and advances the confirmed elapsed

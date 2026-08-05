@@ -252,6 +252,8 @@ class PushAttempt(Base):
     id: Mapped[str] = mapped_column(String(64), primary_key=True)
     outbox_id: Mapped[str] = mapped_column(ForeignKey("push_outbox.id"), index=True)
     attempted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    queue_latency_ms: Mapped[int | None] = mapped_column(Integer)
+    provider_latency_ms: Mapped[int | None] = mapped_column(Integer)
     status_code: Mapped[int] = mapped_column(Integer)
     apns_id: Mapped[str | None] = mapped_column(String(64))
     reason: Mapped[str | None] = mapped_column(String(255))
