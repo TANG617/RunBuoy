@@ -41,6 +41,7 @@ def test_event_seq_and_snapshot_are_one_transaction(tmp_path: Path) -> None:
     )
     assert [started.seq, running.seq, progress.seq] == [2, 3, 4]
     assert queue.get_run("run")["progress"]["fraction"] == 0.5  # type: ignore[index]
+    assert queue.get_run("run")["live_activity_policy"] == "automatic"  # type: ignore[index]
 
 
 def test_terminal_state_is_immutable(tmp_path: Path) -> None:

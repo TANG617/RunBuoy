@@ -8,7 +8,7 @@ import httpx
 
 from runbuoy import __version__
 from runbuoy.config import Config, CredentialStore
-from runbuoy.networking.client import RemoteClient, flush_pending
+from runbuoy.networking.client import RemoteClient, drain_pending, flush_pending
 from runbuoy.paths import AppPaths
 from runbuoy.persistence.store import EventQueue
 
@@ -74,6 +74,7 @@ def test_run_upsert_sends_current_cli_version(tmp_path: Path, monkeypatch: Any) 
             "source": "cli",
             "execution_status": "CREATED",
             "cli_version": __version__,
+            "live_activity_policy": "automatic",
         }
     ]
 
@@ -135,6 +136,43 @@ def test_fully_offline_terminal_run_replays_from_created(tmp_path: Path) -> None
     assert [item["seq"] for item in client.batches[0]] == [1, 2, 3, 4]
     assert client.upserts[0]["status"] == "SUCCEEDED"
     assert queue.get_run("run")["remote_initialized"] == 1  # type: ignore[index]
+    assert queue.pending_events() == []
+
+
+def test_drain_pending_flushes_every_batch_through_terminal(tmp_path: Path) -> None:
+    queue = EventQueue(tmp_path / "db.sqlite3")
+    queue.create_run(
+        run_id="run",
+        machine_id="machine",
+        title="safe",
+        live_activity_policy="immediate",
+        manifest_path="local-manifest",
+        log_path="local-log",
+        result_path="local-result",
+        socket_path="local-socket",
+        tmux_session="local-tmux",
+    )
+    for current in range(205):
+        queue.append_event(
+            "run",
+            "run.progress",
+            {
+                "progress": {
+                    "kind": "determinate",
+                    "current": current,
+                    "total": 205,
+                    "fraction": current / 205,
+                    "source": "lines",
+                }
+            },
+        )
+    queue.append_event("run", "run.succeeded", {"exit_code": 0})
+    client = RecordingClient()
+
+    assert drain_pending(queue, client, batch_size=100) == 207  # type: ignore[arg-type]
+    assert [len(batch) for batch in client.batches] == [100, 100, 7]
+    assert client.batches[-1][-1]["type"] == "run.succeeded"
+    assert client.upserts[0]["live_activity_policy"] == "immediate"
     assert queue.pending_events() == []
 
 

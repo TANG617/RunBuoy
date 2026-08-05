@@ -29,6 +29,12 @@ class ProgressMode(StrEnum):
     INDETERMINATE = "indeterminate"
 
 
+class LiveActivityPolicy(StrEnum):
+    AUTOMATIC = "automatic"
+    IMMEDIATE = "immediate"
+    DISABLED = "disabled"
+
+
 class Progress(BaseModel):
     model_config = ConfigDict(extra="allow")
 

@@ -28,7 +28,7 @@ class Settings:
     apns_private_key: str | None = None
     apns_private_key_path: str | None = None
     live_activity_start_delay_seconds: int = 5
-    live_activity_update_interval_seconds: int = 3
+    live_activity_update_interval_seconds: int = 1
     live_activity_max_per_device: int = 2
     live_activity_pending_ttl_seconds: int = 300
     outbox_max_attempts: int = 6

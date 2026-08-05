@@ -80,7 +80,15 @@ class ProductionAPNsProvider:
     def __init__(self, settings: Settings, client: httpx.Client | None = None) -> None:
         settings.validate()
         self.settings = settings
-        self._client = client or httpx.Client(http2=True, timeout=15.0)
+        self._client = client or httpx.Client(
+            http2=True,
+            timeout=httpx.Timeout(15.0, connect=5.0),
+            limits=httpx.Limits(
+                max_connections=100,
+                max_keepalive_connections=20,
+                keepalive_expiry=None,
+            ),
+        )
         self._jwt: str | None = None
         self._jwt_issued_at = 0
         if settings.apns_private_key is not None:
@@ -111,11 +119,14 @@ class ProductionAPNsProvider:
     def send(self, request: APNsRequest) -> APNsResult:
         headers = dict(request.headers)
         headers["authorization"] = f"bearer {self._provider_token()}"
-        response = self._client.post(
-            f"{self.endpoint}/3/device/{request.token}",
-            headers=headers,
-            content=json.dumps(request.payload, separators=(",", ":")),
-        )
+        try:
+            response = self._client.post(
+                f"{self.endpoint}/3/device/{request.token}",
+                headers=headers,
+                content=json.dumps(request.payload, separators=(",", ":")),
+            )
+        except httpx.HTTPError as error:
+            return APNsResult(status_code=503, reason=type(error).__name__)
         reason: str | None = None
         if response.content:
             try:

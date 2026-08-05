@@ -38,7 +38,7 @@ from runbuoy.config import (
 )
 from runbuoy.executors.tmux import TmuxExecutor
 from runbuoy.ids import uuid7
-from runbuoy.models import ExecutionStatus, ProgressMode, RunManifest
+from runbuoy.models import ExecutionStatus, LiveActivityPolicy, ProgressMode, RunManifest
 from runbuoy.networking.client import RemoteClient, RemoteError
 from runbuoy.pairing.flow import (
     PENDING_SESSION_KEY,
@@ -380,6 +380,11 @@ def run_command(
         max=100,
         help="Upload an explicitly opted-in, redacted tail of up to 100 lines at completion.",
     ),
+    live_activity: LiveActivityPolicy = typer.Option(
+        LiveActivityPolicy.AUTOMATIC,
+        "--live-activity",
+        help="Live Activity start policy: automatic, immediate, or disabled.",
+    ),
     json_output: bool = typer.Option(
         False,
         "--json",
@@ -466,6 +471,7 @@ def run_command(
         machine_id=machine_id,
         title=manifest.title,
         source=source,
+        live_activity_policy=live_activity.value,
         manifest_path=str(manifest_path),
         log_path=str(log_path),
         result_path=str(result_path),
@@ -491,6 +497,7 @@ def run_command(
         "run_id": run_id,
         "title": manifest.title,
         "status": "STARTING",
+        "live_activity_policy": live_activity.value,
         "local": {
             "status": f"runbuoy status {run_id}",
             "logs": f"runbuoy logs {run_id}",
@@ -1538,6 +1545,7 @@ def demo_live_activity(
         match=None,
         unit=None,
         share_log_tail=0,
+        live_activity=LiveActivityPolicy.IMMEDIATE,
         json_output=json_output,
         non_interactive=False,
         wait=wait,

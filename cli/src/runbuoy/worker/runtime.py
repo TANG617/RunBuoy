@@ -16,7 +16,7 @@ from typing import Any
 
 from runbuoy.config import CredentialStore, load_config
 from runbuoy.models import ExecutionStatus, Progress, RunManifest, WorkerResult, utc_now
-from runbuoy.networking.client import RemoteClient, flush_pending
+from runbuoy.networking.client import RemoteClient, drain_pending
 from runbuoy.paths import AppPaths
 from runbuoy.persistence.store import EventQueue
 from runbuoy.progress.adapters import make_adapter
@@ -46,6 +46,19 @@ def _safe_log_tail(path: Path, lines: int) -> list[str]:
 
 
 class Worker:
+    immediate_upload_events = frozenset(
+        {
+            "run.starting",
+            "run.started",
+            "run.phase_changed",
+            "run.attention_required",
+            "run.succeeded",
+            "run.failed",
+            "run.cancelled",
+            "run.lost",
+        }
+    )
+
     def __init__(self, manifest: RunManifest, paths: AppPaths) -> None:
         self.manifest = manifest
         self.paths = paths
@@ -61,7 +74,7 @@ class Worker:
     def emit(self, event_type: str, payload: dict[str, Any]) -> None:
         with self._event_lock:
             self.queue.append_event(self.manifest.run_id, event_type, payload)
-        if event_type in {"run.succeeded", "run.failed", "run.cancelled", "run.lost"}:
+        if event_type in self.immediate_upload_events:
             self.upload_wakeup.set()
 
     def on_progress(self, progress: Progress) -> None:
@@ -124,7 +137,7 @@ class Worker:
         client = RemoteClient(config, credentials)
         try:
             while not self.upload_stop.is_set():
-                flush_pending(
+                drain_pending(
                     self.queue,
                     client,
                     batch_size=config.batch_size,
@@ -132,11 +145,12 @@ class Worker:
                 )
                 self.upload_wakeup.wait(config.upload_interval_seconds)
                 self.upload_wakeup.clear()
-            flush_pending(
+            drain_pending(
                 self.queue,
                 client,
-                batch_size=100,
+                batch_size=config.batch_size,
                 run_id=self.manifest.run_id,
+                max_batches=None,
             )
         finally:
             client.close()
@@ -196,7 +210,7 @@ class Worker:
                 self._socket_server.close()
             self.upload_stop.set()
             self.upload_wakeup.set()
-            upload_thread.join(timeout=6)
+            upload_thread.join()
             for handled_signal, previous in old_handlers.items():
                 signal.signal(handled_signal, previous)
 

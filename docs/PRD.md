@@ -68,8 +68,9 @@ idempotency, legal state transitions, and terminal immutability; updates a Run
 projection; and writes desired push state transactionally. An independent
 worker coalesces and sends mock or production APNs requests.
 
-Live Activities start only for Runs still active after five seconds, are
-limited to two per device, update no faster than every three seconds for
+Live Activities start after five seconds in automatic mode or immediately when
+explicitly requested by the CLI, are limited to two per device, and update no
+faster than every second when frequent updates are enabled for
 ordinary progress, and advance their displayed elapsed time only from
 Machine-confirmed events. Fifteen-second heartbeats keep the duration fresh;
 after 60 seconds without confirmation the presentation becomes stale without

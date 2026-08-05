@@ -235,6 +235,8 @@ components:
         cli_version: { type: [string, "null"], maxLength: 64 }
         execution_status:
           enum: [CREATED, STARTING, RUNNING, SUCCEEDED, FAILED, CANCELLED, LOST]
+        live_activity_policy:
+          enum: [automatic, immediate, disabled]
       additionalProperties: true
     RunProjection:
       type: object

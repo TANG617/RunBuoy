@@ -440,6 +440,7 @@ def test_live_activity_demo_builds_structured_demo_run(
     assert result.exit_code == 0, result.output
     assert captured["progress_mode"] == cli_app.ProgressMode.STRUCTURED
     assert captured["source"] == "demo"
+    assert captured["live_activity"] == cli_app.LiveActivityPolicy.IMMEDIATE
     command = captured["command"]
     assert isinstance(command, list)
     assert "attention(" in command[2]

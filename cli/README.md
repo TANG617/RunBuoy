@@ -94,6 +94,10 @@ Run a command:
 runbuoy run -- python3 experiment.py
 ```
 
+Use `--live-activity immediate` when the Live Activity should start as soon as
+the Run reaches the Server. The default `automatic` policy filters out Runs
+that finish within five seconds; `disabled` suppresses Live Activity start.
+
 `runbuoy list` shows active Runs. Use `runbuoy list -a` to include completed
 history. Run IDs may be supplied as unique prefixes, or as `@latest`.
 Preview old local history before permanently pruning it with:

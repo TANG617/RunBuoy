@@ -86,8 +86,9 @@ credentials and is the only APNs mode used in CI.
 2. Launch the signed app and confirm normal, push-to-start, and update tokens
    are registered without appearing in logs.
 3. Pair the CLI.
-4. Run `runbuoy run -- sleep 8`.
-5. Confirm a start after five seconds and an end on completion.
+4. Run `runbuoy run --live-activity immediate -- sleep 8`.
+5. Confirm an immediate start and an end on completion; also verify that a
+   normal automatic Run still observes the five-second policy.
 6. Rotate/reinstall and confirm replacement tokens take effect.
 7. Use Apple's Push Notification Console for payload troubleshooting.
 

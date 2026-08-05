@@ -87,10 +87,12 @@ struct RunBuoyApp: App {
                 appDelegate.installTokenHandler { data in
                     Task { @MainActor in notificationCoordinator.receive(deviceToken: data) }
                 }
-                await store.restoreCache()
                 if onboardingComplete {
                     UIApplication.shared.registerForRemoteNotifications()
                     activityCoordinator.start()
+                }
+                await store.restoreCache()
+                if onboardingComplete {
                     await refreshState()
                 }
             }

@@ -6,7 +6,7 @@ import platform
 import secrets
 from contextlib import suppress
 from enum import StrEnum
-from typing import Any, cast
+from typing import Any, Literal, cast
 
 from pydantic import BaseModel, Field, HttpUrl
 
@@ -26,12 +26,13 @@ class RunBuoyRegion(StrEnum):
 
 
 class Config(BaseModel):
+    schema_version: Literal[2] = 2
     region: RunBuoyRegion = RunBuoyRegion.GLOBAL
     server_url: HttpUrl = Field(default=HttpUrl("https://api.runbuoy.cloud"))
     machine_id: str | None = None
     machine_name: str = Field(default_factory=platform.node)
-    upload_interval_seconds: float = Field(default=1.0, ge=0.1, le=60)
-    batch_size: int = Field(default=20, ge=1, le=100)
+    upload_interval_seconds: float = Field(default=0.25, ge=0.05, le=60)
+    batch_size: int = Field(default=100, ge=1, le=100)
     cancel_grace_seconds: float = Field(default=3.0, ge=0.05, le=60)
 
 
@@ -39,7 +40,17 @@ def load_config(paths: AppPaths) -> Config:
     paths.ensure()
     if not paths.config_file.exists():
         return Config()
-    return Config.model_validate_json(paths.config_file.read_text(encoding="utf-8"))
+    raw = json.loads(paths.config_file.read_text(encoding="utf-8"))
+    if "schema_version" not in raw:
+        if raw.get("upload_interval_seconds") == 1.0:
+            raw["upload_interval_seconds"] = Config().upload_interval_seconds
+        if raw.get("batch_size") == 20:
+            raw["batch_size"] = Config().batch_size
+        raw["schema_version"] = 2
+        migrated = Config.model_validate(raw)
+        save_config(paths, migrated)
+        return migrated
+    return Config.model_validate(raw)
 
 
 def save_config(paths: AppPaths, config: Config) -> None:
