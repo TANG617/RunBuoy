@@ -83,8 +83,16 @@ normal notification.
 The native iOS 18 app provides Runs and Settings tabs, active/recent/message
 sections, offline cache states, read-only Run detail and feed, Machines,
 pairing, notification preferences, deep links, and Live Activities. The
-widget has no buttons. Accessibility, Dynamic Type, reduced motion, contrast,
-and English/Simplified Chinese are first-class requirements.
+widget has no buttons and uses the system-managed Live Activity background so
+its color and opacity remain correct across system presentation contexts. For
+the first minute after a Run ends, its Live Activity displays localized
+`just now` text; after that, it displays the exact number of completed minutes
+since completion and never displays seconds. This clock is anchored to the
+terminal state's `endedAt` (the task finish time), never `createdAt` or
+`startedAt`; legacy terminal states without `endedAt` fall back to their final
+`updatedAt`. Accessibility, Dynamic Type,
+reduced motion, contrast, and English/Simplified Chinese are first-class
+requirements.
 
 ### Webhooks
 

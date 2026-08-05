@@ -76,6 +76,7 @@ final class ModelDecodingTests: XCTestCase {
         XCTAssertEqual(state.executionStatus, detail.run.executionStatus.rawValue)
         XCTAssertEqual(state.progress, detail.run.progress?.fraction)
         XCTAssertEqual(state.updatedAt, detail.run.updatedAt)
+        XCTAssertEqual(state.endedAt, detail.run.endedAt)
         XCTAssertEqual(state.machineName, detail.run.machineName)
     }
 
@@ -99,6 +100,128 @@ final class ModelDecodingTests: XCTestCase {
                 updatedAt: created.addingTimeInterval(3_661)
             ),
             "1:01:01"
+        )
+    }
+
+    func testTerminalLiveActivityTimeUsesJustNowThenWholeMinutes() {
+        let endedAt = Date(timeIntervalSince1970: 1_000)
+        let locale = Locale(identifier: "en_US")
+
+        XCTAssertEqual(
+            RunActivityTerminalTimeText.string(
+                endedAt: endedAt,
+                currentDate: endedAt,
+                locale: locale
+            ),
+            "just now"
+        )
+        XCTAssertEqual(
+            RunActivityTerminalTimeText.string(
+                endedAt: endedAt,
+                currentDate: endedAt.addingTimeInterval(59.999),
+                locale: locale
+            ),
+            "just now"
+        )
+        XCTAssertEqual(
+            RunActivityTerminalTimeText.string(
+                endedAt: endedAt,
+                currentDate: endedAt.addingTimeInterval(60),
+                locale: locale
+            ),
+            "1m ago"
+        )
+        XCTAssertEqual(
+            RunActivityTerminalTimeText.string(
+                endedAt: endedAt,
+                currentDate: endedAt.addingTimeInterval(119.999),
+                locale: locale
+            ),
+            "1m ago"
+        )
+        XCTAssertEqual(
+            RunActivityTerminalTimeText.string(
+                endedAt: endedAt,
+                currentDate: endedAt.addingTimeInterval(120),
+                locale: locale
+            ),
+            "2m ago"
+        )
+        XCTAssertEqual(
+            RunActivityTerminalTimeText.string(
+                endedAt: endedAt,
+                currentDate: endedAt.addingTimeInterval(3_660),
+                locale: locale
+            ),
+            "61m ago"
+        )
+        XCTAssertEqual(
+            RunActivityTerminalTimeText.nextRefreshDate(
+                endedAt: endedAt,
+                currentDate: endedAt.addingTimeInterval(30)
+            ),
+            endedAt.addingTimeInterval(60)
+        )
+        XCTAssertEqual(
+            RunActivityTerminalTimeText.nextRefreshDate(
+                endedAt: endedAt,
+                currentDate: endedAt.addingTimeInterval(60)
+            ),
+            endedAt.addingTimeInterval(120)
+        )
+    }
+
+    func testTerminalLiveActivityTimeAnchorsToCompletionNotRunStart() {
+        let createdAt = Date(timeIntervalSince1970: 1_000)
+        let startedAt = createdAt.addingTimeInterval(30)
+        let endedAt = startedAt.addingTimeInterval(3_600)
+        let state = RunActivityAttributes.ContentState(
+            sequence: 2,
+            executionStatus: "SUCCEEDED",
+            healthStatus: "HEALTHY",
+            attentionStatus: "NONE",
+            progressKind: "determinate",
+            progress: 1,
+            phase: "Completed",
+            message: nil,
+            createdAt: createdAt,
+            startedAt: startedAt,
+            updatedAt: endedAt,
+            endedAt: endedAt,
+            estimatedEndAt: nil,
+            exitCode: 0
+        )
+
+        XCTAssertEqual(state.completionDate, endedAt)
+        XCTAssertEqual(
+            RunActivityTerminalTimeText.string(
+                endedAt: state.completionDate,
+                currentDate: endedAt.addingTimeInterval(59.999),
+                locale: Locale(identifier: "en_US")
+            ),
+            "just now"
+        )
+    }
+
+    func testTerminalLiveActivityTimeLocalizesChineseMinutes() {
+        let endedAt = Date(timeIntervalSince1970: 1_000)
+        let locale = Locale(identifier: "zh-Hans")
+
+        XCTAssertEqual(
+            RunActivityTerminalTimeText.string(
+                endedAt: endedAt,
+                currentDate: endedAt,
+                locale: locale
+            ),
+            "刚刚"
+        )
+        XCTAssertEqual(
+            RunActivityTerminalTimeText.string(
+                endedAt: endedAt,
+                currentDate: endedAt.addingTimeInterval(60),
+                locale: locale
+            ),
+            "1分钟前"
         )
     }
 

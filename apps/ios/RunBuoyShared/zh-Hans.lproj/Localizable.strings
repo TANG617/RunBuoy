@@ -170,6 +170,8 @@
 "tab.runs" = "运行";
 "tab.settings" = "设置";
 "widget.confirmed_elapsed" = "电脑已确认的运行时间";
+"widget.just_now" = "刚刚";
+"widget.minutes_ago" = "%lld分钟前";
 "widget.stale" = "数据可能已过期";
 "widget.terminal_time" = "距运行结束";
 "widget.explicit_eta" = "预计完成 %@";

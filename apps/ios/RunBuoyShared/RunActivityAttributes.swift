@@ -204,6 +204,55 @@ enum RunActivityDurationText {
     }
 }
 
+enum RunActivityTerminalTimeText {
+    static func string(
+        endedAt: Date,
+        currentDate: Date,
+        locale: Locale = .autoupdatingCurrent
+    ) -> String {
+        let elapsedSeconds = max(0, currentDate.timeIntervalSince(endedAt))
+        let completedMinutes = Int(elapsedSeconds / 60)
+        guard completedMinutes > 0 else {
+            return localizedString(forKey: "widget.just_now", locale: locale)
+        }
+
+        return String(
+            format: localizedString(forKey: "widget.minutes_ago", locale: locale),
+            locale: locale,
+            Int64(completedMinutes)
+        )
+    }
+
+    static func nextRefreshDate(endedAt: Date, currentDate: Date) -> Date {
+        let elapsedSeconds = max(0, currentDate.timeIntervalSince(endedAt))
+        let completedMinutes = floor(elapsedSeconds / 60)
+        return endedAt.addingTimeInterval((completedMinutes + 1) * 60)
+    }
+
+    private static func localizedString(forKey key: String, locale: Locale) -> String {
+        let preferredLocalizations = Bundle.preferredLocalizations(
+            from: Bundle.main.localizations,
+            forPreferences: [locale.identifier]
+        )
+        guard let localization = preferredLocalizations.first,
+              let path = Bundle.main.path(
+                forResource: localization,
+                ofType: "lproj"
+              ),
+              let localizedBundle = Bundle(path: path)
+        else {
+            return String(localized: String.LocalizationValue(key), bundle: .main)
+        }
+        return localizedBundle.localizedString(forKey: key, value: key, table: nil)
+    }
+}
+
+extension RunActivityAttributes.ContentState {
+    var completionDate: Date {
+        endedAt ?? updatedAt
+    }
+}
+
 #if os(iOS)
 extension RunActivityAttributes: ActivityAttributes {}
 #endif

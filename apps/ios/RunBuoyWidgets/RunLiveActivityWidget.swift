@@ -1,6 +1,5 @@
 import ActivityKit
 import SwiftUI
-import UIKit
 import WidgetKit
 
 struct RunLiveActivityWidget: Widget {
@@ -11,8 +10,6 @@ struct RunLiveActivityWidget: Widget {
                 state: context.state,
                 isStale: context.isStale
             )
-                .activityBackgroundTint(Color(uiColor: .secondarySystemBackground))
-                .activitySystemActionForegroundColor(.primary)
                 .widgetURL(deepLink(runID: context.attributes.runID))
         } dynamicIsland: { context in
             DynamicIsland {
@@ -99,10 +96,9 @@ private struct LiveCompactTrailing: View {
 
     var body: some View {
         if isTerminal(state) {
-            Text(state.endedAt ?? state.updatedAt, style: .relative)
+            LiveActivityTerminalTime(endedAt: state.completionDate)
                 .lineLimit(1)
                 .minimumScaleFactor(0.8)
-                .accessibilityLabel("widget.terminal_time")
         } else if state.progressKind == "determinate", let progress = state.progress {
             Text(min(max(progress, 0), 1), format: .percent.precision(.fractionLength(0)))
         } else {
@@ -146,8 +142,7 @@ private struct LiveActivityTime: View {
     var body: some View {
         Group {
             if isTerminal(state) {
-                Text(state.endedAt ?? state.updatedAt, style: .relative)
-                    .accessibilityLabel("widget.terminal_time")
+                LiveActivityTerminalTime(endedAt: state.completionDate)
             } else {
                 Text(
                     RunActivityDurationText.string(
@@ -161,6 +156,31 @@ private struct LiveActivityTime: View {
         }
         .monospacedDigit()
         .lineLimit(1)
+    }
+}
+
+private struct LiveActivityTerminalTime: View {
+    let endedAt: Date
+    @Environment(\.locale) private var locale
+
+    var body: some View {
+        TimelineView(.explicit(refreshDates)) { context in
+            Text(
+                RunActivityTerminalTimeText.string(
+                    endedAt: endedAt,
+                    currentDate: context.date,
+                    locale: locale
+                )
+            )
+        }
+        .accessibilityLabel("widget.terminal_time")
+    }
+
+    private var refreshDates: [Date] {
+        // Ended Live Activities remain visible for at most four hours.
+        (0...240).map { minute in
+            endedAt.addingTimeInterval(TimeInterval(minute * 60))
+        }
     }
 }
 

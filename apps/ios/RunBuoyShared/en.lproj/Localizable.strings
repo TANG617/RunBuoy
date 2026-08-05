@@ -170,6 +170,8 @@
 "tab.runs" = "Runs";
 "tab.settings" = "Settings";
 "widget.confirmed_elapsed" = "Machine-confirmed elapsed time";
+"widget.just_now" = "just now";
+"widget.minutes_ago" = "%lldm ago";
 "widget.stale" = "Data may be out of date";
 "widget.terminal_time" = "Time since run ended";
 "widget.explicit_eta" = "Estimated finish %@";
