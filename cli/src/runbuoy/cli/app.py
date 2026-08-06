@@ -11,6 +11,7 @@ import sqlite3
 import subprocess
 import sys
 import time
+from contextlib import suppress
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 from pathlib import Path
@@ -19,8 +20,12 @@ from typing import Any, NoReturn
 import httpx
 import typer
 from pydantic import ValidationError
-from rich.console import Console
+from rich.console import Console, Group
+from rich.live import Live
+from rich.panel import Panel
+from rich.progress import BarColumn, Progress, TaskProgressColumn, TextColumn
 from rich.table import Table
+from rich.text import Text
 from typer._click.shell_completion import CompletionItem
 from typer._completion_classes import completion_init
 from typer._completion_shared import get_completion_script
@@ -39,7 +44,7 @@ from runbuoy.config import (
 from runbuoy.executors.tmux import TmuxExecutor
 from runbuoy.ids import uuid7
 from runbuoy.models import ExecutionStatus, LiveActivityPolicy, ProgressMode, RunManifest
-from runbuoy.networking.client import RemoteClient, RemoteError
+from runbuoy.networking.client import RemoteClient, RemoteError, drain_pending, outbox_lease
 from runbuoy.pairing.flow import (
     PENDING_SESSION_KEY,
     pair_machine,
@@ -110,6 +115,17 @@ app.add_typer(completion_app, name="completion", rich_help_panel="Examples and a
 
 console = Console()
 error_console = Console(stderr=True)
+
+_HEALTH_STALE_AFTER = timedelta(seconds=60)
+_STATUS_STYLES = {
+    "CREATED": "cyan",
+    "STARTING": "cyan",
+    "RUNNING": "cyan",
+    "SUCCEEDED": "green",
+    "FAILED": "red",
+    "CANCELLED": "yellow",
+    "LOST": "red",
+}
 
 
 def _version_callback(value: bool) -> None:
@@ -208,11 +224,60 @@ def _elapsed(item: dict[str, Any]) -> str:
 
 
 def _progress_text(item: dict[str, Any]) -> str:
+    fraction = _progress_fraction(item)
+    if fraction is not None:
+        return f"{round(fraction * 100)}%"
+    return "—"
+
+
+def _progress_fraction(item: dict[str, Any]) -> float | None:
     progress = item.get("progress") or {}
     fraction = progress.get("fraction")
     if isinstance(fraction, int | float):
-        return f"{max(0, min(100, round(float(fraction) * 100)))}%"
-    return "—"
+        return max(0.0, min(1.0, float(fraction)))
+    return None
+
+
+def _brief_age(seconds: int) -> str:
+    if seconds < 5:
+        return "just now"
+    if seconds < 60:
+        return f"{seconds}s ago"
+    minutes = seconds // 60
+    if minutes < 60:
+        return f"{minutes}m ago"
+    hours = minutes // 60
+    if hours < 24:
+        return f"{hours}h ago"
+    return f"{hours // 24}d ago"
+
+
+def _health_state(item: dict[str, Any], *, now: datetime | None = None) -> tuple[str, str]:
+    status = str(item["status"])
+    if status == ExecutionStatus.LOST.value:
+        return "OFFLINE", "local worker was lost"
+    if status in TERMINAL_STATUSES:
+        return "HEALTHY", "final update confirmed"
+
+    updated = _parse_time(item.get("updated_at"))
+    if updated is None:
+        return "STALE", "update time unavailable"
+    current = now or datetime.now(updated.tzinfo)
+    age = max(0, int((current - updated).total_seconds()))
+    if current - updated >= _HEALTH_STALE_AFTER:
+        return "STALE", f"last update {_brief_age(age)}"
+    return "HEALTHY", f"updated {_brief_age(age)}"
+
+
+def _health_text(item: dict[str, Any]) -> Text:
+    health, detail = _health_state(item)
+    style = {"HEALTHY": "green", "STALE": "yellow", "OFFLINE": "red"}[health]
+    return Text.assemble(
+        ("● ", style),
+        (health.title(), f"bold {style}"),
+        (" · ", "dim"),
+        (detail, "dim"),
+    )
 
 
 def _public_run(item: dict[str, Any]) -> dict[str, Any]:
@@ -322,6 +387,7 @@ def _validate_run_options(
     progress_mode: ProgressMode,
     total: float | None,
     pattern: str | None,
+    match: str | None,
 ) -> None:
     if not command:
         raise typer.BadParameter("a command is required after --")
@@ -331,6 +397,146 @@ def _validate_run_options(
         raise typer.BadParameter("--pattern is required for regex progress")
     if total is not None and total <= 0:
         raise typer.BadParameter("--total must be greater than zero")
+    if match is not None:
+        try:
+            re.compile(match)
+        except re.error as error:
+            raise typer.BadParameter(f"invalid --match regex: {error}") from error
+    if pattern is not None:
+        try:
+            compiled = re.compile(pattern)
+        except re.error as error:
+            raise typer.BadParameter(f"invalid --pattern regex: {error}") from error
+        if progress_mode == ProgressMode.REGEX and compiled.groups < 2:
+            raise typer.BadParameter("--pattern requires current and total capture groups")
+
+
+def _delivery_status(
+    config: Config,
+    credentials: CredentialStore,
+    *,
+    timeout: float = 2,
+) -> dict[str, bool]:
+    try:
+        paired = credentials.get("machine_credential") is not None
+    except Exception:
+        paired = False
+    reachable = False
+    if paired:
+        try:
+            response = httpx.get(
+                str(config.server_url).rstrip("/") + "/healthz",
+                timeout=timeout,
+            )
+            reachable = response.status_code == 200
+        except Exception:
+            pass
+    return {"paired": paired, "reachable": reachable, "ready": paired and reachable}
+
+
+def _path_is_or_can_be_writable(path: Path) -> bool:
+    candidate = path
+    while not candidate.exists() and candidate != candidate.parent:
+        candidate = candidate.parent
+    return candidate.is_dir() and os.access(candidate, os.W_OK | os.X_OK)
+
+
+def _require_local_runtime(*, json_output: bool) -> None:
+    if platform.system() not in {"Darwin", "Linux"}:
+        _fail(
+            f"RunBuoy does not support {platform.system()}",
+            code="platform_unsupported",
+            json_output=json_output,
+        )
+    if not TmuxExecutor.available():
+        _fail(
+            "tmux is required for durable local Runs",
+            code="tmux_unavailable",
+            json_output=json_output,
+            hint="Install tmux with the system package manager, then retry.",
+        )
+
+
+class WorkerHandoffError(RuntimeError):
+    def __init__(self, message: str, *, acknowledged: bool = False) -> None:
+        super().__init__(message)
+        self.acknowledged = acknowledged
+
+
+def _mark_run_lost(queue: EventQueue, run_id: str, reason: str, message: str) -> None:
+    item = queue.get_run(run_id)
+    if item is None or item["status"] in TERMINAL_STATUSES:
+        return
+    with suppress(ValueError):
+        queue.append_event(
+            run_id,
+            "run.lost",
+            {
+                "exit_code": 125,
+                "termination_reason": reason,
+                "message": safe_message(message),
+            },
+        )
+
+
+def _await_worker_handoff(
+    executor: TmuxExecutor,
+    session: str,
+    manifest: RunManifest,
+    queue: EventQueue,
+) -> dict[str, Any]:
+    deadline = time.monotonic() + manifest.handoff_timeout_seconds
+    handoff_path = Path(manifest.handoff_path)
+    acknowledged = False
+    while time.monotonic() < deadline:
+        item = queue.get_run(manifest.run_id)
+        if item is None:
+            raise WorkerHandoffError(
+                "local Run state disappeared during Worker handoff",
+                acknowledged=acknowledged,
+            )
+        if item["status"] in TERMINAL_STATUSES:
+            if item.get("started_at"):
+                return item
+            raise WorkerHandoffError(
+                f"Worker could not start the target (local status: {item['status']})",
+                acknowledged=acknowledged,
+            )
+        if not acknowledged:
+            if not executor.exists(session):
+                raise WorkerHandoffError("tmux Worker exited before becoming ready")
+            try:
+                ready = json.loads(handoff_path.read_text(encoding="utf-8"))
+            except (FileNotFoundError, json.JSONDecodeError, OSError):
+                time.sleep(0.05)
+                continue
+            if handoff_path.stat().st_mode & 0o077:
+                raise WorkerHandoffError("Worker ready state has unsafe permissions")
+            if ready.get("nonce") != manifest.handoff_nonce:
+                raise WorkerHandoffError("Worker ready nonce did not match the manifest")
+            if ready.get("socket_path") != manifest.socket_path:
+                raise WorkerHandoffError("Worker ready socket did not match the manifest")
+            if ready.get("state") != "ready" or not Path(manifest.socket_path).is_socket():
+                time.sleep(0.05)
+                continue
+            try:
+                response = _send_local(
+                    manifest.socket_path,
+                    manifest.socket_token,
+                    {"kind": "handoff_ack", "nonce": manifest.handoff_nonce},
+                )
+            except (OSError, ValueError, json.JSONDecodeError) as error:
+                raise WorkerHandoffError("Worker socket rejected the handoff") from error
+            if not response.get("ok"):
+                raise WorkerHandoffError(
+                    f"Worker rejected the handoff: {response.get('error', 'unknown_error')}"
+                )
+            acknowledged = True
+        if item["status"] == ExecutionStatus.RUNNING.value:
+            return item
+        time.sleep(0.05)
+    state = "after acknowledgement" if acknowledged else "before acknowledgement"
+    raise WorkerHandoffError(f"Worker handoff timed out {state}", acknowledged=acknowledged)
 
 
 @app.command(
@@ -409,7 +615,7 @@ def run_command(
     source: str = typer.Option("cli", "--source", hidden=True),
 ) -> None:
     """Start a durable local Run. The target argv and cwd remain on this machine."""
-    _validate_run_options(command, progress_mode, total, pattern)
+    _validate_run_options(command, progress_mode, total, pattern, match)
     safe_run_title = safe_title(command, title)
     if dry_run:
         preview = {
@@ -435,7 +641,15 @@ def run_command(
             console.print(f"  cwd: {os.getcwd()}")
         return
 
-    paths, config, _credentials, queue = _context()
+    _require_local_runtime(json_output=json_output)
+    try:
+        paths, config, credentials, queue = _context()
+    except (OSError, sqlite3.Error, json.JSONDecodeError, ValidationError) as error:
+        _fail(
+            f"local RunBuoy storage or configuration is unavailable: {safe_message(str(error))}",
+            code="local_storage_unavailable",
+            json_output=json_output,
+        )
     config = ensure_machine_identity(paths, config)
     machine_id = config.machine_id
     if machine_id is None:  # pragma: no cover - guaranteed by ensure_machine_identity
@@ -445,6 +659,7 @@ def run_command(
     manifest_path = run_dir / "manifest.json"
     log_path = run_dir / "run.log"
     result_path = run_dir / "result.json"
+    handoff_path = run_dir / "handoff.json"
     socket_path = paths.event_socket(run_id)
     session = f"runbuoy-{run_id.replace('-', '')[:16]}"
     manifest = RunManifest(
@@ -461,6 +676,8 @@ def run_command(
         share_log_tail=share_log_tail,
         socket_path=str(socket_path),
         socket_token=ephemeral_token(),
+        handoff_path=str(handoff_path),
+        handoff_nonce=ephemeral_token(),
         log_path=str(log_path),
         result_path=str(result_path),
         cancel_grace_seconds=config.cancel_grace_seconds,
@@ -478,25 +695,41 @@ def run_command(
         socket_path=str(socket_path),
         tmux_session=session,
     )
+    executor = TmuxExecutor()
     try:
-        TmuxExecutor().start(session, manifest_path)
+        executor.start(session, manifest_path)
+        item = _await_worker_handoff(executor, session, manifest, queue)
     except Exception as error:
-        queue.append_event(
-            run_id,
-            "run.lost",
-            {"termination_reason": "worker_start_failed", "message": safe_message(str(error))},
-        )
+        acknowledged = isinstance(error, WorkerHandoffError) and error.acknowledged
+        if acknowledged:
+            with suppress(OSError, ValueError, json.JSONDecodeError):
+                _send_local(
+                    manifest.socket_path,
+                    manifest.socket_token,
+                    {"kind": "cancel"},
+                )
+        else:
+            _mark_run_lost(
+                queue,
+                run_id,
+                "worker_handoff_failed",
+                "Local Worker handoff failed",
+            )
         _fail(
-            str(error),
-            code="worker_start_failed",
+            f"Run {run_id} did not complete local Worker handoff: {error}",
+            code="worker_handoff_failed",
             json_output=json_output,
             hint="Run `runbuoy doctor` to check tmux and local requirements.",
         )
+    delivery = _delivery_status(config, credentials)
     response = {
         "ok": True,
         "run_id": run_id,
         "title": manifest.title,
-        "status": "STARTING",
+        "status": item["status"],
+        "detached": not wait,
+        "worker_ready": True,
+        "delivery": delivery,
         "live_activity_policy": live_activity.value,
         "local": {
             "status": f"runbuoy status {run_id}",
@@ -508,7 +741,7 @@ def run_command(
     if json_output and not wait:
         _json_print(response)
     elif not json_output and not quiet:
-        typer.echo(f"Run {run_id} started: {manifest.title}")
+        typer.echo(f"Local Run {run_id} started: {manifest.title}")
         typer.echo(f"  Status: runbuoy status {run_id[:12]}")
         typer.echo(f"  Logs:   runbuoy logs {run_id[:12]} -f")
         typer.echo(f"  Attach: runbuoy attach {run_id[:12]}")
@@ -532,14 +765,7 @@ def _list_table(runs: list[dict[str, Any]]) -> Table:
     table = Table("ID", "Title", "Status", "Progress", "Started", "Elapsed")
     for item in runs:
         status = str(item["status"])
-        style = {
-            "RUNNING": "cyan",
-            "STARTING": "cyan",
-            "SUCCEEDED": "green",
-            "FAILED": "red",
-            "CANCELLED": "yellow",
-            "LOST": "red",
-        }.get(status)
+        style = _STATUS_STYLES.get(status)
         table.add_row(
             str(item["run_id"])[:12],
             str(item["title"]),
@@ -615,23 +841,89 @@ def list_runs(
         time.sleep(interval)
 
 
-def _print_status(item: dict[str, Any]) -> None:
+def _status_details(item: dict[str, Any], *, include_health: bool) -> Table:
     table = Table.grid(padding=(0, 2))
-    rows = (
+    health, health_detail = _health_state(item)
+    rows: list[tuple[str, object]] = [
         ("Run ID", item["run_id"]),
         ("Title", item["title"]),
-        ("Status", item["status"]),
-        ("Progress", _progress_text(item)),
-        ("Phase", item.get("phase") or "—"),
-        ("Message", item.get("safe_message") or "—"),
-        ("Started", _human_time(item.get("started_at"))),
-        ("Updated", _human_time(item.get("updated_at"))),
-        ("Elapsed", _elapsed(item)),
-        ("Exit code", item.get("exit_code") if item.get("exit_code") is not None else "—"),
+        (
+            "Status",
+            Text(str(item["status"]), style=_STATUS_STYLES.get(str(item["status"]), "none")),
+        ),
+    ]
+    if include_health:
+        rows.extend(
+            [
+                ("Health", f"{health.title()} · {health_detail}"),
+                ("Progress", _progress_text(item)),
+            ]
+        )
+    rows.extend(
+        [
+            ("Phase", item.get("phase") or "—"),
+            ("Message", item.get("safe_message") or "—"),
+            ("Started", _human_time(item.get("started_at"))),
+            ("Updated", _human_time(item.get("updated_at"))),
+            ("Elapsed", _elapsed(item)),
+            (
+                "Exit code",
+                item.get("exit_code") if item.get("exit_code") is not None else "—",
+            ),
+        ]
     )
     for label, value in rows:
-        table.add_row(f"[bold]{label}[/bold]", str(value))
-    console.print(table)
+        table.add_row(Text(label, style="bold"), value if isinstance(value, Text) else str(value))
+    return table
+
+
+class _StatusDisplay:
+    def __init__(self, item: dict[str, Any], *, display_console: Console) -> None:
+        self.item = item
+        self.progress = Progress(
+            TextColumn("[bold]Progress[/bold]"),
+            BarColumn(bar_width=None, pulse_style="cyan", complete_style="cyan"),
+            TaskProgressColumn(),
+            console=display_console,
+            auto_refresh=False,
+            expand=True,
+        )
+        self.task_id = self.progress.add_task("", total=None)
+        self.show_progress = False
+        self.update(item)
+
+    def update(self, item: dict[str, Any]) -> None:
+        self.item = item
+        fraction = _progress_fraction(item)
+        self.show_progress = fraction is not None or str(item["status"]) not in TERMINAL_STATUSES
+        if fraction is not None:
+            self.progress.update(self.task_id, total=100, completed=fraction * 100)
+
+    def __rich__(self) -> Panel:
+        contents: list[Any] = [_health_text(self.item)]
+        if self.show_progress:
+            contents.extend((Text(""), self.progress))
+        contents.extend((Text(""), _status_details(self.item, include_health=False)))
+        status = str(self.item["status"])
+        title = Text.assemble(
+            ("RunBuoy", "bold"),
+            " · ",
+            Text(str(self.item["title"])),
+        )
+        return Panel(
+            Group(*contents),
+            title=title,
+            title_align="left",
+            border_style=_STATUS_STYLES.get(status, "blue"),
+            padding=(1, 2),
+        )
+
+
+def _print_status(item: dict[str, Any]) -> None:
+    if console.is_terminal:
+        console.print(_StatusDisplay(item, display_console=console))
+    else:
+        console.print(_status_details(item, include_health=True))
 
 
 @app.command(rich_help_panel="Run management")
@@ -654,14 +946,32 @@ def status(
     """Show one local Run's state, progress, timing, and latest safe message."""
     _paths, _config, _credentials, queue = _context()
     item = _resolve_run(queue, run_id, json_output=json_output)
+
+    use_live_display = (
+        watch
+        and not json_output
+        and console.is_terminal
+        and item["status"] not in TERMINAL_STATUSES
+    )
+    if use_live_display:
+        display = _StatusDisplay(item, display_console=console)
+        with Live(display, console=console, refresh_per_second=4) as live:
+            while item["status"] not in TERMINAL_STATUSES:
+                time.sleep(interval)
+                refreshed = queue.get_run(str(item["run_id"]))
+                if refreshed is None:
+                    _fail("local run disappeared", code="run_not_found")
+                item = refreshed
+                display.update(item)
+                live.refresh()
+        return
+
     last_updated: str | None = None
     while True:
         if item.get("updated_at") != last_updated:
             if json_output:
                 _json_print({"schema_version": 1, "run": _public_run(item)})
             else:
-                if watch and console.is_terminal:
-                    console.clear()
                 _print_status(item)
             last_updated = item.get("updated_at")
         if not watch or item["status"] in TERMINAL_STATUSES:
@@ -1032,12 +1342,62 @@ def device_status(
 
 
 @app.command(rich_help_panel="Setup and diagnostics")
+def sync(
+    json_output: bool = typer.Option(False, "--json", help="Write JSON to stdout."),
+) -> None:
+    """Retry every retained local outbox event without changing Run state."""
+    paths, config, credentials, queue = _context()
+    if credentials.get("machine_credential") is None:
+        _fail(
+            "this machine is not paired; local events remain safely queued",
+            code="not_paired",
+            json_output=json_output,
+            hint="Pair when remote delivery is wanted; local Runs do not require pairing.",
+        )
+    pending_before = queue.pending_event_count()
+    client = RemoteClient(config, credentials)
+    try:
+        with outbox_lease(paths.outbox_lease) as acquired:
+            if not acquired:
+                _fail(
+                    "another local Worker is draining the outbox",
+                    code="sync_busy",
+                    json_output=json_output,
+                    hint="Retry shortly; only one local drainer may upload at a time.",
+                )
+            queue.retry_all_pending_now()
+            delivered = drain_pending(
+                queue,
+                client,
+                batch_size=config.batch_size,
+                max_batches=None,
+            )
+    finally:
+        client.close()
+    pending_after = queue.pending_event_count()
+    result = {
+        "schema_version": 1,
+        "ok": pending_after == 0,
+        "server_accepted_events": delivered,
+        "pending_before": pending_before,
+        "pending_events": pending_after,
+    }
+    if json_output:
+        _json_print(result)
+    else:
+        typer.echo(f"Server accepted {delivered} local event(s).")
+        typer.echo(f"Pending local events: {pending_after}")
+    if pending_after:
+        raise typer.Exit(1)
+
+
+@app.command(rich_help_panel="Setup and diagnostics")
 def doctor(
     json_output: bool = typer.Option(False, "--json", help="Write JSON to stdout."),
-    strict: bool = typer.Option(
+    require_delivery: bool = typer.Option(
         False,
-        "--strict",
-        help="Exit non-zero unless local requirements, pairing, and server health all pass.",
+        "--require-delivery",
+        help="Also exit non-zero unless pairing and server reachability are ready.",
     ),
     verbose: bool = typer.Option(
         False,
@@ -1047,26 +1407,30 @@ def doctor(
     ),
 ) -> None:
     """Diagnose local requirements, pairing, server health, and pending delivery."""
-    paths, config, credentials, queue = _context()
+    paths = AppPaths.discover()
+    config = load_config(paths, read_only=True)
+    credentials = CredentialStore(paths)
+    delivery = _delivery_status(config, credentials)
     checks: dict[str, Any] = {
         "cli_installed": True,
         "cli_version": __version__,
         "python_supported": sys.version_info >= (3, 12),
         "platform_supported": platform.system() in {"Darwin", "Linux"},
         "tmux_available": TmuxExecutor.available(),
-        "paired": credentials.get("machine_credential") is not None,
-        "server_reachable": False,
-        "pending_events": len(queue.pending_events(100)),
+        "storage_ready": all(
+            _path_is_or_can_be_writable(path)
+            for path in (paths.config, paths.data, paths.state, paths.cache)
+        ),
     }
-    try:
-        response = httpx.get(str(config.server_url).rstrip("/") + "/healthz", timeout=2)
-        checks["server_reachable"] = response.status_code == 200
-    except Exception:
-        pass
-    required = ("python_supported", "platform_supported", "tmux_available")
-    ok = all(bool(checks[key]) for key in required)
-    ready = ok and bool(checks["paired"]) and bool(checks["server_reachable"])
-    result: dict[str, Any] = {"ok": ok, "ready": ready, "checks": checks}
+    required = ("python_supported", "platform_supported", "tmux_available", "storage_ready")
+    local_ready = all(bool(checks[key]) for key in required)
+    result: dict[str, Any] = {
+        "schema_version": 2,
+        "local_ready": local_ready,
+        "delivery": delivery,
+        "pending_events": EventQueue.pending_event_count_at(paths.database),
+        "checks": checks,
+    }
     if verbose:
         result["paths"] = {
             "config": str(paths.config),
@@ -1093,14 +1457,20 @@ def doctor(
                 "Install tmux with your system package manager.",
             ),
             (
+                "Local storage",
+                checks["storage_ready"],
+                str(paths.state),
+                "Check owner permissions for the RunBuoy state directory.",
+            ),
+            (
                 "Paired",
-                checks["paired"],
-                str(checks["paired"]),
+                delivery["paired"],
+                str(delivery["paired"]),
                 "Run `runbuoy device pair`.",
             ),
             (
                 "Server",
-                checks["server_reachable"],
+                delivery["reachable"],
                 str(config.server_url),
                 "Check the URL and network connection.",
             ),
@@ -1110,16 +1480,19 @@ def doctor(
             symbol = "[green]✓[/green]" if passed else "[yellow]![/yellow]"
             table.add_row(name, symbol, str(details), "" if passed or not hint else hint)
         console.print(table)
-        typer.echo(f"Pending local events: {checks['pending_events']}")
-        typer.echo(
-            "Ready for delivery." if ready else "Local CLI works, but delivery setup is incomplete."
-        )
+        typer.echo(f"Pending local events: {result['pending_events']}")
+        if local_ready:
+            typer.echo("Local execution is ready.")
+        if delivery["ready"]:
+            typer.echo("Remote delivery is ready.")
+        else:
+            typer.echo("Remote delivery is unavailable; local Runs remain fully functional.")
         if verbose:
             for key, value in result["paths"].items():
                 typer.echo(f"{key}_path: {value}")
-    if strict and not ready:
+    if not local_ready:
         raise typer.Exit(1)
-    if not strict and not ok:
+    if require_delivery and not delivery["ready"]:
         raise typer.Exit(1)
 
 
@@ -1130,11 +1503,13 @@ def capabilities(
     """Describe stable CLI capabilities for scripts and agent integrations."""
     progress_modes = [mode.value for mode in ProgressMode]
     result = {
-        "schema_version": 1,
+        "schema_version": 2,
         "cli_version": __version__,
         "platforms": ["macos", "linux"],
         "progress_modes": progress_modes,
-        "local_commands": ["list", "status", "logs", "attach", "cancel"],
+        "local_commands": ["list", "status", "logs", "attach", "cancel", "sync"],
+        "python_api": ["get_reporter", "progress", "phase", "message", "attention"],
+        "detached_handoff": True,
         "demo_commands": ["notification", "live-activity"],
         "shell_completion": ["bash", "zsh", "fish", "powershell", "pwsh"],
         "remote_control": False,
@@ -1564,19 +1939,30 @@ def emit_progress(
     message: str | None = typer.Option(None, "--message", help="Current safe message."),
 ) -> None:
     """Emit explicit determinate progress from inside a structured Run."""
-    sdk.progress(current, total, unit=unit, phase=phase, message=message)
+    try:
+        sdk.get_reporter(required=True).progress(
+            current, total, unit=unit, phase=phase, message=message
+        )
+    except sdk.RunBuoyError as error:
+        _fail(str(error), code="local_event_unavailable")
 
 
 @emit_app.command("phase")
 def emit_phase(value: str = typer.Argument(..., help="New safe phase.")) -> None:
     """Change the current Run phase."""
-    sdk.phase(value)
+    try:
+        sdk.get_reporter(required=True).phase(value)
+    except sdk.RunBuoyError as error:
+        _fail(str(error), code="local_event_unavailable")
 
 
 @emit_app.command("message")
 def emit_message(value: str = typer.Argument(..., help="New safe status message.")) -> None:
     """Change the current Run message."""
-    sdk.message(value)
+    try:
+        sdk.get_reporter(required=True).message(value)
+    except sdk.RunBuoyError as error:
+        _fail(str(error), code="local_event_unavailable")
 
 
 @emit_app.command("attention")
@@ -1589,7 +1975,10 @@ def emit_attention(
     ),
 ) -> None:
     """Mark the current Run as needing information, warning, or action."""
-    sdk.attention(value, status=status.value)
+    try:
+        sdk.get_reporter(required=True).attention(value, status=status.value)
+    except sdk.RunBuoyError as error:
+        _fail(str(error), code="local_event_unavailable")
 
 
 @app.command("_worker", hidden=True)

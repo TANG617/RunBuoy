@@ -397,6 +397,36 @@ class EventQueue:
             rows = connection.execute(query, parameters).fetchall()
         return [RunEvent.model_validate_json(row["event_json"]) for row in rows]
 
+    def pending_event_count(self) -> int:
+        with self.connect() as connection:
+            row = connection.execute(
+                "SELECT COUNT(*) AS count FROM events WHERE delivered = 0"
+            ).fetchone()
+        return int(row["count"])
+
+    @staticmethod
+    def pending_event_count_at(database: Path) -> int:
+        """Read the outbox count without creating or migrating local storage."""
+
+        if not database.exists():
+            return 0
+        try:
+            uri = database.resolve().as_uri() + "?mode=ro"
+            with sqlite3.connect(uri, uri=True, timeout=0.1) as connection:
+                row = connection.execute(
+                    "SELECT COUNT(*) FROM events WHERE delivered = 0"
+                ).fetchone()
+        except sqlite3.Error:
+            return 0
+        return int(row[0]) if row is not None else 0
+
+    def retry_all_pending_now(self) -> None:
+        """Make every retained outbox item eligible for an explicit sync attempt."""
+
+        with self.transaction() as connection:
+            connection.execute("UPDATE events SET next_attempt_at = 0 WHERE delivered = 0")
+            connection.execute("UPDATE machine_metadata_outbox SET next_attempt_at = 0")
+
     def mark_delivered(self, event_ids: list[str]) -> None:
         if not event_ids:
             return

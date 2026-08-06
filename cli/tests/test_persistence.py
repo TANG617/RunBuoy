@@ -65,6 +65,20 @@ def test_outbox_retry_preserves_event_and_attempt_count(tmp_path: Path) -> None:
     assert queue.pending_events() == []
 
 
+def test_pending_count_includes_backed_off_events_and_manual_retry_resets_them(
+    tmp_path: Path,
+) -> None:
+    queue = EventQueue(tmp_path / "state.sqlite3")
+    create_run(queue, tmp_path)
+    event = queue.pending_events()[0]
+    queue.mark_failed([event.event_id], "offline", 3_600)
+
+    assert queue.pending_events() == []
+    assert queue.pending_event_count() == 1
+    queue.retry_all_pending_now()
+    assert [item.event_id for item in queue.pending_events()] == [event.event_id]
+
+
 def test_machine_metadata_outbox_keeps_only_latest_name(tmp_path: Path) -> None:
     queue = EventQueue(tmp_path / "state.sqlite3")
     queue.queue_machine_metadata("machine_a", "First")

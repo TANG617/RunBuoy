@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import errno
+import json
 import os
 import pty
 import selectors
@@ -16,10 +17,10 @@ from typing import Any
 
 from runbuoy.config import CredentialStore, load_config
 from runbuoy.models import ExecutionStatus, Progress, RunManifest, WorkerResult, utc_now
-from runbuoy.networking.client import RemoteClient, drain_pending
+from runbuoy.networking.client import RemoteClient, drain_pending, outbox_lease
 from runbuoy.paths import AppPaths
 from runbuoy.persistence.store import EventQueue
-from runbuoy.progress.adapters import make_adapter
+from runbuoy.progress_adapters import ProgressAdapter, make_adapter
 from runbuoy.security.redaction import safe_message
 from runbuoy.worker.signals import escalate_process_group
 from runbuoy.worker.socket_server import EventSocketServer
@@ -70,6 +71,8 @@ class Worker:
         self._process: subprocess.Popen[bytes] | None = None
         self._last_explicit_current = -1.0
         self._socket_server: EventSocketServer | None = None
+        self._handoff_ack = threading.Event()
+        self._adapter: ProgressAdapter | None = None
 
     def emit(self, event_type: str, payload: dict[str, Any]) -> None:
         with self._event_lock:
@@ -88,6 +91,11 @@ class Worker:
     def socket_handler(self, request: dict[str, Any]) -> dict[str, Any]:
         kind = str(request.get("kind", ""))
         try:
+            if kind == "handoff_ack":
+                if str(request.get("nonce", "")) != self.manifest.handoff_nonce:
+                    return {"ok": False, "error": "handoff_nonce_mismatch"}
+                self._handoff_ack.set()
+                return {"ok": True, "state": "acknowledged"}
             if kind == "cancel":
                 self.cancel_requested.set()
                 return {"ok": True}
@@ -132,28 +140,69 @@ class Worker:
     def _upload_loop(self) -> None:
         config = load_config(self.paths)
         credentials = CredentialStore(self.paths)
-        if credentials.get("machine_credential") is None:
+        try:
+            credential = credentials.get("machine_credential")
+        except Exception:
             return
-        client = RemoteClient(config, credentials)
+        if credential is None:
+            return
+        try:
+            client = RemoteClient(config, credentials)
+        except Exception:
+            return
         try:
             while not self.upload_stop.is_set():
-                drain_pending(
-                    self.queue,
-                    client,
-                    batch_size=config.batch_size,
-                    run_id=self.manifest.run_id,
-                )
+                with outbox_lease(self.paths.outbox_lease) as acquired:
+                    if acquired:
+                        with suppress(Exception):
+                            drain_pending(
+                                self.queue,
+                                client,
+                                batch_size=config.batch_size,
+                            )
                 self.upload_wakeup.wait(config.upload_interval_seconds)
                 self.upload_wakeup.clear()
-            drain_pending(
-                self.queue,
-                client,
-                batch_size=config.batch_size,
-                run_id=self.manifest.run_id,
-                max_batches=None,
-            )
+            with outbox_lease(self.paths.outbox_lease) as acquired:
+                if acquired:
+                    with suppress(Exception):
+                        drain_pending(
+                            self.queue,
+                            client,
+                            batch_size=config.batch_size,
+                        )
         finally:
             client.close()
+
+    def _write_handoff(self, state: str) -> None:
+        path = Path(self.manifest.handoff_path)
+        path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+        temporary = path.with_suffix(".tmp")
+        temporary.write_text(
+            json.dumps(
+                {
+                    "schema_version": 1,
+                    "state": state,
+                    "nonce": self.manifest.handoff_nonce,
+                    "socket_path": self.manifest.socket_path,
+                    "worker_pid": os.getpid(),
+                }
+            ),
+            encoding="utf-8",
+        )
+        temporary.chmod(0o600)
+        os.replace(temporary, path)
+
+    def _wait_for_handoff(self) -> None:
+        deadline = time.monotonic() + self.manifest.handoff_timeout_seconds
+        while not self._handoff_ack.wait(0.05):
+            if self.cancel_requested.is_set():
+                raise RuntimeError("worker stopped before handoff acknowledgement")
+            run = self.queue.get_run(self.manifest.run_id)
+            if run is None or run["status"] == ExecutionStatus.LOST.value:
+                raise RuntimeError("CLI abandoned the Run before handoff acknowledgement")
+            if time.monotonic() >= deadline:
+                raise TimeoutError("CLI did not acknowledge the ready Worker")
+        self._write_handoff("acknowledged")
 
     def _request_cancel(self) -> None:
         process = self._process
@@ -166,7 +215,6 @@ class Worker:
         )
 
     def run(self) -> int:
-        started_at = utc_now()
         log_path = Path(self.manifest.log_path)
         result_path = Path(self.manifest.result_path)
         socket_path = Path(self.manifest.socket_path)
@@ -190,31 +238,53 @@ class Worker:
         try:
             self._socket_server.start()
             self.emit("run.starting", {"message": "Preparing local process"})
-            return self._run_target(started_at, log_path, result_path)
+            self._adapter = make_adapter(self.manifest, self.on_progress)
+            self._write_handoff("ready")
+            self._wait_for_handoff()
+            return self._run_target(utc_now(), log_path, result_path)
         except Exception as error:
-            message = safe_message(f"Worker failed: {type(error).__name__}")
+            before_handoff = not self._handoff_ack.is_set()
+            message = safe_message(
+                "Worker handoff failed"
+                if before_handoff
+                else f"Worker failed: {type(error).__name__}"
+            )
+            status = ExecutionStatus.LOST if before_handoff else ExecutionStatus.FAILED
+            event_type = "run.lost" if before_handoff else "run.failed"
+            reason = "handoff_failed" if before_handoff else "worker_error"
+            exit_code = 125 if before_handoff else 127
             with suppress(ValueError):
-                self.emit("run.failed", {"exit_code": 127, "message": message})
+                self.emit(
+                    event_type,
+                    {
+                        "exit_code": exit_code,
+                        "termination_reason": reason,
+                        "message": message,
+                    },
+                )
             result = WorkerResult(
                 run_id=self.manifest.run_id,
-                status=ExecutionStatus.FAILED,
-                exit_code=127,
-                started_at=started_at,
+                status=status,
+                exit_code=exit_code,
+                started_at=None,
                 ended_at=utc_now(),
-                termination_reason="worker_error",
+                termination_reason=reason,
             )
             self._write_result(result_path, result)
-            return 127
+            return exit_code
         finally:
             if self._socket_server is not None:
                 self._socket_server.close()
             self.upload_stop.set()
             self.upload_wakeup.set()
-            upload_thread.join()
+            upload_thread.join(timeout=6)
             for handled_signal, previous in old_handlers.items():
                 signal.signal(handled_signal, previous)
 
     def _run_target(self, started_at: Any, log_path: Path, result_path: Path) -> int:
+        adapter = self._adapter
+        if adapter is None:  # pragma: no cover - protected by the handoff lifecycle
+            raise RuntimeError("progress adapter was not initialized")
         master_fd, slave_fd = pty.openpty()
         environment = os.environ.copy()
         environment.update(
@@ -225,15 +295,19 @@ class Worker:
             }
         )
         try:
-            process = subprocess.Popen(
-                self.manifest.argv,
-                cwd=self.manifest.cwd,
-                env=environment,
-                stdin=slave_fd,
-                stdout=slave_fd,
-                stderr=slave_fd,
-                start_new_session=True,
-            )
+            try:
+                process = subprocess.Popen(
+                    self.manifest.argv,
+                    cwd=self.manifest.cwd,
+                    env=environment,
+                    stdin=slave_fd,
+                    stdout=slave_fd,
+                    stderr=slave_fd,
+                    start_new_session=True,
+                )
+            except Exception:
+                os.close(master_fd)
+                raise
         finally:
             os.close(slave_fd)
         self._process = process
@@ -242,8 +316,13 @@ class Worker:
             worker_pid=os.getpid(),
             process_group=process.pid,
         )
-        self.emit("run.started", {"message": "Run started"})
-        adapter = make_adapter(self.manifest, self.on_progress)
+        try:
+            self.emit("run.started", {"message": "Run started"})
+        except Exception:
+            self.cancel_requested.set()
+            self._request_cancel()
+            process.wait()
+            raise
         os.set_blocking(master_fd, False)
         selector = selectors.DefaultSelector()
         selector.register(master_fd, selectors.EVENT_READ)

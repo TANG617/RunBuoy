@@ -27,7 +27,7 @@ Install the CLI in an isolated environment with
 [uv](https://docs.astral.sh/uv/):
 
 ```bash
-uv tool install runbuoy
+uv tool install --python 3.12 runbuoy
 runbuoy completion install zsh  # or bash / fish
 ```
 
@@ -94,12 +94,20 @@ Run a command:
 runbuoy run -- python3 experiment.py
 ```
 
+Local execution does not require pairing or Server reachability. Events remain in the local
+outbox and can be retried later with `runbuoy sync --json`. The default detached command returns
+only after the Worker is ready and the target has started; use `--wait` only when the caller needs
+the final target exit code.
+
 Use `--live-activity immediate` when the Live Activity should start as soon as
 the Run reaches the Server. The default `automatic` policy filters out Runs
 that finish within five seconds; `disabled` suppresses Live Activity start.
 
 `runbuoy list` shows active Runs. Use `runbuoy list -a` to include completed
 history. Run IDs may be supplied as unique prefixes, or as `@latest`.
+`runbuoy status <run-id>` renders a terminal progress and health snapshot;
+add `--watch` to keep the display live until the Run reaches a terminal state.
+Use `--json` for stable machine-readable output.
 Preview old local history before permanently pruning it with:
 
 ```bash
@@ -117,7 +125,7 @@ runbuoy notify \
 
 RunBuoy does not upload full command arguments, working directories,
 environment variables, source code, or complete logs by default. See the
-[security documentation](https://github.com/TANG617/RunBuoy/blob/main/docs/security.md)
+[security documentation](https://github.com/TANG617/RunBuoy/blob/main/docs/design/security.md)
 for the complete data boundary.
 
 ## Source and support
@@ -125,6 +133,6 @@ for the complete data boundary.
 Source code, documentation, and issue tracking are available in the
 [RunBuoy repository](https://github.com/TANG617/RunBuoy).
 Maintainer packaging and release instructions are in
-[`docs/cli-distribution.md`](https://github.com/TANG617/RunBuoy/blob/main/docs/cli-distribution.md).
+[`docs/developer-guide/cli-distribution.md`](https://github.com/TANG617/RunBuoy/blob/main/docs/developer-guide/cli-distribution.md).
 
 RunBuoy is licensed under the MIT License.

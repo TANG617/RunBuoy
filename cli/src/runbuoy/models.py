@@ -120,6 +120,9 @@ class RunManifest(BaseModel):
     share_log_tail: int = Field(default=0, ge=0, le=100)
     socket_path: str
     socket_token: str
+    handoff_path: str
+    handoff_nonce: str
+    handoff_timeout_seconds: float = Field(default=10.0, ge=1, le=60)
     log_path: str
     result_path: str
     cancel_grace_seconds: float = Field(default=3.0, ge=0.05, le=60)
@@ -142,6 +145,6 @@ class WorkerResult(BaseModel):
     run_id: str
     status: ExecutionStatus
     exit_code: int
-    started_at: datetime
+    started_at: datetime | None
     ended_at: datetime
     termination_reason: str | None = None

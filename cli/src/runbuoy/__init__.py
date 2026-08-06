@@ -1,6 +1,32 @@
-"""RunBuoy CLI and small structured-progress client."""
+"""RunBuoy CLI and optional structured-progress client."""
 
-from runbuoy.sdk import attention, message, phase, progress
+from runbuoy.sdk import (
+    Reporter,
+    RunBuoyError,
+    RunBuoyInternalError,
+    RunBuoyProtocolError,
+    RunBuoyRejectedError,
+    RunBuoyUnavailableError,
+    RunBuoyValidationError,
+    attention,
+    get_reporter,
+    message,
+    phase,
+    progress,
+)
 
-__all__ = ["attention", "message", "phase", "progress"]
+__all__ = [
+    "Reporter",
+    "RunBuoyError",
+    "RunBuoyInternalError",
+    "RunBuoyProtocolError",
+    "RunBuoyRejectedError",
+    "RunBuoyUnavailableError",
+    "RunBuoyValidationError",
+    "attention",
+    "get_reporter",
+    "message",
+    "phase",
+    "progress",
+]
 __version__ = "0.1.3"

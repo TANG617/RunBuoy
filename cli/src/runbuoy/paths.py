@@ -66,3 +66,7 @@ class AppPaths:
         directory.mkdir(mode=0o700, parents=True, exist_ok=True)
         directory.chmod(0o700)
         return directory / f"{run_id}.sock"
+
+    @property
+    def outbox_lease(self) -> Path:
+        return self.state / "outbox-drainer.lock"

@@ -1,6 +1,11 @@
 from __future__ import annotations
 
+import fcntl
+import os
 from collections import defaultdict
+from collections.abc import Iterator
+from contextlib import contextmanager
+from pathlib import Path
 from typing import Any
 
 import httpx
@@ -14,6 +19,31 @@ from runbuoy.security.redaction import assert_safe_remote_payload
 
 class RemoteError(RuntimeError):
     pass
+
+
+@contextmanager
+def outbox_lease(path: Path, *, blocking: bool = False) -> Iterator[bool]:
+    """Hold the machine-wide outbox drainer lease for this process.
+
+    ``flock`` is released automatically if a Worker exits or crashes. RunBuoy's
+    supported macOS/Linux platforms both provide this primitive.
+    """
+
+    path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    descriptor = os.open(path, os.O_CREAT | os.O_RDWR, 0o600)
+    flags = fcntl.LOCK_EX | (0 if blocking else fcntl.LOCK_NB)
+    acquired = False
+    try:
+        try:
+            fcntl.flock(descriptor, flags)
+            acquired = True
+        except BlockingIOError:
+            pass
+        yield acquired
+    finally:
+        if acquired:
+            fcntl.flock(descriptor, fcntl.LOCK_UN)
+        os.close(descriptor)
 
 
 class RemoteClient:

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from runbuoy.models import Progress
-from runbuoy.progress.adapters import LineProgressAdapter, RegexProgressAdapter
+from runbuoy.progress_adapters import LineProgressAdapter, RegexProgressAdapter
 
 
 def test_line_adapter_handles_chunks_ansi_and_carriage_deduplication() -> None:

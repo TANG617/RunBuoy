@@ -36,8 +36,9 @@ class Config(BaseModel):
     cancel_grace_seconds: float = Field(default=3.0, ge=0.05, le=60)
 
 
-def load_config(paths: AppPaths) -> Config:
-    paths.ensure()
+def load_config(paths: AppPaths, *, read_only: bool = False) -> Config:
+    if not read_only:
+        paths.ensure()
     if not paths.config_file.exists():
         return Config()
     raw = json.loads(paths.config_file.read_text(encoding="utf-8"))
@@ -48,7 +49,8 @@ def load_config(paths: AppPaths) -> Config:
             raw["batch_size"] = Config().batch_size
         raw["schema_version"] = 2
         migrated = Config.model_validate(raw)
-        save_config(paths, migrated)
+        if not read_only:
+            save_config(paths, migrated)
         return migrated
     return Config.model_validate(raw)
 

@@ -8,7 +8,7 @@ import httpx
 
 from runbuoy import __version__
 from runbuoy.config import Config, CredentialStore
-from runbuoy.networking.client import RemoteClient, drain_pending, flush_pending
+from runbuoy.networking.client import RemoteClient, drain_pending, flush_pending, outbox_lease
 from runbuoy.paths import AppPaths
 from runbuoy.persistence.store import EventQueue
 
@@ -196,3 +196,13 @@ def test_ambiguous_batch_retry_does_not_re_upsert_terminal_run(tmp_path: Path) -
     recovered = RecordingClient()
     assert flush_pending(queue, recovered, batch_size=20) == 1  # type: ignore[arg-type]
     assert recovered.upserts == []
+
+
+def test_only_one_outbox_drainer_can_hold_the_machine_lease(tmp_path: Path) -> None:
+    lease_path = tmp_path / "outbox.lock"
+    with outbox_lease(lease_path) as first:
+        assert first is True
+        with outbox_lease(lease_path) as second:
+            assert second is False
+    with outbox_lease(lease_path) as recovered:
+        assert recovered is True
