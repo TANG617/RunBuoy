@@ -62,7 +62,7 @@ for release operations.
 
 ## Server production deployment
 
-Workflow: [`.github/workflows/deploy-server.yml`](../.github/workflows/deploy-server.yml)
+Workflow: [`.github/workflows/deploy-server.yml`](../../.github/workflows/deploy-server.yml)
 
 The Server deploy is automatic:
 
@@ -159,7 +159,7 @@ data. Restore compatibility with a forward migration when possible.
 
 ## iOS release to TestFlight
 
-Workflow: [`.github/workflows/testflight.yml`](../.github/workflows/testflight.yml)
+Workflow: [`.github/workflows/testflight.yml`](../../.github/workflows/testflight.yml)
 
 The workflow signs the app and widget, archives and exports an IPA, uploads it
 to App Store Connect, and waits for TestFlight processing. It does **not**
@@ -184,7 +184,7 @@ its Base64 representation belongs in
 The Apple team, app bundle ID, widget bundle ID, App Store Connect record,
 capabilities, distribution certificate, and provisioning profiles must match
 the values in the workflow and Xcode project. See
-[`docs/ios-signing.md`](ios-signing.md) for the complete setup.
+[`docs/developer-guide/ios-signing.md`](ios-signing.md) for the complete setup.
 
 Restrict this environment to `main` and `ios-v*` tags. A required reviewer is
 recommended.
@@ -248,7 +248,7 @@ higher build number for a fix.
 
 ## CLI release to PyPI
 
-Workflow: [`.github/workflows/publish-cli.yml`](../.github/workflows/publish-cli.yml)
+Workflow: [`.github/workflows/publish-cli.yml`](../../.github/workflows/publish-cli.yml)
 
 The CLI version has a single source of truth:
 `cli/src/runbuoy/__init__.py`. A tag such as `cli-v0.1.2` must exactly match:
@@ -340,7 +340,7 @@ uv tool upgrade runbuoy
 runbuoy doctor --json
 ```
 
-See [`docs/cli-distribution.md`](cli-distribution.md) for packaging details,
+See [`docs/developer-guide/cli-distribution.md`](cli-distribution.md) for packaging details,
 isolated installation checks, Trusted Publishing setup, and yanking a bad
 release.
 

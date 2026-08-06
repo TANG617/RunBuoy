@@ -55,7 +55,7 @@ Mock APNs records exact payloads and requires no Apple credentials.
 ### 2. Install the CLI
 
 ```bash
-uv tool install runbuoy
+uv tool install --python 3.12 runbuoy
 runbuoy completion install zsh
 runbuoy doctor
 runbuoy capabilities --json
@@ -65,7 +65,17 @@ You can alternatively use `pipx install runbuoy`. RunBuoy supports macOS and
 Linux and requires Python 3.12 or newer. `tmux` is required for durable Runs;
 install it with `brew install tmux` on macOS or your Linux system package
 manager. Installation, upgrade, packaging, and release details are in
-[`docs/cli-distribution.md`](docs/cli-distribution.md).
+[`docs/developer-guide/cli-distribution.md`](docs/developer-guide/cli-distribution.md).
+
+Python instrumentation is a separate, optional project install. For a PEP 621/uv project:
+
+```bash
+uv add --optional runbuoy runbuoy
+uv sync --extra runbuoy
+```
+
+The same `runbuoy` distribution is the sole CLI/SDK implementation. If the project does not
+install the optional extra, business code should use the documented `NoopReporter` fallback.
 
 ### 3. Bootstrap iPhone and pair
 
@@ -116,9 +126,10 @@ RunBuoy never fabricates percentage or ETA.
 Structured progress:
 
 ```python
-from runbuoy import progress
+from runbuoy import get_reporter
 
-progress(
+reporter = get_reporter()
+reporter.progress(
     current=37,
     total=100,
     phase="processing",
@@ -173,7 +184,9 @@ runbuoy attach <run-id>
 runbuoy cancel <run-id>
 ```
 
-No Server or iOS endpoint can invoke them.
+No Server or iOS endpoint can invoke them. They continue to work when the machine is unpaired or
+the Server is unreachable. A detached `runbuoy run --json` returns only after a nonce/Socket ACK
+and `run.started` handoff; the caller can then exit while the tmux Worker owns the task.
 
 Other commands:
 
@@ -188,6 +201,7 @@ runbuoy emit phase
 runbuoy emit message
 runbuoy emit attention
 runbuoy doctor
+runbuoy sync --json
 runbuoy config show
 runbuoy config set --region global
 runbuoy config set --region cn
@@ -253,7 +267,7 @@ without HTML, JavaScript, executable schemes, or WebView.
 
 Production APNs uses HTTP/2, TLS, ES256 provider tokens, current rotating
 ActivityKit tokens, and Apple-specified headers/payloads. See
-[`docs/apns-setup.md`](docs/apns-setup.md).
+[`docs/developer-guide/apns-setup.md`](docs/developer-guide/apns-setup.md).
 
 ## Native iOS
 
@@ -275,7 +289,7 @@ xcodebuild \
 ```
 
 Signing and physical-device steps are in
-[`docs/ios-signing.md`](docs/ios-signing.md).
+[`docs/developer-guide/ios-signing.md`](docs/developer-guide/ios-signing.md).
 
 ## Development and tests
 
@@ -292,18 +306,18 @@ uv run python scripts/check_read_only_boundary.py
 
 CI runs protocol/security, Ruff/mypy, Server tests with PostgreSQL, CLI tests
 on Linux and macOS with tmux, unsigned iOS build/tests, and mock-APNs E2E.
-See [`docs/development.md`](docs/development.md).
+See [`docs/developer-guide/development.md`](docs/developer-guide/development.md).
 
 ## Documentation
 
-- [Product requirements](docs/PRD.md)
-- [Architecture](docs/architecture.md)
-- [Protocol](docs/protocol.md)
-- [Security](docs/security.md) and [threat model](docs/threat-model.md)
-- [Deployment and release guide](docs/deployment.md)
-- [Self-hosting](docs/self-hosting.md)
-- [APNs setup](docs/apns-setup.md)
-- [CLI distribution and PyPI releases](docs/cli-distribution.md)
+- [Product requirements](docs/product/prd.md)
+- [Architecture](docs/design/architecture.md)
+- [Protocol](docs/developer-guide/event-protocol.md)
+- [Security](docs/design/security.md) and [threat model](docs/design/threat-model.md)
+- [Deployment and release guide](docs/developer-guide/deployment-and-release.md)
+- [Self-hosting](docs/developer-guide/self-hosting.md)
+- [APNs setup](docs/developer-guide/apns-setup.md)
+- [CLI distribution and PyPI releases](docs/developer-guide/cli-distribution.md)
 - [Code provenance](docs/code-provenance.md)
 
 ## Current limitations

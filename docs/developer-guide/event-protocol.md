@@ -2,7 +2,7 @@
 
 RunBuoy Event Protocol version 1 carries safe execution state from a Machine
 to the Server and then to read-only iPhone presentations. The canonical
-machine-readable contracts live in [`packages/protocol`](../packages/protocol).
+machine-readable contracts live in [`packages/protocol`](../../packages/protocol).
 
 ## Ordering and delivery
 

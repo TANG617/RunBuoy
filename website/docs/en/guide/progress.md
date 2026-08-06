@@ -1,15 +1,27 @@
+---
+description: Report honest progress to RunBuoy with the Python SDK, runbuoy emit, line matching, or regular expressions.
+---
+
 # Progress modes
 
 RunBuoy displays only progress reported by the command. It never estimates a percentage or ETA from elapsed time.
 
 ## Structured progress
 
-Your program can report progress through the Python SDK:
+The CLI environment created by `uv tool` is isolated from your project environment. Before using the Python SDK, declare it in the project root:
+
+```bash
+uv add --optional runbuoy runbuoy
+uv sync --extra runbuoy
+```
+
+Then call the API from your program:
 
 ```python
-from runbuoy import progress
+from runbuoy import get_reporter
 
-progress(
+reporter = get_reporter()
+reporter.progress(
     current=37,
     total=100,
     phase="processing",
@@ -17,7 +29,13 @@ progress(
 )
 ```
 
-A child process can emit the same event:
+These calls must run inside the target process tree started by RunBuoy so they can use the local Socket and temporary Token injected by the Worker:
+
+```bash
+runbuoy run --progress structured -- uv run --extra runbuoy python experiment.py
+```
+
+If you cannot change project dependencies, emit the equivalent event from a child process started by RunBuoy:
 
 ```bash
 runbuoy emit progress \
@@ -26,6 +44,8 @@ runbuoy emit progress \
   --phase processing \
   --message "Processing item 37"
 ```
+
+Reporter methods are best-effort and return `False` when RunBuoy context is absent or the local Worker fails; business execution continues. A `True` result confirms only local Worker acceptance, not Server or iPhone delivery.
 
 ## Line progress
 
@@ -49,6 +69,8 @@ runbuoy run \
   --pattern '^PROGRESS: ([0-9]+)/([0-9]+)$' \
   -- python3 experiment.py
 ```
+
+Records accepted by line/regex matching become the latest sanitized message and may be visible remotely. Structured phase, message, attention, and explicit log tails may also be remote; sanitization is not permission to disclose sensitive output.
 
 ## Indeterminate progress
 

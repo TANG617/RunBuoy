@@ -6,7 +6,7 @@
   {
     "text": "使用文档",
     "link": "/docs/",
-    "activeMatch": "^/(docs|guide/(install|pairing|run|progress)|security|self-hosting|download)"
+    "activeMatch": "^/(docs|guide/(install|agent-skill|pairing|run|progress)|security|self-hosting|download)"
   },
   {
     "text": "隐私",

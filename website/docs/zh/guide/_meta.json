@@ -11,6 +11,11 @@
   },
   {
     "type": "file",
+    "name": "agent-skill",
+    "label": "安装 Agent Skill"
+  },
+  {
+    "type": "file",
     "name": "pairing",
     "label": "配对 iPhone"
   },

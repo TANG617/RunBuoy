@@ -1,6 +1,6 @@
 # iOS signing
 
-The checked-in Xcode project targets iOS 18 and builds without signing in CI:
+The checked-in Xcode project targets iOS 26 and builds without signing in CI:
 
 ```bash
 xcodebuild \

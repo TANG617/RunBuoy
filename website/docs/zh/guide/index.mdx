@@ -1,86 +1,136 @@
+---
+description: 通过当前可用的手动流程，在 macOS 或 Linux 上安装并验证 RunBuoy CLI；一键安装器与 App Store 版本即将提供。
+---
+
 # 快速开始
 
 import { Tab, Tabs } from '@rspress/core/theme';
 
-RunBuoy 将电脑上长时间运行的命令、构建、实验与 Agent 进度持续呈现在 iPhone。
+RunBuoy CLI 当前已经可以安装。完整的手机配对需要一台安装了 RunBuoy iOS 26+ App 的 iPhone。
 
-## 系统要求
+## 选择安装方式
 
-- macOS 或 Linux
-- Python 3.12 或更新版本
-- `tmux`，用于持久运行任务
-- RunBuoy iOS App
+:::tip 手动安装 · 当前可用
+下面的 uv 流程是当前推荐且可以执行的安装方式，支持 macOS 与 Linux。
+:::
 
-## 1. 安装 tmux
+> **一键安装与 App Store · 即将提供：** 一键安装器仍在规划和验证中；发布前，本页不会展示不可执行的安装脚本地址或复制按钮。
+
+## 1. 安装系统依赖与 uv
 
 <Tabs>
 <Tab label="macOS">
 
 ```bash
-brew install tmux
+brew install tmux uv
+uv tool update-shell
 ```
 
 </Tab>
 <Tab label="Debian / Ubuntu">
 
 ```bash
+sudo apt update
 sudo apt install tmux
+curl -LsSf https://astral.sh/uv/install.sh | sh
+uv tool update-shell
+```
+
+</Tab>
+<Tab label="Fedora">
+
+```bash
+sudo dnf install tmux
+curl -LsSf https://astral.sh/uv/install.sh | sh
+uv tool update-shell
+```
+
+</Tab>
+<Tab label="Arch Linux">
+
+```bash
+sudo pacman -S tmux
+curl -LsSf https://astral.sh/uv/install.sh | sh
+uv tool update-shell
 ```
 
 </Tab>
 </Tabs>
 
-## 2. 安装 RunBuoy
+重启终端后继续。uv 会自动下载并管理所需的 Python 3.12；`tmux` 是必须通过系统包管理器安装的依赖。
 
-<Tabs>
-<Tab label="uv（推荐）">
+## 2. 安装 CLI
 
 ```bash
-uv tool install runbuoy
-uv tool update-shell
+uv tool install --python 3.12 runbuoy
+```
+
+根据实际使用的 Shell 选择一个补全命令：
+
+<Tabs>
+<Tab label="Bash">
+
+```bash
+runbuoy completion install bash
+```
+
+</Tab>
+<Tab label="Zsh">
+
+```bash
 runbuoy completion install zsh
 ```
 
 </Tab>
-<Tab label="pipx">
+<Tab label="Fish">
 
 ```bash
-pipx install runbuoy
-pipx ensurepath
+runbuoy completion install fish
 ```
 
 </Tab>
 </Tabs>
 
-重启终端后检查环境：
+## 3. 验证安装
 
 ```bash
+runbuoy --version
 runbuoy doctor
 runbuoy capabilities --json
 ```
 
-## 3. 配对 iPhone
+doctor schema v2 的 `local_ready=true` 表示平台、Python、tmux 与本地存储已满足执行条件。`delivery.ready` 是独立状态；尚未配对或 Server 不可达时，本地 Run 仍完整可用。
 
-打开 RunBuoy App，选择“配对新电脑”，然后在电脑上运行：
+## 可选：在 Python 项目中使用 API
+
+`uv tool` 创建的 CLI 环境与项目 Python 环境相互隔离。如果代码需要 `from runbuoy import progress` 等 API，请在项目根目录另行声明依赖：
+
+```bash
+cd my-project
+uv add --optional runbuoy runbuoy
+uv sync --extra runbuoy
+```
+
+这是正常的双环境安装，不是重复配置。SDK 调用必须发生在 RunBuoy 启动的目标进程树内；详见[进度模式](/guide/progress)。
+
+## 可选：安装 Agent Skill
+
+如果你的 Agent 原生支持可安装 Skill，可以把通用安装提示词直接交给它：[安装 RunBuoy Agent Skill](/guide/agent-skill)。
+
+## 已有可用 iOS App？继续配对
+
+只有在你已经获得并安装 RunBuoy iOS 26+ App 后，才继续以下步骤：
 
 ```bash
 runbuoy device pair
-```
-
-扫描二维码。配对挑战五分钟后过期、只能使用一次，并且不包含长期凭证。
-
-## 4. 启动一次 Run
-
-```bash
-runbuoy demo live-activity
 runbuoy run -- python3 experiment.py
 ```
 
-命令继续在电脑上运行；iPhone 会同步显示经过筛选的状态、进度、时间和结果。
+扫描一次性配对码后，命令仍在电脑上运行；iPhone 只显示经过筛选的状态、进度、时间与结果。现有 Demo 命令可用于独立验证，但不是安装必经步骤。
 
 ## 下一步
 
-- [安装、升级与卸载](/guide/install)
+- [完整安装、升级与卸载说明](/guide/install)
 - [配对更多电脑](/guide/pairing)
 - [运行命令与发送通知](/guide/run)
 - [配置真实进度](/guide/progress)

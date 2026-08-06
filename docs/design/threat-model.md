@@ -34,7 +34,7 @@ access.
 | APNs token at-rest disclosure | Application-layer encryption with rotation |
 | Push amplification | Coalescing, minimum update interval, per-device activity cap |
 | Webhook URL leakage | Bearer secret in Authorization header, not URL |
-| Malicious Markdown | No HTML/WebView; allowlisted formatting and HTTPS links |
+| Malicious rich text | No HTML/WebView; current iOS renders plain text and structured fields. Server-valid HTTPS `safe_link` is not consumed by the current iOS model |
 | Local socket spoofing | Per-Run path permissions and ephemeral token |
 | Server outage kills a Run | Upload failure is isolated from execution |
 

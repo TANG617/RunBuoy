@@ -1,3 +1,7 @@
+---
+description: Run commands, send notifications, inspect local status, and explicitly control optional log sharing with RunBuoy.
+---
+
 # Runs and notifications
 
 ## Run a command
@@ -8,7 +12,7 @@ Put the complete original command after `--`:
 runbuoy run -- python3 experiment.py
 ```
 
-RunBuoy preserves the original exit code, mirrors output locally, and sends a safe status projection. A normal start returns immediately. To wait and receive the original command’s exit code:
+RunBuoy preserves the original exit code, mirrors output locally, and optionally sends a safe status projection. A normal detached start returns after the Worker-ready nonce/Socket ACK and `run.started` handoff; the caller can then exit. To wait and receive the original command’s exit code:
 
 ```bash
 runbuoy run --wait -- command
@@ -54,6 +58,8 @@ runbuoy cancel RUN_ID
 ```
 
 Neither the iPhone nor the server can invoke them.
+
+These local commands remain available without pairing and while the Server is unreachable. Pending events can be retried later with `runbuoy sync --json`.
 
 `list` shows active Runs by default; `-a/--all` includes completed history. Times use the local time zone and include seconds. `status`, `logs`, `attach`, and `cancel` accept a unique Run ID prefix; `@latest` selects the most recent Run.
 

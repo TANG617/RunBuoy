@@ -22,9 +22,12 @@ Never expose PostgreSQL publicly. Terminate TLS at a trusted ingress and pass
 only the API port. Back up PostgreSQL and encryption-key material together;
 without the encryption key, restored APNs tokens are intentionally unusable.
 
-Set `RUNBUOY_REGION` to `global` or `cn` on each deployment. A hosted client
-and every Machine paired to it must use the same value; databases, credentials,
-pairing challenges, and user data are not synchronized across regions.
+The Server accepts `RUNBUOY_REGION=global|cn`, and every client paired to a
+deployment must use the same value; databases, credentials, pairing challenges,
+and user data are not synchronized across regions. The current iOS app only
+exposes `global` and normalizes legacy `cn` values to Global, so an end-to-end
+self-hosted deployment should currently use `global` unless the App source is
+also changed and rebuilt to implement a distinct region.
 
 ## Secrets
 
@@ -35,9 +38,15 @@ or repository files.
 
 ## Retention and operations
 
-- Prune expired pairing sessions and audit logs according to policy.
-- Delete explicitly shared log tails after 24 hours.
-- Keep append-only Run events only as long as operationally necessary.
+- The current worker deletes notifications only when their explicit
+  `expires_at` has passed.
+- It deletes terminal Run events and clears explicitly shared log tails after
+  `EVENT_RETENTION_HOURS` (24 hours by default).
+- It marks remote-start Live Activity placeholders expired after
+  `LIVE_ACTIVITY_PENDING_TTL_SECONDS` (300 seconds by default).
+- Current cleanup does not delete Run snapshots, expired pairing-session rows,
+  audit logs, or notifications without `expires_at`; add an operator policy if
+  those tables require age-based retention.
 - Monitor outbox backlog, retries, permanent APNs failures, API latency, and
   PostgreSQL capacity without logging payload secrets.
 - Treat APNs 410 as token invalidation.

@@ -1,13 +1,16 @@
 ---
 pageType: home
+description: Keep long-running commands, builds, experiments, and AI agent progress from Mac and Linux visible in Live Activities, on the Lock Screen, and in Dynamic Island.
 
 hero:
   name: RunBuoy
-  text: Long-running progress, always within reach
+  text: |-
+    Long-running progress,
+    always within reach
   tagline: Keep commands, builds, experiments, and AI agent runs on Mac and Linux visible in Live Activities, on the Lock Screen, and in Dynamic Island.
   actions:
     - theme: brand
-      text: Quick Start
+      text: Install CLI
       link: /guide/
     - theme: alt
       text: GitHub
@@ -31,41 +34,5 @@ features:
   - title: Native AI agent workflows
     details: Follow phases, progress, and results from Codex and other agents through the CLI and $runbuoy skill.
     span: 4
-    link: /guide/run
+    link: /guide/agent-skill
 ---
-
-## Start in three steps
-
-<div className="runbuoy-flow">
-  <div>
-    <strong>1. Install the CLI</strong>
-    <span>Use uv or pipx to install the standalone command-line tool.</span>
-  </div>
-  <div>
-    <strong>2. Pair your iPhone</strong>
-    <span>Scan a single-use pairing code and connect in seconds.</span>
-  </div>
-  <div>
-    <strong>3. Start a run</strong>
-    <span>Add runbuoy run -- to your command and keep up from anywhere.</span>
-  </div>
-</div>
-
-```bash
-uv tool install runbuoy
-runbuoy completion install zsh
-runbuoy doctor
-runbuoy device pair
-runbuoy demo live-activity
-runbuoy run -- python3 experiment.py
-```
-
-[Read the complete setup and usage guide →](/docs/)
-
-## Focused on status, never in the way
-
-```text
-Machine  →  RunBuoy Server  →  iPhone
-```
-
-Your task remains under the control of your computer while RunBuoy presents its progress and result on iPhone. Commands, source, environment variables, and full logs stay local by default. [Learn about privacy and data boundaries →](/privacy)

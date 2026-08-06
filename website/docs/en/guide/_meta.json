@@ -11,6 +11,11 @@
   },
   {
     "type": "file",
+    "name": "agent-skill",
+    "label": "Install the Agent Skill"
+  },
+  {
+    "type": "file",
     "name": "pairing",
     "label": "Pair an iPhone"
   },

@@ -87,4 +87,5 @@ execution transition.
 - Exchange secrets and API credentials are strongly hashed.
 - APNs device and activity tokens are encrypted at rest.
 - QR payloads are short-lived challenges and never long-lived credentials.
-- iOS renders structured data and a safe Markdown subset without WebView.
+- iOS renders notification text and structured fields as plain text without WebView.
+  The Server can store an HTTPS `safe_link`, but the current iOS model does not consume it.

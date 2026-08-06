@@ -1,3 +1,7 @@
+---
+description: 使用 RunBuoy 运行命令、发送通知、查看本地状态，并明确控制可选日志共享。
+---
+
 # 运行与通知
 
 ## 运行命令
@@ -8,8 +12,8 @@
 runbuoy run -- python3 experiment.py
 ```
 
-RunBuoy 会保留原命令的退出码，在本地镜像输出，并发送安全的状态投影。
-普通启动会立即返回；需要等待并获得原命令退出码时使用：
+RunBuoy 会保留原命令的退出码，在本地镜像输出，并可选发送安全的状态投影。
+普通 detached 启动会在 Worker ready nonce/Socket ACK 和 `run.started` 可靠交接后返回，调用方随后可以退出；需要等待并获得原命令退出码时使用：
 
 ```bash
 runbuoy run --wait -- command
@@ -55,6 +59,8 @@ runbuoy cancel RUN_ID
 ```
 
 iPhone 和服务器都不能调用这些命令。
+
+未配对或 Server 不可达时，这些本地命令仍完整可用；pending events 可在网络恢复后通过 `runbuoy sync --json` 重试。
 
 `list` 默认只显示正在运行的任务；`-a/--all` 才包含已完成历史。显示时间采用
 本地时区并精确到秒。`status`、`logs`、`attach` 与 `cancel` 均支持唯一 Run ID

@@ -13,7 +13,7 @@ key; none of those secrets belong in this repository.
 3. Create an APNs `.p8` provider key and record its Key ID and Team ID.
 4. Configure the App and Widget targets with the same signing team and the
    documented bundle IDs.
-5. Install on a physical iOS 18+ device and grant notifications.
+5. Install on a physical iOS 26+ device and grant notifications.
 
 Apple requires apps to register with APNs and forward the latest device token
 to their provider. Device tokens may change and must not be treated as stable

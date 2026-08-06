@@ -5,13 +5,13 @@ RunBuoy accepts changes that preserve its one-way boundary:
 
 Before opening a pull request:
 
-1. Read ADR 0001, `docs/security.md`, and `docs/protocol.md`.
+1. Read ADR 0001, `docs/design/security.md`, and `docs/developer-guide/event-protocol.md`.
 2. Keep full execution data local by default.
 3. Add tests for protocol, scope, ordering, retries, and privacy behavior.
-4. Run the commands in `docs/development.md`.
+4. Run the commands in `docs/developer-guide/development.md`.
 5. Update OpenAPI, JSON Schema, fixtures, and both Swift/Python models together.
 6. Update provenance when reusing third-party code.
-7. Follow `docs/cli-distribution.md` for CLI package or release changes.
+7. Follow `docs/developer-guide/cli-distribution.md` for CLI package or release changes.
 
 Do not propose a remote command, Machine inbox, terminal stream, input,
 cancel/retry/signal, approval, tunnel, WebSocket control, WebView terminal, or

@@ -80,8 +80,8 @@ normal notification.
 
 ### Native iOS
 
-The native iOS 18 app provides Runs and Settings tabs, active/recent/message
-sections, offline cache states, read-only Run detail and feed, Machines,
+The native iOS 26 app provides Active, History, and Settings tabs, active Run
+and recent Run/message sections, offline cache states, read-only Run detail and feed, Machines,
 pairing, notification preferences, deep links, and Live Activities. The
 widget has no buttons and uses the system-managed Live Activity background so
 its color and opacity remain correct across system presentation contexts. For
@@ -96,13 +96,14 @@ requirements.
 
 ### Webhooks
 
-Scoped, revocable bearer credentials accept rich notifications and external
-Run events. Secrets never appear in URLs. Safe rich text supports only a
-non-executable Markdown subset and HTTPS links.
+Scoped, revocable bearer credentials accept structured notifications and external
+Run events. Secrets never appear in URLs. Notification text and fields are rendered
+as plain text by the current iOS app. The Server validates optional HTTPS
+`safe_link` values, but the current iOS model does not consume them.
 
 ## Privacy defaults
 
-Remote payloads exclude full argv, cwd, environment, source and file content,
+Remote payloads exclude full argv, cwd, environment, source-code/file content,
 stdout/stderr, terminal frames, user input, API keys, SSH keys, and cloud
 credentials. Full logs remain local. `--share-log-tail 1..100` is explicit,
 bounded, stripped of ANSI, redacted, labeled in iOS, and retained by the

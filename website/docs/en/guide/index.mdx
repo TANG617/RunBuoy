@@ -1,86 +1,136 @@
+---
+description: Install and verify the available RunBuoy CLI manually on macOS or Linux. The one-click installer and App Store release are coming soon.
+---
+
 # Quick Start
 
 import { Tab, Tabs } from '@rspress/core/theme';
 
-RunBuoy keeps long-running commands, builds, experiments, and agent runs on your computer visible on iPhone.
+The RunBuoy CLI is available to install today. Complete phone pairing requires an iPhone with access to the RunBuoy app for iOS 26 or later.
 
-## Requirements
+## Choose an installation path
 
-- macOS or Linux
-- Python 3.12 or newer
-- `tmux` for durable runs
-- The RunBuoy iOS app
+:::tip Manual installation · Available now
+The uv flow below is the recommended, working installation path for macOS and Linux.
+:::
 
-## 1. Install tmux
+> **One-click installation and App Store · Coming soon:** The one-click installer is still being designed and verified. Until it ships, this page will not show an unexecutable installer URL or copy button.
+
+## 1. Install system dependencies and uv
 
 <Tabs>
 <Tab label="macOS">
 
 ```bash
-brew install tmux
+brew install tmux uv
+uv tool update-shell
 ```
 
 </Tab>
 <Tab label="Debian / Ubuntu">
 
 ```bash
+sudo apt update
 sudo apt install tmux
+curl -LsSf https://astral.sh/uv/install.sh | sh
+uv tool update-shell
+```
+
+</Tab>
+<Tab label="Fedora">
+
+```bash
+sudo dnf install tmux
+curl -LsSf https://astral.sh/uv/install.sh | sh
+uv tool update-shell
+```
+
+</Tab>
+<Tab label="Arch Linux">
+
+```bash
+sudo pacman -S tmux
+curl -LsSf https://astral.sh/uv/install.sh | sh
+uv tool update-shell
 ```
 
 </Tab>
 </Tabs>
 
-## 2. Install RunBuoy
+Restart the terminal before continuing. uv downloads and manages the required Python 3.12 runtime; `tmux` is a system dependency that must come from your operating system package manager.
 
-<Tabs>
-<Tab label="uv (recommended)">
+## 2. Install the CLI
 
 ```bash
-uv tool install runbuoy
-uv tool update-shell
+uv tool install --python 3.12 runbuoy
+```
+
+Choose the completion command for the shell you actually use:
+
+<Tabs>
+<Tab label="Bash">
+
+```bash
+runbuoy completion install bash
+```
+
+</Tab>
+<Tab label="Zsh">
+
+```bash
 runbuoy completion install zsh
 ```
 
 </Tab>
-<Tab label="pipx">
+<Tab label="Fish">
 
 ```bash
-pipx install runbuoy
-pipx ensurepath
+runbuoy completion install fish
 ```
 
 </Tab>
 </Tabs>
 
-Restart your terminal, then verify the environment:
+## 3. Verify the installation
 
 ```bash
+runbuoy --version
 runbuoy doctor
 runbuoy capabilities --json
 ```
 
-## 3. Pair your iPhone
+`local_ready=true` from doctor schema v2 confirms that the platform, Python, tmux, and local storage meet execution requirements. `delivery.ready` is separate; local Runs remain available before pairing or while the Server is unreachable.
 
-Open RunBuoy, choose “Pair New Machine,” then run this command on your computer:
+## Optional: use the Python API in a project
+
+The CLI environment created by `uv tool` is isolated from your project environment. If your code imports APIs such as `from runbuoy import progress`, declare the dependency in the project root as well:
+
+```bash
+cd my-project
+uv add --optional runbuoy runbuoy
+uv sync --extra runbuoy
+```
+
+Installing into both environments is intentional. SDK calls must run inside the process tree started by RunBuoy; see [Progress modes](/en/guide/progress).
+
+## Optional: install the Agent Skill
+
+If your agent has a native Skill installation mechanism, give it the universal installation prompt: [Install the RunBuoy Agent Skill](/en/guide/agent-skill).
+
+## Already have access to the iOS app? Pair next
+
+Continue only after you have installed the RunBuoy app for iOS 26 or later:
 
 ```bash
 runbuoy device pair
-```
-
-Scan the QR code. The challenge expires after five minutes, works only once, and contains no long-lived credential.
-
-## 4. Start a run
-
-```bash
-runbuoy demo live-activity
 runbuoy run -- python3 experiment.py
 ```
 
-The command keeps running on your computer while iPhone displays carefully scoped status, progress, timing, and results.
+After scanning the one-time pairing code, the command remains on the computer while iPhone displays carefully scoped status, progress, timing, and results. Existing demo commands remain available for separate verification, but are not required installation steps.
 
 ## Next steps
 
-- [Install, upgrade, or remove RunBuoy](/guide/install)
-- [Pair more machines](/guide/pairing)
-- [Run commands and send notifications](/guide/run)
-- [Configure honest progress](/guide/progress)
+- [Complete installation, upgrade, and removal guide](/en/guide/install)
+- [Pair more machines](/en/guide/pairing)
+- [Run commands and send notifications](/en/guide/run)
+- [Configure honest progress](/en/guide/progress)
