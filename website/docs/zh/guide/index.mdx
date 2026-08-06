@@ -1,22 +1,54 @@
 ---
-description: 通过当前可用的手动流程，在 macOS 或 Linux 上安装并验证 RunBuoy CLI；一键安装器与 App Store 版本即将提供。
+description: 使用 Agent 提示词或手动流程，在 macOS 或 Linux 上安装并验证 RunBuoy Skill 与 CLI。
 ---
 
 # 快速开始
 
 import { Tab, Tabs } from '@rspress/core/theme';
 
-RunBuoy CLI 当前已经可以安装。完整的手机配对需要一台安装了 RunBuoy iOS 26+ App 的 iPhone。
+RunBuoy Skill 与 CLI 当前都可以安装。推荐先把完整提示词交给支持 Skill 的 Agent；希望逐条控制命令时，也可以使用下面的手动流程。完整的手机配对需要一台安装了 RunBuoy iOS 26+ App 的 iPhone。
 
-## 选择安装方式
+<div id="agent-install"></div>
 
-:::tip 手动安装 · 当前可用
-下面的 uv 流程是当前推荐且可以执行的安装方式，支持 macOS 与 Linux。
+## 使用 Agent 安装（推荐）
+
+:::tip 一条提示词安装 Skill + CLI
+Agent 会先安装 RunBuoy Skill，再读取 Skill 自带的安全规则安装和验证 CLI。涉及 `sudo`、系统包管理器或 curl 安装器时，它必须先说明命令并等待确认。
 :::
 
-> **一键安装与 App Store · 即将提供：** 一键安装器仍在规划和验证中；发布前，本页不会展示不可执行的安装脚本地址或复制按钮。
+复制下面整段提示词并粘贴给支持 Skill 的 Agent：
 
-## 1. 安装系统依赖与 uv
+```text
+请帮我安装并验证 RunBuoy：
+
+1. 使用你原生支持的 Skill 安装机制，从
+https://github.com/TANG617/RunBuoy/tree/main/skills/runbuoy
+安装 RunBuoy Skill，完整保留 SKILL.md、agents/openai.yaml 和 references/ 目录，不要猜测安装路径。
+
+2. 安装后读取该 Skill 的 references/installation.md，并按照其中的安全规则安装 RunBuoy CLI。先检查 command -v runbuoy；如果缺失且 uv 已可用，执行：
+uv tool install --python 3.12 runbuoy
+
+3. 如果缺少 uv、tmux，或者需要 sudo、系统包管理器或 curl 安装器，请先说明将执行的命令并等待我的确认。
+
+4. 最后运行：
+runbuoy --version
+runbuoy doctor --json
+runbuoy capabilities --json
+
+只汇报 Skill 是否能以 $runbuoy 被发现、CLI 版本、local_ready 和 delivery 状态。不要启动配对、Demo、被监控命令，也不要上传日志。
+```
+
+这个流程只负责安装与验证，不会配对手机或启动任务。[了解 Agent 安装提示词的设计与使用方式](/guide/agent-skill)。
+
+<div id="manual-install"></div>
+
+## 手动安装 CLI
+
+:::tip 手动安装 · 当前可用
+下面的 uv 流程是公开、可执行的安装方式，支持 macOS 与 Linux。
+:::
+
+### 1. 安装系统依赖与 uv
 
 <Tabs>
 <Tab label="macOS">
@@ -59,7 +91,7 @@ uv tool update-shell
 
 重启终端后继续。uv 会自动下载并管理所需的 Python 3.12；`tmux` 是必须通过系统包管理器安装的依赖。
 
-## 2. 安装 CLI
+### 2. 安装 CLI
 
 ```bash
 uv tool install --python 3.12 runbuoy
@@ -91,11 +123,11 @@ runbuoy completion install fish
 </Tab>
 </Tabs>
 
-## 3. 验证安装
+### 3. 验证安装
 
 ```bash
 runbuoy --version
-runbuoy doctor
+runbuoy doctor --json
 runbuoy capabilities --json
 ```
 
@@ -113,9 +145,9 @@ uv sync --extra runbuoy
 
 这是正常的双环境安装，不是重复配置。SDK 调用必须发生在 RunBuoy 启动的目标进程树内；详见[进度模式](/guide/progress)。
 
-## 可选：安装 Agent Skill
+## 已经手动安装了 CLI？
 
-如果你的 Agent 原生支持可安装 Skill，可以把通用安装提示词直接交给它：[安装 RunBuoy Agent Skill](/guide/agent-skill)。
+仍然可以在任何时候使用上面的 Agent 提示词补装 Skill。Agent 会先运行 `command -v runbuoy`，检测到现有 CLI 后不会重复安装，只会继续验证环境。
 
 ## 已有可用 iOS App？继续配对
 

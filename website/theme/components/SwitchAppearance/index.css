@@ -1,0 +1,13 @@
+.runbuoy-appearance-toggle {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font: inherit;
+}
+
+.runbuoy-appearance-toggle:focus-visible {
+  border-radius: 6px;
+  outline: 3px solid var(--rp-c-brand);
+  outline-offset: 3px;
+}

@@ -12,7 +12,7 @@
   {
     "type": "file",
     "name": "agent-skill",
-    "label": "Install the Agent Skill"
+    "label": "Install with an Agent"
   },
   {
     "type": "file",

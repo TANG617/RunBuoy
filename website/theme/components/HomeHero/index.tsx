@@ -3,13 +3,15 @@ import { useFrontmatter, useLang } from '@rspress/core/runtime';
 import { Button, Link, renderHtmlOrText } from '@rspress/core/theme-original';
 import {
   AppStoreLogo,
-  GithubLogo,
-  RocketLaunch,
+  MagicWand,
+  TerminalWindow,
   Waveform,
 } from '@phosphor-icons/react';
 
 import './index.css';
 import clsx from 'clsx';
+
+import { localizeHref } from '../../utils/localizeHref';
 
 const DEFAULT_HERO = {
   badge: '',
@@ -44,57 +46,76 @@ function HomeHero({
 
   return (
     <div
-      className={clsx('rp-home-hero', { 'rp-home-hero--no-image': !hasImage })}
+      className={clsx('runbuoy-home-hero', {
+        'runbuoy-home-hero--no-image': !hasImage,
+      })}
     >
-      <div className="rp-home-hero__container">
+      <div className="runbuoy-home-hero__container">
         {hero.badge &&
           (typeof hero.badge === 'string' ? (
-            <div className="rp-home-hero__badge">{hero.badge}</div>
+            <div className="runbuoy-home-hero__badge">{hero.badge}</div>
           ) : hero.badge.link ? (
-            <Link href={hero.badge.link} className="rp-home-hero__badge">
+            <Link href={hero.badge.link} className="runbuoy-home-hero__badge">
               {hero.badge.text}
             </Link>
           ) : (
-            <div className="rp-home-hero__badge">{hero.badge.text}</div>
+            <div className="runbuoy-home-hero__badge">{hero.badge.text}</div>
           ))}
-        <div className="rp-home-hero__content">
-          <div className="rp-home-hero__title">
+        <div className="runbuoy-home-hero__content">
+          <p className="runbuoy-home-hero__title">
             <span
-              className="rp-home-hero__title-brand"
+              className="runbuoy-home-hero__title-brand"
               {...renderHtmlOrText(hero.name)}
             ></span>
-          </div>
+          </p>
 
-          {multiHeroText.length !== 0 &&
-            multiHeroText.map(heroText => (
-              <div
-                key={heroText}
-                className="rp-home-hero__subtitle"
-                {...renderHtmlOrText(heroText)}
-              ></div>
-            ))}
+          {multiHeroText.length !== 0 && (
+            <h1 className="runbuoy-home-hero__subtitle">
+              {multiHeroText.map(heroText => (
+                <span key={heroText} {...renderHtmlOrText(heroText)} />
+              ))}
+            </h1>
+          )}
         </div>
         <p
-          className="rp-home-hero__tagline"
+          className="runbuoy-home-hero__tagline"
           {...renderHtmlOrText(hero.tagline)}
         ></p>
 
         <>
           {beforeHeroActions}
-          <div className="rp-home-hero__actions">
+          <div className="runbuoy-home-hero__actions">
             {hero.actions?.map(action => {
-              const Icon = action.link.includes('github.com')
-                ? GithubLogo
-                : action.link.includes('download')
+              const isComingSoon = action.link.includes('download');
+              const Icon = action.link.includes('#agent-install')
+                ? MagicWand
+                : isComingSoon
                   ? AppStoreLogo
-                  : RocketLaunch;
+                  : TerminalWindow;
+
+              if (isComingSoon) {
+                return (
+                  <Link
+                    key={action.link}
+                    href={localizeHref(action.link, lang)}
+                    className="runbuoy-home-hero__status-link"
+                  >
+                    <Icon size={17} weight="bold" aria-hidden="true" />
+                    <span {...renderHtmlOrText(action.text)} />
+                  </Link>
+                );
+              }
+
               return (
                 <Button
                   type="a"
                   key={action.link}
-                  href={action.link}
+                  href={localizeHref(action.link, lang)}
                   theme={action.theme}
-                  className="rp-home-hero__action"
+                  className={clsx('runbuoy-home-hero__action', {
+                    'runbuoy-home-hero__action--primary':
+                      action.theme === 'brand',
+                  })}
                 >
                   <Icon size={19} weight="bold" aria-hidden="true" />
                   <span {...renderHtmlOrText(action.text)} />
@@ -106,9 +127,9 @@ function HomeHero({
         </>
       </div>
       {image ? (
-        <div className="rp-home-hero__image">{image}</div>
+        <div className="runbuoy-home-hero__image">{image}</div>
       ) : hero.image ? (
-        <div className="rp-home-hero__image">
+        <div className="runbuoy-home-hero__image">
           <LiveActivityShowcase
             lang={lang}
             alt={hero.image?.alt || 'RunBuoy Live Activity'}

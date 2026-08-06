@@ -1,0 +1,113 @@
+.runbuoy-footer {
+  width: min(calc(100% - 2rem), 76rem);
+  margin: 0 auto;
+  padding: 3rem 0 2rem;
+  border-top: 1px solid var(--rp-c-divider);
+}
+
+.runbuoy-footer__inner {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 3rem;
+}
+
+.runbuoy-footer__brand {
+  max-width: 25rem;
+}
+
+.runbuoy-footer__brand > a {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.65rem;
+  color: var(--rp-c-text-1);
+  font-size: 1.15rem;
+  text-decoration: none;
+}
+
+.runbuoy-footer__brand p {
+  margin: 0.85rem 0 0;
+  color: var(--rp-c-text-2);
+  font-size: 0.92rem;
+  line-height: 1.65;
+}
+
+.runbuoy-footer__icon {
+  position: relative;
+  display: block;
+  width: 2.25rem;
+  height: 2.25rem;
+}
+
+.runbuoy-footer__icon img {
+  display: block;
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 10px;
+}
+
+.runbuoy-footer__icon-dark {
+  position: absolute;
+  inset: 0;
+  display: none !important;
+}
+
+.dark .runbuoy-footer__icon-light {
+  display: none;
+}
+
+.dark .runbuoy-footer__icon-dark {
+  display: block !important;
+}
+
+.runbuoy-footer__links {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(8rem, 1fr));
+  gap: 3rem;
+}
+
+.runbuoy-footer__links > div {
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+}
+
+.runbuoy-footer__links strong {
+  margin-bottom: 0.15rem;
+  font-size: 0.84rem;
+  font-weight: 720;
+}
+
+.runbuoy-footer__links a {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: var(--rp-c-text-2);
+  font-size: 0.88rem;
+  text-decoration: none;
+}
+
+.runbuoy-footer__links a:hover {
+  color: var(--rp-c-brand);
+}
+
+.runbuoy-footer__copyright {
+  margin: 2.5rem 0 0;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--rp-c-divider-light);
+  color: var(--rp-c-text-3);
+  font-size: 0.8rem;
+}
+
+@media (max-width: 640px) {
+  .runbuoy-footer {
+    width: calc(100% - 2rem);
+  }
+  .runbuoy-footer__inner {
+    flex-direction: column;
+  }
+  .runbuoy-footer__links {
+    width: 100%;
+    gap: 1.5rem;
+  }
+}

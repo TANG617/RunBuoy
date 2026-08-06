@@ -1,22 +1,54 @@
 ---
-description: Install and verify the available RunBuoy CLI manually on macOS or Linux. The one-click installer and App Store release are coming soon.
+description: Install and verify the RunBuoy Skill and CLI on macOS or Linux with an agent prompt or the manual flow.
 ---
 
 # Quick Start
 
 import { Tab, Tabs } from '@rspress/core/theme';
 
-The RunBuoy CLI is available to install today. Complete phone pairing requires an iPhone with access to the RunBuoy app for iOS 26 or later.
+The RunBuoy Skill and CLI are available to install today. Start with the complete prompt if your agent supports Skills, or use the manual flow when you want to control each command. Complete phone pairing requires an iPhone with access to the RunBuoy app for iOS 26 or later.
 
-## Choose an installation path
+<div id="agent-install"></div>
 
-:::tip Manual installation · Available now
-The uv flow below is the recommended, working installation path for macOS and Linux.
+## Install with an Agent (recommended)
+
+:::tip One prompt installs the Skill + CLI
+Your agent installs the RunBuoy Skill first, then reads its built-in safety rules to install and verify the CLI. It must explain the command and wait for approval before using `sudo`, a system package manager, or a curl installer.
 :::
 
-> **One-click installation and App Store · Coming soon:** The one-click installer is still being designed and verified. Until it ships, this page will not show an unexecutable installer URL or copy button.
+Copy the complete prompt and paste it into an agent that supports Skills:
 
-## 1. Install system dependencies and uv
+```text
+Help me install and verify RunBuoy:
+
+1. Use your native Skill installation mechanism to install the RunBuoy Skill from
+https://github.com/TANG617/RunBuoy/tree/main/skills/runbuoy
+Preserve SKILL.md, agents/openai.yaml, and the references/ directory in full. Do not guess an installation path.
+
+2. After installation, read references/installation.md from that Skill and follow its safety rules to install the RunBuoy CLI. First check command -v runbuoy. If it is missing and uv is available, run:
+uv tool install --python 3.12 runbuoy
+
+3. If uv or tmux is missing, or sudo, a system package manager, or a curl installer is required, explain the exact command and wait for my approval.
+
+4. Finally run:
+runbuoy --version
+runbuoy doctor --json
+runbuoy capabilities --json
+
+Only report whether the Skill is discoverable as $runbuoy, the CLI version, local_ready, and delivery status. Do not start pairing, a demo, or any monitored command, and do not upload logs.
+```
+
+This flow only installs and verifies RunBuoy. It does not pair a phone or start a run. [Learn how the agent installation prompt is designed and used](/en/guide/agent-skill).
+
+<div id="manual-install"></div>
+
+## Install the CLI manually
+
+:::tip Manual installation · Available now
+The uv flow below is a public, executable installation path for macOS and Linux.
+:::
+
+### 1. Install system dependencies and uv
 
 <Tabs>
 <Tab label="macOS">
@@ -59,7 +91,7 @@ uv tool update-shell
 
 Restart the terminal before continuing. uv downloads and manages the required Python 3.12 runtime; `tmux` is a system dependency that must come from your operating system package manager.
 
-## 2. Install the CLI
+### 2. Install the CLI
 
 ```bash
 uv tool install --python 3.12 runbuoy
@@ -91,11 +123,11 @@ runbuoy completion install fish
 </Tab>
 </Tabs>
 
-## 3. Verify the installation
+### 3. Verify the installation
 
 ```bash
 runbuoy --version
-runbuoy doctor
+runbuoy doctor --json
 runbuoy capabilities --json
 ```
 
@@ -113,9 +145,9 @@ uv sync --extra runbuoy
 
 Installing into both environments is intentional. SDK calls must run inside the process tree started by RunBuoy; see [Progress modes](/en/guide/progress).
 
-## Optional: install the Agent Skill
+## Already installed the CLI manually?
 
-If your agent has a native Skill installation mechanism, give it the universal installation prompt: [Install the RunBuoy Agent Skill](/en/guide/agent-skill).
+You can use the agent prompt above later to add the Skill. The agent checks `command -v runbuoy` first, so an existing CLI is not installed again; it simply continues with verification.
 
 ## Already have access to the iOS app? Pair next
 

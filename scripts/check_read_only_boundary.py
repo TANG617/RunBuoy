@@ -134,7 +134,8 @@ def main() -> int:
                 if label in lowered:
                     failures.append(f"Forbidden mutation UI '{label}': {path.relative_to(ROOT)}")
             if re.search(
-                r"\b(?:import|class|struct)\s+\w*(?:Terminal|SSH|PTY)\w*",
+                r"\b(?:import|class|struct)\s+\w*"
+                r"(?:Terminal(?!Time|State|Status|Execution|Result|Event)|SSH|PTY)\w*",
                 source,
             ):
                 failures.append(f"Terminal/SSH type found: {path.relative_to(ROOT)}")

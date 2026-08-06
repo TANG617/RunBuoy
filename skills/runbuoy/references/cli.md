@@ -1,31 +1,46 @@
 # CLI reference
 
-Start a run with `runbuoy run [options] -- <argv...>`. The CLI stores complete argv and cwd only
-in a local 0600 manifest. It uploads a safe title and structured state events.
+`runbuoy run [options] -- <argv...>` stores complete argv and cwd only in a local mode-0600
+manifest. Local events commit before any optional upload.
 
 Useful options:
 
-- `--title TEXT`: explicit redacted title.
+- `--title TEXT`: explicit sanitized title.
 - `--progress structured|lines|regex|indeterminate`.
-- `--total NUMBER --match REGEX`: line progress.
-- `--pattern REGEX`: current/total regex progress; capture groups 1 and 2 must be numeric.
-- `--share-log-tail N`: opt in to 1–100 redacted terminal lines; default is zero.
+- `--total NUMBER --match REGEX`: bounded line progress.
+- `--pattern REGEX`: current/total regex progress; groups 1 and 2 must be numeric.
+- `--share-log-tail N`: explicitly share 1–100 sanitized terminal lines; default zero.
 - `--json --non-interactive`: stable automation output.
-- `--dry-run`: preview remotely visible and local-only fields without starting.
+- `--wait`: wait for the real target result and preserve its exit code.
+- `--dry-run`: validate and preview fields without starting a Run.
 
-`runbuoy list` shows active Runs; `runbuoy list -a` includes completed history. `status`,
-`logs`, `attach`, and `cancel` accept unique Run ID prefixes. They inspect the local SQLite
-database, files, socket, or tmux server and never wait on a network request.
+The default detached response confirms a two-phase local handoff and contains `detached`,
+`worker_ready`, `delivery`, and local follow-up commands. `status` may already be terminal for an
+instant task.
 
-Use `runbuoy notify --title ... --body ... --level info|success|warning|error` for a one-time
-safe message. Use `runbuoy demo notification` or `runbuoy demo live-activity` for built-in
-delivery examples.
+Local Run commands:
 
-Pair with `runbuoy device pair`. Configure with `runbuoy config show`,
-`runbuoy config set`, and `runbuoy config path`. Install shell completion with
-`runbuoy completion install zsh` (or `bash` / `fish`).
+```sh
+runbuoy list --json
+runbuoy status RUN_ID --json
+runbuoy logs RUN_ID
+runbuoy attach RUN_ID
+runbuoy cancel RUN_ID --json
+```
 
-Preview local retention cleanup with
-`runbuoy history prune --older-than 30d --dry-run`; deletion is permanent and
-requires confirmation unless `--yes` is explicitly supplied. Unsynced events
-are retained unless `--include-unsynced` is explicitly supplied.
+These use local database/files/socket/tmux state. Pairing and server reachability are not
+prerequisites. Preserve full IDs in automation; prefixes and `@latest`/`@active` are interactive
+conveniences.
+
+Delivery commands:
+
+```sh
+runbuoy doctor --json
+runbuoy doctor --require-delivery --json
+runbuoy sync --json
+runbuoy notify --title "Safe title" --body "Safe body" --json
+```
+
+`sync` retries retained events for every Run under one machine-wide outbox lease. It requires
+pairing. `notify --dry-run` works unpaired; a real unpaired notification returns `not_paired`.
+Server acceptance is not iPhone delivery.

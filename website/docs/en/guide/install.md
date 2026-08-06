@@ -4,7 +4,7 @@ description: Install, verify, upgrade, and remove the RunBuoy CLI on macOS or Li
 
 # Install the CLI
 
-The RunBuoy CLI is published on [PyPI](https://pypi.org/project/runbuoy/). It supports macOS and Linux and requires Python 3.12 or newer. Manual installation is available now; the one-click installer has not been released.
+The RunBuoy CLI is published on [PyPI](https://pypi.org/project/runbuoy/). It supports macOS and Linux and requires Python 3.12 or newer. This page provides the complete manual flow without requiring an agent.
 
 ## System dependency
 

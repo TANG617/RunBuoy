@@ -19,4 +19,9 @@ runbuoy run --json --non-interactive --title "100 checks" \
   --progress lines --total 100 --match '^CHECK OK$' -- python checks.py
 ```
 
-Return the Run ID and local `status`, `logs`, and `attach` commands printed in the JSON result.
+For each detached example, parse `ok`, `detached`, and `worker_ready`; only all three true confirm
+handoff. Return the full Run ID, `delivery`, and local `status`, `logs`, `attach`, and `cancel`
+commands, then end without polling.
+
+When the user explicitly needs the final target result, add `--wait` instead. Preserve the target
+exit code and parse the returned `result`.

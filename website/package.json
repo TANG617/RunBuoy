@@ -5,13 +5,18 @@
   "scripts": {
     "dev": "rspress dev",
     "build": "rspress build",
-    "preview": "rspress preview"
+    "preview": "rspress preview",
+    "typecheck": "tsc --noEmit",
+    "check:site": "node scripts/check-site.mjs",
+    "check": "npm run typecheck && npm run build && npm run check:site"
   },
   "dependencies": {
     "@phosphor-icons/react": "^2.1.10",
     "@rspress/core": "2.0.18"
   },
   "devDependencies": {
+    "@types/node": "^24.0.0",
+    "@types/react": "^19.0.0",
     "typescript": "5.9.3"
   }
 }

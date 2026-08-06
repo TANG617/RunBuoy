@@ -4,7 +4,7 @@ description: 在 macOS 或 Linux 上安装、验证、升级和卸载 RunBuoy CL
 
 # 安装 CLI
 
-RunBuoy CLI 发布在 [PyPI](https://pypi.org/project/runbuoy/)，支持 macOS 和 Linux，需要 Python 3.12 或更新版本。当前可用的是手动安装；一键安装器尚未发布。
+RunBuoy CLI 发布在 [PyPI](https://pypi.org/project/runbuoy/)，支持 macOS 和 Linux，需要 Python 3.12 或更新版本。本页提供不依赖 Agent 的完整手动安装流程。
 
 ## 系统依赖
 

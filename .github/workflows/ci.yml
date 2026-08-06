@@ -13,6 +13,23 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  website:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: website
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: website/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run build
+      - run: npm run check:site
+
   protocol-and-security:
     runs-on: ubuntu-latest
     steps:
@@ -23,7 +40,7 @@ jobs:
           enable-cache: true
       - run: uv sync --group dev
       - run: uv run python scripts/generate_protocol_fixtures.py --check
-      - run: uv run pytest packages/protocol/tests
+      - run: uv run pytest packages/protocol/tests skills/runbuoy/tests
       - run: uv run python scripts/check_read_only_boundary.py
       - run: uvx openapi-spec-validator packages/protocol/openapi.yaml
       - name: License and provenance
@@ -40,8 +57,8 @@ jobs:
       - name: Root checks
         run: |
           uv sync --group dev
-          uv run ruff check packages/protocol/tests scripts
-          uv run ruff format --check packages/protocol/tests scripts
+          uv run ruff check packages/protocol/tests scripts skills/runbuoy/tests
+          uv run ruff format --check packages/protocol/tests scripts skills/runbuoy/tests
       - name: CLI checks
         working-directory: cli
         run: |
