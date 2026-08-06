@@ -40,6 +40,17 @@ struct SettingsView: View {
                 Text("settings.region_locked")
             }
 
+            Section {
+                NavigationLink(value: AppRoute.capabilityDemo) {
+                    Label("demo.settings_entry", systemImage: "sparkles")
+                }
+                .accessibilityIdentifier("settings.capabilityDemo")
+            } header: {
+                Text("settings.product")
+            } footer: {
+                Text("demo.settings_footer")
+            }
+
             Section("settings.notifications") {
                 Toggle("settings.notifications_enabled", isOn: $notificationsEnabled)
                     .accessibilityIdentifier("settings.notifications")

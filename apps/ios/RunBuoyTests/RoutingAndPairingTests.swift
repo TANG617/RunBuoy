@@ -19,6 +19,15 @@ final class RoutingAndPairingTests: XCTestCase {
         XCTAssertTrue(router.activeRunsPath.isEmpty)
     }
 
+    func testDemoDeepLinkOpensFeatureTourInSettings() {
+        let router = AppRouter()
+        router.selectedTab = .activeRuns
+
+        XCTAssertTrue(router.handle(URL(string: "runbuoy://demo/live-activity")!))
+        XCTAssertEqual(router.selectedTab, .settings)
+        XCTAssertEqual(router.settingsPath, [.capabilityDemo])
+    }
+
     func testPairDeepLinkOpensConfirmationWithoutClaiming() throws {
         let router = AppRouter()
         let url = URL(
@@ -161,6 +170,49 @@ final class RoutingAndPairingTests: XCTestCase {
             RunBuoyLinks.privateDeployment.absoluteString,
             "https://www.runbuoy.cloud/self-hosting"
         )
+    }
+
+    func testDemoActivitiesAreExcludedFromServerSynchronization() {
+        let production = RunActivityAttributes(
+            runID: UUID().uuidString,
+            title: "Production",
+            machineName: "Mac Studio"
+        )
+        let demo = RunActivityAttributes(
+            runID: UUID().uuidString,
+            title: "Demo",
+            machineName: "This iPhone",
+            demoSessionID: UUID().uuidString
+        )
+
+        XCTAssertTrue(ActivityTokenCoordinator.shouldSynchronize(production))
+        XCTAssertFalse(ActivityTokenCoordinator.shouldSynchronize(demo))
+    }
+
+    func testLegacyActivityAttributesDecodeWithoutDemoMarker() throws {
+        let data = try XCTUnwrap(
+            #"{"runID":"018f0d8a-8c0a-7000-8000-000000000001","title":"Build","machineName":"Mac Studio","schemaVersion":1}"#
+                .data(using: .utf8)
+        )
+
+        let attributes = try JSONDecoder().decode(RunActivityAttributes.self, from: data)
+
+        XCTAssertNil(attributes.demoSessionID)
+        XCTAssertTrue(ActivityTokenCoordinator.shouldSynchronize(attributes))
+    }
+
+    func testDemoStepBuildsAndRestoresStaleState() {
+        let now = Date(timeIntervalSince1970: 1_785_076_800)
+        let state = CapabilityDemoStep.stale.contentState(
+            now: now,
+            createdAt: now.addingTimeInterval(-120),
+            startedAt: now.addingTimeInterval(-100)
+        )
+
+        XCTAssertEqual(state.executionStatus, "RUNNING")
+        XCTAssertEqual(state.healthStatus, "STALE")
+        XCTAssertEqual(state.progress, 0.72)
+        XCTAssertEqual(CapabilityDemoStep.step(for: state), .stale)
     }
 }
 

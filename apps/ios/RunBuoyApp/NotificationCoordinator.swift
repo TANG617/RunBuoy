@@ -6,6 +6,7 @@ import UserNotifications
 final class NotificationCoordinator: NSObject, UNUserNotificationCenterDelegate {
     var onDeviceToken: ((String) -> Void)?
     var onRefreshRequested: (() -> Void)?
+    var onURLReceived: ((URL) -> Void)?
     private var pendingDeviceToken: String?
 
     func configure() {
@@ -46,7 +47,15 @@ final class NotificationCoordinator: NSObject, UNUserNotificationCenterDelegate 
         _ center: UNUserNotificationCenter,
         didReceive response: UNNotificationResponse
     ) async {
-        await MainActor.run { onRefreshRequested?() }
+        let rawURL = response.notification.request.content.userInfo[
+            DemoNotificationRoute.userInfoKey
+        ] as? String
+        await MainActor.run {
+            if let rawURL, let url = URL(string: rawURL) {
+                onURLReceived?(url)
+            }
+            onRefreshRequested?()
+        }
     }
 }
 

@@ -80,6 +80,9 @@ struct RunBuoyApp: App {
                 notificationCoordinator.onRefreshRequested = {
                     Task { await refreshState() }
                 }
+                notificationCoordinator.onURLReceived = { url in
+                    _ = router.handle(url)
+                }
                 notificationCoordinator.onDeviceToken = { token in
                     Task { try? await registerNotificationToken(token) }
                 }

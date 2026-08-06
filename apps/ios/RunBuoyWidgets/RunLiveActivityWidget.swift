@@ -10,7 +10,7 @@ struct RunLiveActivityWidget: Widget {
                 state: context.state,
                 isStale: context.isStale
             )
-                .widgetURL(deepLink(runID: context.attributes.runID))
+                .widgetURL(deepLink(for: context.attributes))
         } dynamicIsland: { context in
             DynamicIsland {
                 DynamicIslandExpandedRegion(.center) {
@@ -36,13 +36,16 @@ struct RunLiveActivityWidget: Widget {
             } minimal: {
                 LiveStatusIcon(state: context.state, isStale: context.isStale, size: 16)
             }
-            .widgetURL(deepLink(runID: context.attributes.runID))
+            .widgetURL(deepLink(for: context.attributes))
             .keylineTint(statusStyle(context.state, isStale: context.isStale).color)
         }
     }
 
-    private func deepLink(runID: String) -> URL? {
-        URL(string: "runbuoy://runs/\(runID)")
+    private func deepLink(for attributes: RunActivityAttributes) -> URL? {
+        if attributes.isDemo {
+            return URL(string: "runbuoy://demo/live-activity")
+        }
+        return URL(string: "runbuoy://runs/\(attributes.runID)")
     }
 }
 

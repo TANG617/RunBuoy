@@ -15,6 +15,7 @@ enum AppRoute: Hashable {
     case machines
     case machine(String)
     case pairMachine
+    case capabilityDemo
 }
 
 @MainActor
@@ -48,6 +49,10 @@ final class AppRouter {
             }
             selectedTab = .activeRuns
             activeRunsPath = [.runDetail(runID)]
+            return true
+        case "demo":
+            selectedTab = .settings
+            settingsPath = [.capabilityDemo]
             return true
         default:
             return false

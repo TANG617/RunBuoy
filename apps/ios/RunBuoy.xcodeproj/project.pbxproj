@@ -34,6 +34,7 @@
 		A10000000000000000000019 /* PairMachineView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000018 /* PairMachineView.swift */; };
 		A1000000000000000000001A /* icon.icon in Resources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000019 /* icon.icon */; };
 		A1000000000000000000001B /* UITestConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000000000000000000001A /* UITestConfiguration.swift */; };
+		A1000000000000000000001C /* CapabilityDemoView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000000000000000000001B /* CapabilityDemoView.swift */; };
 		A20000000000000000000001 /* RunBuoyWidgets.swift in Sources */ = {isa = PBXBuildFile; fileRef = B30000000000000000000001 /* RunBuoyWidgets.swift */; };
 		A20000000000000000000002 /* RunLiveActivityWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = B30000000000000000000002 /* RunLiveActivityWidget.swift */; };
 		A20000000000000000000003 /* RunActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000001 /* RunActivityAttributes.swift */; };
@@ -117,6 +118,7 @@
 		B10000000000000000000018 /* PairMachineView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PairMachineView.swift; sourceTree = "<group>"; };
 		B10000000000000000000019 /* icon.icon */ = {isa = PBXFileReference; lastKnownFileType = folder.iconcomposer.icon; path = icon.icon; sourceTree = "<group>"; };
 		B1000000000000000000001A /* UITestConfiguration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UITestConfiguration.swift; sourceTree = "<group>"; };
+		B1000000000000000000001B /* CapabilityDemoView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CapabilityDemoView.swift; sourceTree = "<group>"; };
 		B20000000000000000000001 /* RunActivityAttributes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RunActivityAttributes.swift; sourceTree = "<group>"; };
 		B20000000000000000000003 /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/Localizable.strings; sourceTree = "<group>"; };
 		B20000000000000000000004 /* zh-Hans */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hans"; path = "zh-Hans.lproj/Localizable.strings"; sourceTree = "<group>"; };
@@ -208,6 +210,7 @@
 				B1000000000000000000000D /* RunsView.swift */,
 				B1000000000000000000000E /* RunDetailView.swift */,
 				B1000000000000000000000F /* SettingsView.swift */,
+				B1000000000000000000001B /* CapabilityDemoView.swift */,
 				B10000000000000000000010 /* MachinesView.swift */,
 				B10000000000000000000011 /* QRScannerView.swift */,
 				B10000000000000000000012 /* OnboardingView.swift */,
@@ -472,6 +475,7 @@
 				A1000000000000000000000D /* RunsView.swift in Sources */,
 				A1000000000000000000000E /* RunDetailView.swift in Sources */,
 				A1000000000000000000000F /* SettingsView.swift in Sources */,
+				A1000000000000000000001C /* CapabilityDemoView.swift in Sources */,
 				A10000000000000000000010 /* MachinesView.swift in Sources */,
 				A10000000000000000000011 /* QRScannerView.swift in Sources */,
 				A10000000000000000000012 /* OnboardingView.swift in Sources */,

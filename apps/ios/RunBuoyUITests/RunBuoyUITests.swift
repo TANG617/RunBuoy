@@ -84,6 +84,15 @@ final class RunBuoyUITests: XCTestCase {
         XCTAssertTrue(element("run.row.\(Self.failedRunID)").exists)
     }
 
+    func testHistoryLoadsMachineFiltersWhenInitialSnapshotIsEmpty() {
+        launch(scenario: "empty")
+        tapTab("tab.history", label: "History")
+
+        XCTAssertTrue(
+            element("history.filter.machine_ci").waitForExistence(timeout: 3)
+        )
+    }
+
     func testNotificationPreferencePersistsAcrossRelaunch() {
         launch()
         tapTab("tab.settings", label: "Settings")
@@ -146,6 +155,18 @@ final class RunBuoyUITests: XCTestCase {
         XCTAssertTrue(element("settings.cacheCleared").waitForExistence(timeout: 3))
     }
 
+    func testCapabilityDemoOpensFromSettings() {
+        launch()
+        tapTab("tab.settings", label: "Settings")
+
+        let featureTour = element("settings.capabilityDemo")
+        XCTAssertTrue(featureTour.waitForExistence(timeout: 3))
+        featureTour.tap()
+
+        XCTAssertTrue(element("screen.capabilityDemo").waitForExistence(timeout: 3))
+        XCTAssertTrue(element("demo.startLiveActivity").exists)
+    }
+
     func testAccessibilityAuditForCoreScreensAndScenarios() throws {
         launch()
         XCTAssertTrue(element("screen.activeRuns").waitForExistence(timeout: 5))
@@ -163,6 +184,12 @@ final class RunBuoyUITests: XCTestCase {
         tapTab("tab.settings", label: "Settings")
         XCTAssertTrue(element("screen.settings").waitForExistence(timeout: 3))
         try auditCurrentScreen()
+
+        element("settings.capabilityDemo").tap()
+        XCTAssertTrue(element("screen.capabilityDemo").waitForExistence(timeout: 3))
+        try auditCurrentScreen()
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(element("screen.settings").waitForExistence(timeout: 3))
 
         app.swipeUp()
         waitForHittable(element("settings.clearCache"))

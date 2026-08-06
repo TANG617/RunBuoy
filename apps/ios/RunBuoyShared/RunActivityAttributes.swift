@@ -8,13 +8,23 @@ public struct RunActivityAttributes {
     public let title: String
     public let machineName: String
     public let schemaVersion: Int
+    public let demoSessionID: String?
 
-    public init(runID: String, title: String, machineName: String, schemaVersion: Int = 1) {
+    public init(
+        runID: String,
+        title: String,
+        machineName: String,
+        schemaVersion: Int = 1,
+        demoSessionID: String? = nil
+    ) {
         self.runID = runID
         self.title = title
         self.machineName = machineName
         self.schemaVersion = schemaVersion
+        self.demoSessionID = demoSessionID
     }
+
+    var isDemo: Bool { demoSessionID != nil }
 
     public struct ContentState: Codable, Hashable {
         public let sequence: Int

@@ -33,6 +33,7 @@ final class ActivityTokenCoordinator {
             Task { [weak self] in
                 for await activity in Activity<RunActivityAttributes>.activityUpdates {
                     guard !Task.isCancelled else { return }
+                    guard Self.shouldSynchronize(activity.attributes) else { continue }
                     if let token = activity.pushToken {
                         self?.registerUpdateToken(token, for: activity)
                     }
@@ -67,6 +68,7 @@ final class ActivityTokenCoordinator {
             registerPushToStartToken(token)
         }
         for activity in Activity<RunActivityAttributes>.activities {
+            guard Self.shouldSynchronize(activity.attributes) else { continue }
             if let token = activity.pushToken {
                 registerUpdateToken(token, for: activity)
             }
@@ -78,7 +80,8 @@ final class ActivityTokenCoordinator {
     func reconcile(with runs: [RunSnapshot]) async {
         let snapshots = Dictionary(uniqueKeysWithValues: runs.map { ($0.id, $0) })
         for activity in Activity<RunActivityAttributes>.activities {
-            guard let runID = UUID(uuidString: activity.attributes.runID),
+            guard Self.shouldSynchronize(activity.attributes),
+                  let runID = UUID(uuidString: activity.attributes.runID),
                   let snapshot = snapshots[runID]
             else {
                 continue
@@ -104,7 +107,9 @@ final class ActivityTokenCoordinator {
     }
 
     private func observeUpdateToken(for activity: Activity<RunActivityAttributes>) {
-        guard activityTokenTasks[activity.id] == nil else { return }
+        guard Self.shouldSynchronize(activity.attributes),
+              activityTokenTasks[activity.id] == nil
+        else { return }
         activityTokenTasks[activity.id] = Task { [weak self] in
             for await token in activity.pushTokenUpdates {
                 guard !Task.isCancelled else { return }
@@ -114,7 +119,9 @@ final class ActivityTokenCoordinator {
     }
 
     private func syncCurrentActivities() {
-        let current = Activity<RunActivityAttributes>.activities.map { activity in
+        let current: [ActivityRegistration] = Activity<RunActivityAttributes>.activities.compactMap {
+            activity -> ActivityRegistration? in
+            guard Self.shouldSynchronize(activity.attributes) else { return nil }
             let token = activity.pushToken
             return ActivityRegistration(
                 activityID: activity.id,
@@ -173,6 +180,7 @@ final class ActivityTokenCoordinator {
         _ token: Data,
         for activity: Activity<RunActivityAttributes>
     ) {
+        guard Self.shouldSynchronize(activity.attributes) else { return }
         let generation = generation(for: activity.id, token: token)
         let tokenString = token.hexadecimalString
         let activityID = activity.id
@@ -199,6 +207,10 @@ final class ActivityTokenCoordinator {
                 generation: generation
             )
         }
+    }
+
+    nonisolated static func shouldSynchronize(_ attributes: RunActivityAttributes) -> Bool {
+        !attributes.isDemo
     }
 
     private func scheduleRetry(
