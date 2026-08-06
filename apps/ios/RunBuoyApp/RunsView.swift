@@ -218,7 +218,7 @@ struct RunHistoryView: View {
     }
 
     private func loadIfNeeded() async {
-        guard store.state == .idle else { return }
+        guard store.state == .idle || machineOptions.isEmpty else { return }
         await store.refresh()
     }
 
