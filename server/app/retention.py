@@ -20,6 +20,7 @@ from .models import (
     WorkspaceDeletionChallenge,
     utcnow,
 )
+from .sync import bump_workspace_revision
 
 TERMINAL_RUN_STATUSES = frozenset({"SUCCEEDED", "FAILED", "CANCELLED", "LOST"})
 ACTIVE_LIVE_ACTIVITY_STATES = frozenset({"active", "stale"})
@@ -67,6 +68,11 @@ def cleanup_retention(
         .order_by(Notification.created_at, Notification.id),
         batch_size,
     )
+    changed_workspace_ids = set(
+        session.scalars(
+            select(Notification.workspace_id).where(Notification.id.in_(notification_ids))
+        )
+    )
     expired_notifications = _delete_ids(session, Notification, notification_ids)
 
     event_cutoff = current - timedelta(hours=settings.event_retention_hours)
@@ -91,6 +97,10 @@ def cleanup_retention(
         .order_by(Run.updated_at, Run.id),
         batch_size,
     )
+    if tail_run_ids:
+        changed_workspace_ids.update(
+            session.scalars(select(Run.workspace_id).where(Run.id.in_(tail_run_ids)))
+        )
     cleared_tails = 0
     if tail_run_ids:
         result = session.execute(
@@ -195,6 +205,10 @@ def cleanup_retention(
         .order_by(Run.ended_at, Run.id),
         batch_size,
     )
+    if old_run_ids:
+        changed_workspace_ids.update(
+            session.scalars(select(Run.workspace_id).where(Run.id.in_(old_run_ids)))
+        )
     old_runs = 0
     if old_run_ids:
         run_outbox_ids = list(
@@ -213,6 +227,9 @@ def cleanup_retention(
         old_runs = _delete_ids(session, Run, old_run_ids)
 
     abuse_cleanup = cleanup_abuse_state(session, settings, now=current)
+
+    for workspace_id in sorted(changed_workspace_ids):
+        bump_workspace_revision(session, workspace_id)
 
     return {
         "notifications": expired_notifications,

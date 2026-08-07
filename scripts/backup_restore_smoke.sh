@@ -70,7 +70,7 @@ RUNBUOY_DATABASE_USER="$db_user" \
   --backup "$tampered_backup" \
   --target-database runbuoy_restore_tampered \
   --target-config-root "$smoke_root/tampered-config" \
-  --expected-revision e001_ops \
+  --expected-revision d001_sync \
   --confirm 'RESTORE DISPOSABLE' >/dev/null 2>&1
 tampered_status=$?
 set -e
@@ -90,11 +90,11 @@ RUNBUOY_DATABASE_USER="$db_user" \
   --backup "$backup_directory" \
   --target-database "$database_name" \
   --target-config-root "$restored_config" \
-  --expected-revision e001_ops \
+  --expected-revision d001_sync \
   --confirm 'RESTORE DISPOSABLE'
 
 [[ "$(docker exec "$db_container" psql --username "$db_user" --dbname "$database_name" --tuples-only --no-align --command 'SELECT value FROM restore_smoke_marker')" == "backup-round-trip" ]]
-[[ "$(docker exec "$db_container" psql --username "$db_user" --dbname "$database_name" --tuples-only --no-align --command 'SELECT version_num FROM alembic_version')" == "e001_ops" ]]
+[[ "$(docker exec "$db_container" psql --username "$db_user" --dbname "$database_name" --tuples-only --no-align --command 'SELECT version_num FROM alembic_version')" == "d001_sync" ]]
 cmp "$source_config/runbuoy.env" "$restored_config/runbuoy.env"
 
 "${compose[@]}" run -d --no-deps \

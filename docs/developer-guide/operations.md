@@ -85,7 +85,7 @@ sudo infra/restore-runbuoy \
   --backup /var/backups/runbuoy/20260807T023000Z \
   --target-database runbuoy_restore_drill \
   --target-config-root /tmp/runbuoy-restore-drill \
-  --expected-revision e001_ops \
+  --expected-revision d001_sync \
   --confirm 'RESTORE DISPOSABLE'
 ```
 
@@ -104,7 +104,7 @@ and confirmation:
 ```bash
 docker compose -p runbuoy --env-file /etc/runbuoy/runbuoy.env \
   -f infra/docker-compose.yml -f infra/docker-compose.prod.yml stop api worker
-sudo RUNBUOY_EXPECTED_MIGRATION_REVISION=e001_ops infra/restore-runbuoy \
+sudo RUNBUOY_EXPECTED_MIGRATION_REVISION=d001_sync infra/restore-runbuoy \
   --production \
   --backup /var/backups/runbuoy/20260807T023000Z \
   --target-database runbuoy \

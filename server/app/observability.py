@@ -484,7 +484,7 @@ def install_observability(application: FastAPI) -> None:
             route = _route_template(request)
             if status_code == 429:
                 metrics.record_rate_limit(route)
-            if request.method == "GET" and route in {"/v1/runs", "/v1/runs/{run_id}"}:
+            if request.method == "GET" and route == "/v1/sync":
                 hinted_outcome = response.headers.get("X-RunBuoy-Sync-Outcome")
                 if hinted_outcome in SYNC_OUTCOMES:
                     sync_outcome = hinted_outcome

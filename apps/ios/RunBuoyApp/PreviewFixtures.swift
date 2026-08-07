@@ -287,4 +287,10 @@ private struct PreviewAPI: RunBuoyAPI {
     ) async throws {}
     func updatePreferences(_ preferences: DevicePreferences) async throws {}
     func deleteSubscription(_ id: String) async throws {}
+    func resetDevice() async throws {}
+    func revokeMachine(_ id: String) async throws {}
+    func requestWorkspaceDeletionChallenge() async throws -> WorkspaceDeletionChallenge {
+        WorkspaceDeletionChallenge(challenge: "preview-challenge", expiresAt: Date.distantFuture)
+    }
+    func deleteWorkspace(challenge: String) async throws {}
 }

@@ -368,15 +368,54 @@ final class RunBuoyStore {
         await refresh()
     }
 
-    func removeLocalPairing(subscriptionID: String?) async throws {
-        if let subscriptionID {
-            try await api.deleteSubscription(subscriptionID)
-        }
+    func revokeMachine(machineID: String) async throws {
+        try await api.revokeMachine(machineID)
         await refresh()
+    }
+
+    func resetDevice() async throws {
+        try await api.resetDevice()
+        try await clearLocalIdentityAndData()
+    }
+
+    func resetDeviceLocalOnly() async throws {
+        try await clearLocalIdentityAndData()
+    }
+
+    func deleteWorkspace() async throws {
+        let deletionChallenge = try await api.requestWorkspaceDeletionChallenge()
+        try await api.deleteWorkspace(challenge: deletionChallenge.challenge)
+        try await clearLocalIdentityAndData()
     }
 
     func clearCache() async throws {
         try await cache.clear()
+        clearInMemoryState()
+    }
+
+    private func clearLocalIdentityAndData() async throws {
+        var firstError: Error?
+        do {
+            try await cache.clear()
+        } catch {
+            firstError = error
+        }
+        do {
+            try identityStore.remove()
+        } catch {
+            firstError = firstError ?? error
+        }
+        for key in userDefaults.dictionaryRepresentation().keys where key.hasPrefix("runbuoy.") {
+            userDefaults.removeObject(forKey: key)
+        }
+        clearInMemoryState()
+        deviceIdentity = nil
+        if let firstError {
+            throw firstError
+        }
+    }
+
+    private func clearInMemoryState() {
         runs = []
         activeRunModels = []
         historyRunModels = []

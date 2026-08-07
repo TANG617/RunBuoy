@@ -1,3 +1,4 @@
+import Foundation
 import XCTest
 @testable import RunBuoyApp
 
@@ -222,6 +223,72 @@ final class CacheStoreTests: XCTestCase {
         XCTAssertEqual(RefreshCadence.interval(hasActiveRuns: true, consecutiveFailures: 20), 300)
     }
 
+    func testServerResetFailureKeepsIdentityCacheAndDefaults() async throws {
+        let cache = makeCache()
+        try await cache.save(
+            CachedSnapshot(
+                runs: [PreviewFixtures.activeRun],
+                machines: [PreviewFixtures.machine],
+                messages: [],
+                savedAt: PreviewFixtures.baseDate
+            )
+        )
+        let identityStore = CacheTestIdentityStore()
+        let defaults = UserDefaults(suiteName: "runbuoy-reset-failure-\(UUID().uuidString)")!
+        defaults.set(true, forKey: "runbuoy.test-value")
+        let store = RunBuoyStore(
+            api: StoreAPIStub(resetErrorStatus: 503),
+            identityStore: identityStore,
+            cache: cache,
+            userDefaults: defaults
+        )
+
+        do {
+            try await store.resetDevice()
+            XCTFail("Expected server reset failure")
+        } catch {
+            XCTAssertEqual(error as? APIError, .httpStatus(503))
+        }
+
+        XCTAssertNotNil(try identityStore.load())
+        let retainedCache = try await cache.load()
+        XCTAssertNotNil(retainedCache)
+        XCTAssertTrue(defaults.bool(forKey: "runbuoy.test-value"))
+    }
+
+    func testServerResetSuccessClearsIdentityCacheAndRunBuoyDefaults() async throws {
+        let cache = makeCache()
+        try await cache.save(
+            CachedSnapshot(
+                runs: [PreviewFixtures.activeRun],
+                machines: [PreviewFixtures.machine],
+                messages: [],
+                savedAt: PreviewFixtures.baseDate
+            )
+        )
+        let identityStore = CacheTestIdentityStore()
+        let defaults = UserDefaults(suiteName: "runbuoy-reset-success-\(UUID().uuidString)")!
+        defaults.set(true, forKey: "runbuoy.test-value")
+        defaults.set(true, forKey: "unrelated.test-value")
+        let store = RunBuoyStore(
+            api: StoreAPIStub(),
+            identityStore: identityStore,
+            cache: cache,
+            userDefaults: defaults,
+            initialSnapshot: try await cache.load()
+        )
+
+        try await store.resetDevice()
+
+        XCTAssertNil(try identityStore.load())
+        let clearedCache = try await cache.load()
+        XCTAssertNil(clearedCache)
+        XCTAssertNil(defaults.object(forKey: "runbuoy.test-value"))
+        XCTAssertTrue(defaults.bool(forKey: "unrelated.test-value"))
+        XCTAssertNil(store.deviceIdentity)
+        XCTAssertTrue(store.runs.isEmpty)
+    }
+
     private func makeCache() -> LocalCacheStore {
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent("runbuoy-store-test-\(UUID().uuidString)")
@@ -271,12 +338,23 @@ final class CacheStoreTests: XCTestCase {
     }
 }
 
-private struct CacheTestIdentityStore: DeviceIdentityStoring {
+private final class CacheTestIdentityStore: DeviceIdentityStoring, @unchecked Sendable {
+    private let lock = NSLock()
+    private var identity: DeviceIdentity? = DeviceIdentity(
+        deviceID: "device",
+        workspaceID: "workspace",
+        credential: "credential"
+    )
+
     func load() throws -> DeviceIdentity? {
-        DeviceIdentity(deviceID: "device", workspaceID: "workspace", credential: "credential")
+        lock.withLock { identity }
     }
-    func save(_ identity: DeviceIdentity) throws {}
-    func remove() throws {}
+    func save(_ identity: DeviceIdentity) throws {
+        lock.withLock { self.identity = identity }
+    }
+    func remove() throws {
+        lock.withLock { identity = nil }
+    }
 }
 
 private actor StoreAPIStub: RunBuoyAPI {
@@ -288,6 +366,7 @@ private actor StoreAPIStub: RunBuoyAPI {
     private let historyRunPage: HistoryPage<RunSnapshot>
     private let historyMessagePage: HistoryPage<RichMessage>
     private let delayNanoseconds: UInt64
+    private let resetErrorStatus: Int?
     private var syncCalls = 0
     private var legacyCalls = 0
 
@@ -303,7 +382,8 @@ private actor StoreAPIStub: RunBuoyAPI {
         historyMessagePage: HistoryPage<RichMessage> = HistoryPage(
             items: [], nextCursor: nil, hasMore: false
         ),
-        delayNanoseconds: UInt64 = 0
+        delayNanoseconds: UInt64 = 0,
+        resetErrorStatus: Int? = nil
     ) {
         self.syncResult = syncResult
         self.syncErrorStatus = syncErrorStatus
@@ -313,6 +393,7 @@ private actor StoreAPIStub: RunBuoyAPI {
         self.historyRunPage = historyRunPage
         self.historyMessagePage = historyMessagePage
         self.delayNanoseconds = delayNanoseconds
+        self.resetErrorStatus = resetErrorStatus
     }
 
     func callCounts() -> (sync: Int, legacy: Int) {
@@ -378,4 +459,14 @@ private actor StoreAPIStub: RunBuoyAPI {
     ) async throws {}
     func updatePreferences(_ preferences: DevicePreferences) async throws {}
     func deleteSubscription(_ id: String) async throws {}
+    func resetDevice() async throws {
+        if let resetErrorStatus {
+            throw APIError.httpStatus(resetErrorStatus)
+        }
+    }
+    func revokeMachine(_ id: String) async throws {}
+    func requestWorkspaceDeletionChallenge() async throws -> WorkspaceDeletionChallenge {
+        WorkspaceDeletionChallenge(challenge: "challenge", expiresAt: Date.distantFuture)
+    }
+    func deleteWorkspace(challenge: String) async throws {}
 }

@@ -16,6 +16,10 @@ enum DeviceAPIEndpoint: Equatable, Sendable {
     case activitySync(String)
     case preferences
     case subscription(String)
+    case resetDevice(String)
+    case revokeMachine(String)
+    case workspaceDeletionChallenge(String)
+    case deleteWorkspace(String)
 
     var method: String {
         switch self {
@@ -25,9 +29,9 @@ enum DeviceAPIEndpoint: Equatable, Sendable {
             "PUT"
         case .preferences:
             "PATCH"
-        case .subscription:
+        case .subscription, .resetDevice, .deleteWorkspace:
             "DELETE"
-        case .bootstrap, .claimPairing, .activitySync:
+        case .bootstrap, .claimPairing, .activitySync, .revokeMachine, .workspaceDeletionChallenge:
             "POST"
         }
     }
@@ -49,6 +53,11 @@ enum DeviceAPIEndpoint: Equatable, Sendable {
         case .activitySync(let id): "/v1/devices/\(id.pathComponent)/activity-sync"
         case .preferences: "/v1/device-preferences"
         case .subscription(let id): "/v1/machine-subscriptions/\(id.pathComponent)"
+        case .resetDevice(let id): "/v1/devices/\(id.pathComponent)"
+        case .revokeMachine(let id): "/v1/machines/\(id.pathComponent)/revoke"
+        case .workspaceDeletionChallenge(let id):
+            "/v1/workspaces/\(id.pathComponent)/deletion-challenge"
+        case .deleteWorkspace(let id): "/v1/workspaces/\(id.pathComponent)"
         }
     }
 }
@@ -84,6 +93,20 @@ protocol RunBuoyAPI: Sendable {
     ) async throws
     func updatePreferences(_ preferences: DevicePreferences) async throws
     func deleteSubscription(_ id: String) async throws
+    func resetDevice() async throws
+    func revokeMachine(_ id: String) async throws
+    func requestWorkspaceDeletionChallenge() async throws -> WorkspaceDeletionChallenge
+    func deleteWorkspace(challenge: String) async throws
+}
+
+struct WorkspaceDeletionChallenge: Decodable, Equatable, Sendable {
+    let challenge: String
+    let expiresAt: Date
+
+    private enum CodingKeys: String, CodingKey {
+        case challenge
+        case expiresAt = "expires_at"
+    }
 }
 
 struct SyncSnapshot: Decodable, Equatable, Sendable {
@@ -396,6 +419,34 @@ struct URLSessionRunBuoyAPI: RunBuoyAPI, @unchecked Sendable {
         try await requestWithoutResponse(.subscription(id), body: Optional<EmptyBody>.none)
     }
 
+    func resetDevice() async throws {
+        let identity = try requireIdentity()
+        try await requestWithoutResponse(
+            .resetDevice(identity.deviceID),
+            body: Optional<EmptyBody>.none
+        )
+    }
+
+    func revokeMachine(_ id: String) async throws {
+        try await requestWithoutResponse(.revokeMachine(id), body: Optional<EmptyBody>.none)
+    }
+
+    func requestWorkspaceDeletionChallenge() async throws -> WorkspaceDeletionChallenge {
+        let identity = try requireIdentity()
+        return try await request(
+            .workspaceDeletionChallenge(identity.workspaceID),
+            body: WorkspaceDeletionChallengeBody(confirmation: "DELETE")
+        )
+    }
+
+    func deleteWorkspace(challenge: String) async throws {
+        let identity = try requireIdentity()
+        try await requestWithoutResponse(
+            .deleteWorkspace(identity.workspaceID),
+            body: WorkspaceDeleteBody(challenge: challenge)
+        )
+    }
+
     private func request<Response: Decodable, Body: Encodable>(
         _ endpoint: DeviceAPIEndpoint,
         body: Body?,
@@ -532,6 +583,14 @@ struct URLSessionRunBuoyAPI: RunBuoyAPI, @unchecked Sendable {
     }
 
     private struct ClaimBody: Encodable {
+        let challenge: String
+    }
+
+    private struct WorkspaceDeletionChallengeBody: Encodable {
+        let confirmation: String
+    }
+
+    private struct WorkspaceDeleteBody: Encodable {
         let challenge: String
     }
 

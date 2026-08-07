@@ -118,12 +118,15 @@ def test_sync_revision_etag_and_device_visible_mutations(harness: Harness) -> No
     harness.register_run(machine, run_id)
     after_run = current_revision(harness, device["workspace_id"])
     assert after_run > after_rename
-    assert post_events(
-        harness,
-        machine,
-        run_id,
-        [event(run_id, machine["machine_id"], 1, "run.started")],
-    ).status_code == 200
+    assert (
+        post_events(
+            harness,
+            machine,
+            run_id,
+            [event(run_id, machine["machine_id"], 1, "run.started")],
+        ).status_code
+        == 200
+    )
     after_event = current_revision(harness, device["workspace_id"])
     assert after_event > after_run
 
@@ -178,6 +181,35 @@ def test_sync_revision_is_persistent_and_workspace_scoped(harness: Harness) -> N
             select(Workspace.revision).where(Workspace.id == first_device["workspace_id"])
         )
     assert persisted == first_revision
+
+
+def test_revoke_and_device_reset_advance_workspace_revision(harness: Harness) -> None:
+    device, machine = harness.pair()
+    before_revoke = current_revision(harness, device["workspace_id"])
+
+    revoked = harness.client.post(
+        f"/v1/machines/{machine['machine_id']}/revoke",
+        headers=auth(device["credential"]),
+    )
+
+    assert revoked.status_code == 204
+    after_revoke = current_revision(harness, device["workspace_id"])
+    assert after_revoke > before_revoke
+    snapshot = harness.client.get(
+        "/v1/sync",
+        params={"cursor": before_revoke},
+        headers=auth(device["credential"]),
+    )
+    assert snapshot.status_code == 200
+    assert snapshot.json()["machines"] == []
+
+    reset = harness.client.delete(
+        f"/v1/devices/{device['device_id']}",
+        headers=auth(device["credential"]),
+    )
+
+    assert reset.status_code == 204
+    assert current_revision(harness, device["workspace_id"]) > after_revoke
 
 
 def test_sync_snapshot_is_bounded(harness: Harness) -> None:
@@ -256,26 +288,38 @@ def test_terminal_run_history_cursor_is_stable_and_filterable(harness: Harness) 
         headers=auth(device["credential"]),
     )
     assert [item["id"] for item in filtered.json()["items"]] == [second_machine_id]
-    assert harness.client.get(
-        "/v1/history/runs",
-        params={"limit": 0},
-        headers=auth(device["credential"]),
-    ).status_code == 422
-    assert harness.client.get(
-        "/v1/history/runs",
-        params={"limit": 101},
-        headers=auth(device["credential"]),
-    ).status_code == 422
-    assert harness.client.get(
-        "/v1/history/runs",
-        params={"cursor": "tampered"},
-        headers=auth(device["credential"]),
-    ).status_code == 400
-    assert harness.client.get(
-        "/v1/history/runs",
-        params={"cursor": first.json()["next_cursor"], "machine_id": "machine_a"},
-        headers=auth(device["credential"]),
-    ).status_code == 400
+    assert (
+        harness.client.get(
+            "/v1/history/runs",
+            params={"limit": 0},
+            headers=auth(device["credential"]),
+        ).status_code
+        == 422
+    )
+    assert (
+        harness.client.get(
+            "/v1/history/runs",
+            params={"limit": 101},
+            headers=auth(device["credential"]),
+        ).status_code
+        == 422
+    )
+    assert (
+        harness.client.get(
+            "/v1/history/runs",
+            params={"cursor": "tampered"},
+            headers=auth(device["credential"]),
+        ).status_code
+        == 400
+    )
+    assert (
+        harness.client.get(
+            "/v1/history/runs",
+            params={"cursor": first.json()["next_cursor"], "machine_id": "machine_a"},
+            headers=auth(device["credential"]),
+        ).status_code
+        == 400
+    )
 
 
 def test_notification_history_has_deterministic_pages(harness: Harness) -> None:

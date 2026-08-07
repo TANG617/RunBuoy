@@ -178,6 +178,52 @@ final class APIClientTests: XCTestCase {
         XCTAssertEqual(body["generation"] as? Int, 4)
     }
 
+    func testIdentityLifecycleUsesOwnedEndpointsAndDeletionChallengeBody() async throws {
+        var captured: [URLRequest] = []
+        let api = makeAPI { request in
+            captured.append(request)
+            if request.url?.path == "/v1/workspaces/workspace_1/deletion-challenge" {
+                return (
+                    200,
+                    Data(
+                        #"{"challenge":"single-use","expires_at":"2026-08-07T12:00:00Z"}"#.utf8
+                    )
+                )
+            }
+            return (204, Data())
+        }
+
+        try await api.resetDevice()
+        try await api.revokeMachine("machine_one")
+        let challenge = try await api.requestWorkspaceDeletionChallenge()
+        try await api.deleteWorkspace(challenge: challenge.challenge)
+
+        XCTAssertEqual(challenge.challenge, "single-use")
+        XCTAssertEqual(
+            captured.map(\.httpMethod),
+            ["DELETE", "POST", "POST", "DELETE"]
+        )
+        XCTAssertEqual(
+            captured.compactMap { $0.url?.path },
+            [
+                "/v1/devices/device_1",
+                "/v1/machines/machine_one/revoke",
+                "/v1/workspaces/workspace_1/deletion-challenge",
+                "/v1/workspaces/workspace_1"
+            ]
+        )
+        let challengeBody = try XCTUnwrap(captured[2].httpBody)
+        let challengeJSON = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: challengeBody) as? [String: String]
+        )
+        XCTAssertEqual(challengeJSON, ["confirmation": "DELETE"])
+        let deleteBody = try XCTUnwrap(captured[3].httpBody)
+        let deleteJSON = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: deleteBody) as? [String: String]
+        )
+        XCTAssertEqual(deleteJSON, ["challenge": "single-use"])
+    }
+
     func testDeviceSurfaceContainsOnlyReadAndReceivingPlaneOperations() {
         let endpoints: [DeviceAPIEndpoint] = [
             .bootstrap,
@@ -194,10 +240,14 @@ final class APIClientTests: XCTestCase {
             .activityToken("activity"),
             .activitySync("device"),
             .preferences,
-            .subscription("subscription")
+            .subscription("subscription"),
+            .resetDevice("device"),
+            .revokeMachine("machine"),
+            .workspaceDeletionChallenge("workspace"),
+            .deleteWorkspace("workspace")
         ]
 
-        XCTAssertEqual(endpoints.count, 15)
+        XCTAssertEqual(endpoints.count, 19)
         XCTAssertEqual(endpoints.filter { $0.method == "GET" }.count, 7)
         XCTAssertTrue(endpoints.allSatisfy { $0.path.hasPrefix("/v1/") })
     }

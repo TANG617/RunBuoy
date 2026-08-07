@@ -125,6 +125,37 @@ final class RunBuoyUITests: XCTestCase {
         XCTAssertFalse(element("machine.localLabel").exists)
     }
 
+    func testMachineStopReceivingAndRevokeHaveDistinctDestructiveConfirmations() {
+        launch()
+        openMachines()
+
+        element("machine.row.machine_mac_studio").tap()
+        XCTAssertTrue(element("screen.machineDetail").waitForExistence(timeout: 3))
+
+        let stopReceiving = element("machine.stopReceiving")
+        if !stopReceiving.isHittable {
+            element("screen.machineDetail").swipeUp()
+        }
+        XCTAssertTrue(stopReceiving.waitForExistence(timeout: 3))
+        stopReceiving.tap()
+        XCTAssertTrue(
+            app.staticTexts[
+                "Only this iPhone’s subscription is removed. The computer stays paired and other devices are unaffected."
+            ].waitForExistence(timeout: 2)
+        )
+        app.buttons["Cancel"].tap()
+
+        let revoke = element("machine.revoke")
+        XCTAssertTrue(revoke.waitForExistence(timeout: 2))
+        revoke.tap()
+        XCTAssertTrue(
+            app.staticTexts[
+                "This immediately invalidates the computer and webhook credentials and removes every receiving subscription for it. Historical Runs remain."
+            ].waitForExistence(timeout: 2)
+        )
+        app.buttons["Cancel"].tap()
+    }
+
     func testManualPairingCodeCanBeConfirmed() {
         launch()
         openMachines()
@@ -372,6 +403,7 @@ final class RunBuoyUITests: XCTestCase {
         "Connections",
         "Notifications and Display",
         "Storage",
+        "Identity and Data",
         "About"
     ]
 }

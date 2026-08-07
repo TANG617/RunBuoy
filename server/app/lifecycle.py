@@ -34,6 +34,7 @@ from .models import (
     utcnow,
 )
 from .security import is_expired, new_bearer_token, new_id, token_hash
+from .sync import bump_workspace_revision
 
 router = APIRouter(prefix="/v1")
 
@@ -258,6 +259,7 @@ def _revoke_machine(
             "cancelled_pushes": cancelled,
         },
     )
+    bump_workspace_revision(session, machine.workspace_id)
 
 
 @router.post("/machines/{machine_id}/revoke", status_code=status.HTTP_204_NO_CONTENT)
@@ -364,6 +366,9 @@ def reset_device(
         "device.reset",
         {"cancelled_pushes": int(cancelled or 0)},
     )
+    # Bump before this Device's credential is revoked in the same transaction
+    # so other Devices never keep a stale subscription projection.
+    bump_workspace_revision(session, principal.workspace_id)
     session.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 

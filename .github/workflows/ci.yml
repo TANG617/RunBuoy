@@ -209,6 +209,7 @@ jobs:
             EXCLUDED_SOURCE_FILE_NAMES=icon.icon \
             -only-testing:RunBuoyUITests/RunBuoyUITests/testOnboardingCompletesWithSeededPairingCode \
             -only-testing:RunBuoyUITests/RunBuoyUITests/testActiveRunOpensDetailAndNavigatesBack \
+            -only-testing:RunBuoyUITests/RunBuoyUITests/testMachineStopReceivingAndRevokeHaveDistinctDestructiveConfirmations \
             test
       - name: Collect iOS 18 simulator diagnostics
         if: failure()

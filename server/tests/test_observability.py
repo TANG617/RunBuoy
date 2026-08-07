@@ -21,7 +21,7 @@ from tests.conftest import Harness
 def _mark_schema_current(harness: Harness) -> None:
     with harness.session_factory() as session:
         session.execute(text("CREATE TABLE alembic_version (version_num VARCHAR(32) NOT NULL)"))
-        session.execute(text("INSERT INTO alembic_version (version_num) VALUES ('e001_ops')"))
+        session.execute(text("INSERT INTO alembic_version (version_num) VALUES ('d001_sync')"))
         session.commit()
 
 
@@ -44,7 +44,7 @@ def test_healthz_is_liveness_and_readyz_checks_all_dependencies(harness: Harness
     report = response.json()
     assert report["status"] == "ready"
     assert report["checks"]["database"] == {"status": "ok"}
-    assert report["checks"]["migration"]["current"] == "e001_ops"
+    assert report["checks"]["migration"]["current"] == "d001_sync"
     assert report["checks"]["worker"]["fresh_healthy_instances"] == 1
     assert report["checks"]["worker"]["failed_instances"] == 1
     assert "worker-a" not in response.text
@@ -142,7 +142,7 @@ def test_metrics_have_fixed_labels_and_never_export_user_values(harness: Harness
         headers={"Authorization": f"Bearer {machine['credential']}"},
         json={"machine_id": machine["machine_id"], "title": private_title},
     )
-    harness.client.get("/v1/runs", headers={"Authorization": f"Bearer {device['credential']}"})
+    harness.client.get("/v1/sync", headers={"Authorization": f"Bearer {device['credential']}"})
     metrics.record_rate_limit("/v1/pairing-sessions")
     metrics.record_sync("not_modified")
 

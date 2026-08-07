@@ -14,6 +14,7 @@ from app.models import (
     PushOutbox,
     Run,
     RunEvent,
+    Workspace,
 )
 from app.retention import cleanup_retention
 from tests.conftest import Harness
@@ -215,6 +216,10 @@ def test_retention_is_bounded_idempotent_and_excludes_active_boundaries_and_live
         )
         session.commit()
 
+        revision_before_cleanup = session.scalar(
+            select(Workspace.revision).where(Workspace.id == device["workspace_id"])
+        )
+
         first = cleanup_retention(session, settings, now)
         session.commit()
         second = cleanup_retention(session, settings, now)
@@ -230,6 +235,12 @@ def test_retention_is_bounded_idempotent_and_excludes_active_boundaries_and_live
         assert first["pairing_sessions"] == 1
         assert first["audit_logs"] == 1
         assert first["safe_log_tails"] == 4
+        revision_after_cleanup = session.scalar(
+            select(Workspace.revision).where(Workspace.id == device["workspace_id"])
+        )
+        assert revision_after_cleanup is not None
+        assert revision_before_cleanup is not None
+        assert revision_after_cleanup > revision_before_cleanup
         assert second["safe_log_tails"] == 0
         assert not any(third.values())
         assert session.get(Run, run_ids["old"]) is None
