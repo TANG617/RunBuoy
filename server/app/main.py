@@ -7,6 +7,7 @@ from .abuse import RequestBodyLimitMiddleware
 from .api import router
 from .config import Settings
 from .lifecycle import router as lifecycle_router
+from .observability import install_observability
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -31,6 +32,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @application.get("/healthz", include_in_schema=False)
     def health() -> dict[str, str]:
         return {"status": "ok", "region": configured.region}
+
+    install_observability(application)
 
     return application
 

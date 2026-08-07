@@ -34,6 +34,7 @@ def _env_csv(name: str, default: tuple[str, ...]) -> tuple[str, ...]:
 
 @dataclass(frozen=True, slots=True)
 class Settings:
+    deployment_environment: str = "development"
     region: str = "global"
     database_url: str = "sqlite:///./runbuoy.db"
     credential_pepper: str = "runbuoy-development-only-credential-pepper"
@@ -79,11 +80,17 @@ class Settings:
     max_webhooks_per_workspace: int = 50
     max_notifications_per_workspace_day: int = 1000
     max_events_per_batch: int = 100
+    worker_heartbeat_max_age_seconds: int = 90
+    worker_heartbeat_interval_seconds: int = 15
+    worker_heartbeat_required: bool = True
 
     @classmethod
     def from_env(cls) -> Settings:
         defaults = cls()
         return cls(
+            deployment_environment=os.getenv(
+                "RUNBUOY_ENVIRONMENT", defaults.deployment_environment
+            ),
             region=os.getenv("RUNBUOY_REGION", defaults.region),
             database_url=os.getenv("DATABASE_URL", defaults.database_url),
             credential_pepper=os.getenv("CREDENTIAL_PEPPER", defaults.credential_pepper),
@@ -257,15 +264,41 @@ class Settings:
             max_events_per_batch=int(
                 os.getenv("MAX_EVENTS_PER_BATCH", str(defaults.max_events_per_batch))
             ),
+            worker_heartbeat_max_age_seconds=int(
+                os.getenv(
+                    "WORKER_HEARTBEAT_MAX_AGE_SECONDS",
+                    str(defaults.worker_heartbeat_max_age_seconds),
+                )
+            ),
+            worker_heartbeat_interval_seconds=int(
+                os.getenv(
+                    "WORKER_HEARTBEAT_INTERVAL_SECONDS",
+                    str(defaults.worker_heartbeat_interval_seconds),
+                )
+            ),
+            worker_heartbeat_required=_env_bool(
+                "WORKER_HEARTBEAT_REQUIRED", defaults.worker_heartbeat_required
+            ),
         )
 
-    def validate(self) -> None:
+    def configuration_errors(self) -> list[str]:
+        errors: list[str] = []
+        if self.deployment_environment not in {"development", "test", "production"}:
+            errors.append("RUNBUOY_ENVIRONMENT")
         if self.region not in {"global", "cn"}:
-            raise ValueError("RUNBUOY_REGION must be global or cn")
+            errors.append("RUNBUOY_REGION")
+        if not self.database_url:
+            errors.append("DATABASE_URL")
+        if self.worker_heartbeat_max_age_seconds <= 0:
+            errors.append("WORKER_HEARTBEAT_MAX_AGE_SECONDS")
+        if self.worker_heartbeat_interval_seconds <= 0:
+            errors.append("WORKER_HEARTBEAT_INTERVAL_SECONDS")
+        if self.worker_heartbeat_interval_seconds >= self.worker_heartbeat_max_age_seconds:
+            errors.append("WORKER_HEARTBEAT_INTERVAL_SECONDS")
         if self.apns_mode not in {"mock", "production"}:
-            raise ValueError("APNS_MODE must be mock or production")
+            errors.append("APNS_MODE")
         if self.apns_environment not in {"development", "production"}:
-            raise ValueError("APNS_ENVIRONMENT must be development or production")
+            errors.append("APNS_ENVIRONMENT")
         positive_retention_values = {
             "EVENT_RETENTION_HOURS": self.event_retention_hours,
             "RUN_RETENTION_DAYS": self.run_retention_days,
@@ -280,9 +313,7 @@ class Settings:
                 self.workspace_deletion_challenge_ttl_seconds
             ),
         }
-        invalid = [name for name, value in positive_retention_values.items() if value <= 0]
-        if invalid:
-            raise ValueError(f"retention settings must be positive: {', '.join(invalid)}")
+        errors.extend(name for name, value in positive_retention_values.items() if value <= 0)
         positive_limits = {
             "MAX_REQUEST_BODY_BYTES": self.max_request_body_bytes,
             "RATE_LIMIT_BUCKET_RETENTION_SECONDS": self.rate_limit_bucket_retention_seconds,
@@ -300,16 +331,14 @@ class Settings:
             "MAX_NOTIFICATIONS_PER_WORKSPACE_DAY": self.max_notifications_per_workspace_day,
             "MAX_EVENTS_PER_BATCH": self.max_events_per_batch,
         }
-        invalid = [name for name, value in positive_limits.items() if value <= 0]
-        if invalid:
-            raise ValueError(f"limits must be positive: {', '.join(invalid)}")
+        errors.extend(name for name, value in positive_limits.items() if value <= 0)
         if not self.rate_limit_ip_pepper:
-            raise ValueError("RATE_LIMIT_IP_PEPPER must not be empty")
+            errors.append("RATE_LIMIT_IP_PEPPER")
         for network in self.trusted_proxy_cidrs:
             try:
                 ipaddress.ip_network(network, strict=False)
-            except ValueError as exc:
-                raise ValueError(f"invalid TRUSTED_PROXY_CIDRS entry: {network}") from exc
+            except ValueError:
+                errors.append("TRUSTED_PROXY_CIDRS")
         if self.apns_mode == "production":
             missing = [
                 name
@@ -322,5 +351,24 @@ class Settings:
             ]
             if not self.apns_private_key and not self.apns_private_key_path:
                 missing.append("APNS_PRIVATE_KEY or APNS_PRIVATE_KEY_PATH")
-            if missing:
-                raise ValueError(f"production APNs configuration missing: {', '.join(missing)}")
+            errors.extend(missing)
+        if self.deployment_environment == "production":
+            if not self.database_url.startswith("postgresql"):
+                errors.append("DATABASE_URL")
+            if (
+                len(self.credential_pepper) < 32
+                or self.credential_pepper.startswith("runbuoy-development-only")
+                or self.credential_pepper.startswith("replace-with-")
+            ):
+                errors.append("CREDENTIAL_PEPPER")
+            if self.token_encryption_key in {
+                _development_fernet_key(),
+                "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+            }:
+                errors.append("TOKEN_ENCRYPTION_KEY")
+        return sorted(set(errors))
+
+    def validate(self) -> None:
+        errors = self.configuration_errors()
+        if errors:
+            raise ValueError(f"invalid or missing configuration: {', '.join(errors)}")

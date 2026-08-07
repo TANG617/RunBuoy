@@ -314,6 +314,21 @@ class PushAttempt(Base):
     request_headers: Mapped[dict[str, str]] = mapped_column(JSON)
 
 
+class ServiceHeartbeat(Base):
+    __tablename__ = "service_heartbeats"
+    __table_args__ = (
+        Index("ix_service_heartbeats_service_last_seen", "service_name", "last_seen_at"),
+    )
+
+    service_name: Mapped[str] = mapped_column(String(64), primary_key=True)
+    instance_id: Mapped[str] = mapped_column(String(128), primary_key=True)
+    status: Mapped[str] = mapped_column(String(16), default="healthy")
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    error_code: Mapped[str | None] = mapped_column(String(128))
+    counters_json: Mapped[dict[str, int]] = mapped_column(JSON, default=dict)
+
+
 class Webhook(Base):
     __tablename__ = "webhooks"
 
