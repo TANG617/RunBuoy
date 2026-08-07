@@ -120,7 +120,7 @@ jobs:
           path: dist/
 
       - name: Publish distributions
-        uses: pypa/gh-action-pypi-publish@4bb033805d9e19112d8c697528791ff53f6c2f74 # v1.9.0
+        uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
 
   release:
     name: Create GitHub Release after PyPI publication
