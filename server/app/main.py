@@ -3,8 +3,11 @@ from __future__ import annotations
 import uvicorn
 from fastapi import FastAPI
 
+from .abuse import RequestBodyLimitMiddleware
 from .api import router
 from .config import Settings
+from .lifecycle import router as lifecycle_router
+from .observability import install_observability
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -12,18 +15,25 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     configured.validate()
     application = FastAPI(
         title="RunBuoy API",
-        version="1.0.0",
+        version="1.1.0",
         description=(
             "One-way Machine-to-iPhone execution projection. "
             "No remote command or terminal control plane exists."
         ),
     )
     application.state.settings = configured
+    application.add_middleware(
+        RequestBodyLimitMiddleware,
+        max_bytes=configured.max_request_body_bytes,
+    )
     application.include_router(router)
+    application.include_router(lifecycle_router)
 
     @application.get("/healthz", include_in_schema=False)
     def health() -> dict[str, str]:
         return {"status": "ok", "region": configured.region}
+
+    install_observability(application)
 
     return application
 
@@ -32,4 +42,4 @@ app = create_app()
 
 
 def run() -> None:
-    uvicorn.run("app.main:app", host="0.0.0.0", port=8000)
+    uvicorn.run("app.main:app", host="0.0.0.0", port=8000, access_log=False)

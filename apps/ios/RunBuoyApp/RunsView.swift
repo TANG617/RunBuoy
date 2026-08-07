@@ -125,7 +125,10 @@ struct RunHistoryView: View {
     }
 
     private var isEmpty: Bool {
-        filteredRunModels.isEmpty && filteredMessages.isEmpty
+        filteredRunModels.isEmpty
+            && filteredMessages.isEmpty
+            && !store.canLoadMoreRuns(machineID: selectedMachineID)
+            && !store.canLoadMoreMessages(machineID: selectedMachineID)
     }
 
     var body: some View {
@@ -135,7 +138,7 @@ struct RunHistoryView: View {
                     .listRowSeparator(.hidden)
             }
 
-            if !filteredRunModels.isEmpty {
+            if !filteredRunModels.isEmpty || store.canLoadMoreRuns(machineID: selectedMachineID) {
                 Section("runs.recent") {
                     ForEach(visibleRunModels) { model in
                         NavigationLink(value: AppRoute.runDetail(model.id)) {
@@ -147,10 +150,19 @@ struct RunHistoryView: View {
                         totalCount: filteredRunModels.count,
                         isExpanded: $areRunsExpanded
                     )
+                    if store.canLoadMoreRuns(machineID: selectedMachineID) {
+                        HistoryLoadMoreButton(
+                            isLoading: store.isLoadingMoreRuns,
+                            accessibilityID: "history.runs.loadMore"
+                        ) {
+                            await store.loadMoreHistoryRuns(machineID: selectedMachineID)
+                            areRunsExpanded = true
+                        }
+                    }
                 }
             }
 
-            if !filteredMessages.isEmpty {
+            if !filteredMessages.isEmpty || store.canLoadMoreMessages(machineID: selectedMachineID) {
                 Section("runs.messages") {
                     ForEach(visibleMessages) { message in
                         RichMessageRow(message: message)
@@ -160,6 +172,15 @@ struct RunHistoryView: View {
                         totalCount: filteredMessages.count,
                         isExpanded: $areMessagesExpanded
                     )
+                    if store.canLoadMoreMessages(machineID: selectedMachineID) {
+                        HistoryLoadMoreButton(
+                            isLoading: store.isLoadingMoreMessages,
+                            accessibilityID: "history.messages.loadMore"
+                        ) {
+                            await store.loadMoreHistoryMessages(machineID: selectedMachineID)
+                            areMessagesExpanded = true
+                        }
+                    }
                 }
             }
         }
@@ -224,6 +245,31 @@ struct RunHistoryView: View {
 
     private func reload() async {
         await store.refresh()
+    }
+}
+
+private struct HistoryLoadMoreButton: View {
+    let isLoading: Bool
+    let accessibilityID: String
+    let action: () async -> Void
+
+    var body: some View {
+        Button {
+            Task { await action() }
+        } label: {
+            HStack(spacing: 8) {
+                if isLoading {
+                    ProgressView()
+                        .controlSize(.small)
+                }
+                Text(isLoading ? "history.loading_more" : "history.load_more")
+                    .font(.subheadline.weight(.semibold))
+            }
+            .frame(maxWidth: .infinity, alignment: .center)
+            .contentShape(Rectangle())
+        }
+        .disabled(isLoading)
+        .accessibilityIdentifier(accessibilityID)
     }
 }
 

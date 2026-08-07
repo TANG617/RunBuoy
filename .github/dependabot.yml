@@ -1,0 +1,59 @@
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    labels: [dependencies, github-actions]
+
+  - package-ecosystem: pip
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      root-python:
+        patterns: ["*"]
+        update-types: [minor, patch]
+    labels: [dependencies, python]
+
+  - package-ecosystem: pip
+    directory: /cli
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      cli-python:
+        patterns: ["*"]
+        update-types: [minor, patch]
+    labels: [dependencies, python]
+
+  - package-ecosystem: pip
+    directory: /server
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      server-python:
+        patterns: ["*"]
+        update-types: [minor, patch]
+    labels: [dependencies, python]
+
+  - package-ecosystem: npm
+    directory: /website
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      website:
+        patterns: ["*"]
+        update-types: [minor, patch]
+    labels: [dependencies, javascript]
+
+  - package-ecosystem: docker
+    directory: /infra
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    labels: [dependencies, docker]

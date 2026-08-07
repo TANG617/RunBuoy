@@ -126,15 +126,17 @@ struct RunBuoyApp: App {
         try await api.registerNotificationToken(token)
     }
 
-    private func refreshState() async {
-        await store.refresh()
+    @discardableResult
+    private func refreshState() async -> Bool {
+        let succeeded = await store.refresh()
         await activityCoordinator.reconcile(with: store.runs)
+        return succeeded
     }
 
     private func runAutomaticRefreshLoop() async {
         while !Task.isCancelled {
             do {
-                try await Task.sleep(for: .seconds(3))
+                try await Task.sleep(for: .seconds(store.automaticRefreshInterval))
             } catch is CancellationError {
                 return
             } catch {

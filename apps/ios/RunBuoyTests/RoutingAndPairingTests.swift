@@ -166,6 +166,7 @@ final class RoutingAndPairingTests: XCTestCase {
     func testAboutLinksUseCanonicalWebsite() {
         XCTAssertEqual(RunBuoyLinks.website.absoluteString, "https://www.runbuoy.cloud")
         XCTAssertEqual(RunBuoyLinks.privacy.absoluteString, "https://www.runbuoy.cloud/privacy")
+        XCTAssertEqual(RunBuoyLinks.support.absoluteString, "https://www.runbuoy.cloud/support")
         XCTAssertEqual(
             RunBuoyLinks.privateDeployment.absoluteString,
             "https://www.runbuoy.cloud/self-hosting"

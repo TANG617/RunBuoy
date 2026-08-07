@@ -37,6 +37,8 @@
     <true/>
     <key>NSCameraUsageDescription</key>
     <string>Scan a one-time RunBuoy machine pairing code.</string>
+    <key>NSFaceIDUsageDescription</key>
+    <string>Confirm identity before resetting this iPhone or deleting RunBuoy data.</string>
     <key>NSSupportsLiveActivities</key>
     <true/>
     <key>NSSupportsLiveActivitiesFrequentUpdates</key>

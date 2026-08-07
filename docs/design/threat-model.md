@@ -37,6 +37,18 @@ access.
 | Malicious rich text | No HTML/WebView; current iOS renders plain text and structured fields. Server-valid HTTPS `safe_link` is not consumed by the current iOS model |
 | Local socket spoofing | Per-Run path permissions and ephemeral token |
 | Server outage kills a Run | Upload failure is isolated from execution |
+| Anonymous bootstrap or pairing flood | PostgreSQL-backed HMAC-keyed IP limits, bounded pending pairings, request-body limits, and cleanup |
+| Installation ID replay takes over a Device | Anonymous bootstrap is create-only; duplicate IDs return 409 and cannot rotate or resurrect credentials |
+| Stolen Device or Machine credential | Narrow scopes, workspace ownership checks, Device reset, Machine revoke/revoke-self, and credential revocation timestamps |
+| Destructive request by the wrong tenant | Owner-scoped endpoints, rotating short-lived deletion challenge, Device-owner confirmation, and transactional deletion |
+| Backup disclosure or tampering | Restricted files, versioned manifest and checksum validation, optional encrypted restic copy, and documented retention |
+| Forged forwarding headers bypass limits | `X-Forwarded-For` is accepted only from configured trusted proxy CIDRs and parsed right-to-left |
+| Sync cursor tampering or cross-filter reuse | Opaque versioned cursors bind kind and Machine filter; future workspace revisions and malformed cursors are rejected |
+| Stale APNs or Live Activity token | Token generations are monotonic; invalid provider tokens invalidate bindings and are not retried indefinitely |
+| Cross-workspace object access | Every credential principal and object lookup is workspace-scoped; negative ownership tests cover destructive paths |
+| High-cardinality metrics exhaust or leak data | Metrics use fixed route/status/outcome classes and never label workspace, Device, Machine, credential, title, or message |
+| Operational logs disclose request content | JSON request logs use an allowlist of request ID hash, route template, method, status, latency, and bounded error class |
+| Rate-limit storage failure | Default fail-closed behavior returns 503; explicit fail-open mode is an operator decision and is covered by tests |
 
 ## Residual risks
 
@@ -46,3 +58,8 @@ and process memory allowed by the OS account. Push delivery is best effort,
 and an unavailable Server or APNs can make status stale. Server operators can
 read structured metadata unless a future end-to-end encryption design is
 added. These risks do not grant remote execution authority.
+
+Online workspace deletion cannot retroactively erase already-created encrypted
+backup copies. Operators must expire those copies under the documented backup
+retention policy and protect restore access as a separate administrative trust
+boundary.

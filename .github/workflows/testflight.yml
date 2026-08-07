@@ -16,6 +16,7 @@ on:
       - "ios-v*"
 
 permissions:
+  actions: read
   contents: read
 
 concurrency:
@@ -43,6 +44,38 @@ jobs:
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           persist-credentials: false
+
+      - name: Verify release source is an exactly tested main commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          release_sha="$(git rev-parse "${GITHUB_SHA}^{commit}")"
+          ancestry="$(
+            gh api "repos/$GITHUB_REPOSITORY/compare/${release_sha}...main" --jq '.status'
+          )"
+          if [[ "$ancestry" != "ahead" && "$ancestry" != "identical" ]]; then
+            echo "::error::Release commit is not an ancestor of main."
+            exit 1
+          fi
+          successful_runs="$(
+            gh api --method GET \
+              "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs" \
+              -f head_sha="$release_sha" \
+              -f event=push \
+              -f status=completed \
+              -f per_page=100 \
+              --jq '[.workflow_runs[] | select(.conclusion == "success" and .head_branch == "main")] | length'
+          )"
+          if (( successful_runs < 1 )); then
+            echo "::error::No successful main push CI run exists for $release_sha."
+            exit 1
+          fi
+
+      - name: Install uv and Python
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+        with:
+          python-version: "3.12"
 
       - name: Verify TestFlight credentials are configured
         shell: bash
@@ -114,6 +147,20 @@ jobs:
           echo "marketing_version=$marketing_version" >> "$GITHUB_OUTPUT"
           echo "build_number=$build_number" >> "$GITHUB_OUTPUT"
           echo "Publishing RunBuoy $marketing_version ($build_number)"
+
+      - name: Generate iOS source and dependency manifest
+        run: >-
+          uv run --no-project python scripts/generate_release_manifests.py
+          --component ios
+          --output-dir "$RUNNER_TEMP/release-manifests"
+          --source-revision "$GITHUB_SHA"
+
+      - name: Upload iOS source and dependency manifest
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
+        with:
+          name: ios-release-manifest
+          path: ${{ runner.temp }}/release-manifests/runbuoy-ios-source-manifest.json
+          if-no-files-found: error
 
       - name: Import Apple Distribution certificate
         uses: apple-actions/import-codesign-certs@5142e029c445c10ffc7149d172e540235a065466 # v7.0.0
@@ -246,3 +293,34 @@ jobs:
           api-key-id: ${{ secrets.APPSTORE_API_KEY_ID }}
           api-private-key: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
           wait-for-processing: "true"
+
+  release:
+    name: Create prerelease after TestFlight upload
+    if: github.event_name == 'push'
+    needs: publish
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      contents: write
+    steps:
+      - name: Download iOS source and dependency manifest
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0
+        with:
+          name: ios-release-manifest
+          path: artifacts/
+      - name: Create or update GitHub prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" artifacts/* --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" \
+              artifacts/* \
+              --verify-tag \
+              --generate-notes \
+              --prerelease \
+              --title "RunBuoy iOS ${GITHUB_REF_NAME#ios-v} (TestFlight)"
+          fi

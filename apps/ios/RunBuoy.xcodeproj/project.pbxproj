@@ -35,10 +35,13 @@
 		A1000000000000000000001A /* icon.icon in Resources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000019 /* icon.icon */; };
 		A1000000000000000000001B /* UITestConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000000000000000000001A /* UITestConfiguration.swift */; };
 		A1000000000000000000001C /* CapabilityDemoView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000000000000000000001B /* CapabilityDemoView.swift */; };
+		A1000000000000000000001D /* IOSCompatibility.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000000000000000000001C /* IOSCompatibility.swift */; };
+		A1000000000000000000001E /* App PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = B1000000000000000000001D /* App PrivacyInfo.xcprivacy */; };
 		A20000000000000000000001 /* RunBuoyWidgets.swift in Sources */ = {isa = PBXBuildFile; fileRef = B30000000000000000000001 /* RunBuoyWidgets.swift */; };
 		A20000000000000000000002 /* RunLiveActivityWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = B30000000000000000000002 /* RunLiveActivityWidget.swift */; };
 		A20000000000000000000003 /* RunActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000001 /* RunActivityAttributes.swift */; };
 		A20000000000000000000004 /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000002 /* Localizable.strings */; };
+		A20000000000000000000005 /* Widget PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = B30000000000000000000005 /* Widget PrivacyInfo.xcprivacy */; };
 		A30000000000000000000001 /* FixtureLoader.swift in Sources */ = {isa = PBXBuildFile; fileRef = B40000000000000000000001 /* FixtureLoader.swift */; };
 		A30000000000000000000002 /* ModelDecodingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B40000000000000000000002 /* ModelDecodingTests.swift */; };
 		A30000000000000000000003 /* RoutingAndPairingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B40000000000000000000003 /* RoutingAndPairingTests.swift */; };
@@ -50,6 +53,7 @@
 		A30000000000000000000009 /* messages.json in Resources */ = {isa = PBXBuildFile; fileRef = B40000000000000000000009 /* messages.json */; };
 		A3000000000000000000000A /* live-content-state.json in Resources */ = {isa = PBXBuildFile; fileRef = B4000000000000000000000A /* live-content-state.json */; };
 		A3000000000000000000000B /* UITestScenarioTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4000000000000000000000B /* UITestScenarioTests.swift */; };
+		A3000000000000000000000C /* IOSCompatibilityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4000000000000000000000C /* IOSCompatibilityTests.swift */; };
 		A40000000000000000000001 /* RunBuoyUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B60000000000000000000001 /* RunBuoyUITests.swift */; };
 /* End PBXBuildFile section */
 
@@ -119,6 +123,8 @@
 		B10000000000000000000019 /* icon.icon */ = {isa = PBXFileReference; lastKnownFileType = folder.iconcomposer.icon; path = icon.icon; sourceTree = "<group>"; };
 		B1000000000000000000001A /* UITestConfiguration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UITestConfiguration.swift; sourceTree = "<group>"; };
 		B1000000000000000000001B /* CapabilityDemoView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CapabilityDemoView.swift; sourceTree = "<group>"; };
+		B1000000000000000000001C /* IOSCompatibility.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IOSCompatibility.swift; sourceTree = "<group>"; };
+		B1000000000000000000001D /* App PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		B20000000000000000000001 /* RunActivityAttributes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RunActivityAttributes.swift; sourceTree = "<group>"; };
 		B20000000000000000000003 /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/Localizable.strings; sourceTree = "<group>"; };
 		B20000000000000000000004 /* zh-Hans */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hans"; path = "zh-Hans.lproj/Localizable.strings"; sourceTree = "<group>"; };
@@ -127,6 +133,7 @@
 		B30000000000000000000002 /* RunLiveActivityWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RunLiveActivityWidget.swift; sourceTree = "<group>"; };
 		B30000000000000000000003 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		B30000000000000000000004 /* RunBuoyWidgets.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = RunBuoyWidgets.entitlements; sourceTree = "<group>"; };
+		B30000000000000000000005 /* Widget PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		B40000000000000000000001 /* FixtureLoader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FixtureLoader.swift; sourceTree = "<group>"; };
 		B40000000000000000000002 /* ModelDecodingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelDecodingTests.swift; sourceTree = "<group>"; };
 		B40000000000000000000003 /* RoutingAndPairingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoutingAndPairingTests.swift; sourceTree = "<group>"; };
@@ -138,6 +145,7 @@
 		B40000000000000000000009 /* messages.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = messages.json; sourceTree = "<group>"; };
 		B4000000000000000000000A /* live-content-state.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "live-content-state.json"; sourceTree = "<group>"; };
 		B4000000000000000000000B /* UITestScenarioTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UITestScenarioTests.swift; sourceTree = "<group>"; };
+		B4000000000000000000000C /* IOSCompatibilityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IOSCompatibilityTests.swift; sourceTree = "<group>"; };
 		B50000000000000000000001 /* RunBuoy.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = RunBuoy.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		B50000000000000000000002 /* RunBuoyWidgets.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = RunBuoyWidgets.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		B50000000000000000000003 /* RunBuoyTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = RunBuoyTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -211,6 +219,7 @@
 				B1000000000000000000000E /* RunDetailView.swift */,
 				B1000000000000000000000F /* SettingsView.swift */,
 				B1000000000000000000001B /* CapabilityDemoView.swift */,
+				B1000000000000000000001C /* IOSCompatibility.swift */,
 				B10000000000000000000010 /* MachinesView.swift */,
 				B10000000000000000000011 /* QRScannerView.swift */,
 				B10000000000000000000012 /* OnboardingView.swift */,
@@ -221,6 +230,7 @@
 				B10000000000000000000015 /* Info.plist */,
 				B10000000000000000000016 /* RunBuoyApp.Debug.entitlements */,
 				B10000000000000000000017 /* RunBuoyApp.Release.entitlements */,
+				B1000000000000000000001D /* App PrivacyInfo.xcprivacy */,
 			);
 			path = RunBuoyApp;
 			sourceTree = "<group>";
@@ -242,6 +252,7 @@
 				B30000000000000000000002 /* RunLiveActivityWidget.swift */,
 				B30000000000000000000003 /* Info.plist */,
 				B30000000000000000000004 /* RunBuoyWidgets.entitlements */,
+				B30000000000000000000005 /* Widget PrivacyInfo.xcprivacy */,
 			);
 			path = RunBuoyWidgets;
 			sourceTree = "<group>";
@@ -255,6 +266,7 @@
 				B40000000000000000000004 /* CacheStoreTests.swift */,
 				B40000000000000000000005 /* APIClientTests.swift */,
 				B4000000000000000000000B /* UITestScenarioTests.swift */,
+				B4000000000000000000000C /* IOSCompatibilityTests.swift */,
 				B00000000000000000000006 /* Fixtures */,
 			);
 			path = RunBuoyTests;
@@ -423,6 +435,7 @@
 				A10000000000000000000015 /* Assets.xcassets in Resources */,
 				A10000000000000000000016 /* Localizable.strings in Resources */,
 				A10000000000000000000017 /* InfoPlist.xcstrings in Resources */,
+				A1000000000000000000001E /* App PrivacyInfo.xcprivacy in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -431,6 +444,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				A20000000000000000000004 /* Localizable.strings in Resources */,
+				A20000000000000000000005 /* Widget PrivacyInfo.xcprivacy in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -476,6 +490,7 @@
 				A1000000000000000000000E /* RunDetailView.swift in Sources */,
 				A1000000000000000000000F /* SettingsView.swift in Sources */,
 				A1000000000000000000001C /* CapabilityDemoView.swift in Sources */,
+				A1000000000000000000001D /* IOSCompatibility.swift in Sources */,
 				A10000000000000000000010 /* MachinesView.swift in Sources */,
 				A10000000000000000000011 /* QRScannerView.swift in Sources */,
 				A10000000000000000000012 /* OnboardingView.swift in Sources */,
@@ -506,6 +521,7 @@
 				A30000000000000000000004 /* CacheStoreTests.swift in Sources */,
 				A30000000000000000000005 /* APIClientTests.swift in Sources */,
 				A3000000000000000000000B /* UITestScenarioTests.swift in Sources */,
+				A3000000000000000000000C /* IOSCompatibilityTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -559,7 +575,7 @@
 				ENABLE_TESTABILITY = YES;
 				ENABLE_USER_SCRIPT_SANDBOXING = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu17;
-				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
 				SDKROOT = iphoneos;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
@@ -575,7 +591,7 @@
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_USER_SCRIPT_SANDBOXING = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu17;
-				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
 				SDKROOT = iphoneos;
 				SWIFT_COMPILATION_MODE = wholemodule;
 			};
@@ -592,11 +608,12 @@
 				DEVELOPMENT_TEAM = PRTA2MGMQH;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = RunBuoyApp/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.0.0;
+				MARKETING_VERSION = 1.0.4;
 				PRODUCT_BUNDLE_IDENTIFIER = dev.runbuoy.app;
 				PRODUCT_MODULE_NAME = RunBuoyApp;
 				PRODUCT_NAME = RunBuoy;
@@ -618,11 +635,12 @@
 				DEVELOPMENT_TEAM = PRTA2MGMQH;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = RunBuoyApp/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.0.0;
+				MARKETING_VERSION = 1.0.4;
 				PRODUCT_BUNDLE_IDENTIFIER = dev.runbuoy.app;
 				PRODUCT_MODULE_NAME = RunBuoyApp;
 				PRODUCT_NAME = RunBuoy;
@@ -644,12 +662,13 @@
 				DEVELOPMENT_TEAM = PRTA2MGMQH;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = RunBuoyWidgets/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 1.0.0;
+				MARKETING_VERSION = 1.0.4;
 				PRODUCT_BUNDLE_IDENTIFIER = dev.runbuoy.app.widgets;
 				PRODUCT_NAME = RunBuoyWidgets;
 				SKIP_INSTALL = YES;
@@ -669,12 +688,13 @@
 				DEVELOPMENT_TEAM = PRTA2MGMQH;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = RunBuoyWidgets/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 1.0.0;
+				MARKETING_VERSION = 1.0.4;
 				PRODUCT_BUNDLE_IDENTIFIER = dev.runbuoy.app.widgets;
 				PRODUCT_NAME = RunBuoyWidgets;
 				PROVISIONING_PROFILE_SPECIFIER = "$(RUNBUOY_WIDGET_PROVISIONING_PROFILE)";
@@ -691,7 +711,7 @@
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
 				GENERATE_INFOPLIST_FILE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
 				PRODUCT_BUNDLE_IDENTIFIER = dev.runbuoy.app.tests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_VERSION = 5.0;
@@ -706,7 +726,7 @@
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
 				GENERATE_INFOPLIST_FILE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
 				PRODUCT_BUNDLE_IDENTIFIER = dev.runbuoy.app.tests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_VERSION = 5.0;
@@ -720,7 +740,7 @@
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
 				GENERATE_INFOPLIST_FILE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
 				PRODUCT_BUNDLE_IDENTIFIER = dev.runbuoy.app.uitests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_VERSION = 5.0;
@@ -734,7 +754,7 @@
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
 				GENERATE_INFOPLIST_FILE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
 				PRODUCT_BUNDLE_IDENTIFIER = dev.runbuoy.app.uitests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_VERSION = 5.0;

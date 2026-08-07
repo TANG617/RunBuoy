@@ -1341,6 +1341,100 @@ def device_status(
             typer.echo("Next: run `runbuoy device pair`.")
 
 
+@device_app.command("unpair")
+def device_unpair(
+    local_only: bool = typer.Option(
+        False,
+        "--local-only",
+        help="Delete only the local credential; the Server credential may remain valid.",
+    ),
+    yes: bool = typer.Option(
+        False,
+        "--yes",
+        "-y",
+        help="Confirm credential revocation without prompting.",
+    ),
+    json_output: bool = typer.Option(False, "--json", help="Write JSON to stdout."),
+) -> None:
+    """Revoke this machine's Server credential, then remove its local copy."""
+
+    _paths, config, credentials, _queue = _context()
+    credential = credentials.get("machine_credential")
+    if credential is None:
+        if json_output:
+            _json_print(
+                {
+                    "ok": True,
+                    "state": "unpaired",
+                    "server_revoked": False,
+                    "local_credential_deleted": False,
+                }
+            )
+        else:
+            typer.echo("This machine is already unpaired locally.")
+        return
+    if not yes:
+        if json_output or not sys.stdin.isatty():
+            _fail(
+                "unpair requires explicit confirmation in non-interactive mode",
+                code="confirmation_required",
+                json_output=json_output,
+                hint="Retry with `runbuoy device unpair --yes`.",
+            )
+        if not typer.confirm("Revoke this machine's RunBuoy credential?"):
+            raise typer.Abort()
+
+    server_revoked = False
+    warning: str | None = None
+    if local_only:
+        warning = "Server credential may remain valid because --local-only was used."
+    else:
+        if config.machine_id is None:
+            _fail(
+                "paired credential has no local machine ID",
+                code="machine_identity_missing",
+                json_output=json_output,
+                hint="Keep the credential and repair config before retrying.",
+            )
+        client = RemoteClient(config, credentials)
+        try:
+            client.revoke_machine_self(config.machine_id)
+        except (httpx.HTTPError, RemoteError, OSError) as error:
+            _fail(
+                safe_message(str(error)) or "Server revocation failed",
+                code="server_revoke_failed",
+                json_output=json_output,
+                hint=(
+                    "The local credential was kept. Retry when the Server is reachable, "
+                    "or use --local-only if you accept that it may remain valid."
+                ),
+            )
+        finally:
+            client.close()
+        server_revoked = True
+
+    credentials.delete("machine_credential")
+    credentials.delete(PENDING_SESSION_KEY)
+    result = {
+        "ok": True,
+        "state": "unpaired",
+        "machine_id": config.machine_id,
+        "server_revoked": server_revoked,
+        "local_credential_deleted": True,
+        "local_runs_preserved": True,
+    }
+    if warning is not None:
+        result["warning"] = warning
+    if json_output:
+        _json_print(result)
+    else:
+        typer.echo("Local machine credential removed.")
+        if server_revoked:
+            typer.echo("Server credential revoked.")
+        if warning is not None:
+            error_console.print(f"[yellow]Warning:[/yellow] {warning}")
+
+
 @app.command(rich_help_panel="Setup and diagnostics")
 def sync(
     json_output: bool = typer.Option(False, "--json", help="Write JSON to stdout."),

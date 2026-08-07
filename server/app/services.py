@@ -2,13 +2,13 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, datetime, timedelta
-from typing import Any, cast
+from typing import Any
 
 from fastapi import HTTPException, status
-from sqlalchemy import delete, select, text, update
-from sqlalchemy.engine import CursorResult
+from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
+from .abuse import enforce_notification_daily_quota
 from .config import Settings
 from .models import (
     Device,
@@ -24,6 +24,7 @@ from .models import (
 from .schemas import NotificationCreate
 from .schemas import RunEvent as RunEventInput
 from .security import new_id
+from .sync import bump_workspace_revision
 
 TERMINAL_STATUSES = frozenset({"SUCCEEDED", "FAILED", "CANCELLED", "LOST"})
 LIVE_ACTIVITY_DELIVERABLE_STATES = frozenset({"active", "stale"})
@@ -258,15 +259,17 @@ def _subscribed_devices(session: Session, run: Run) -> list[Device]:
 def _schedule_notification_push(
     session: Session, notification: Notification, *, priority: int = 10
 ) -> None:
-    devices = list(
-        session.scalars(
-            select(Device).where(
-                Device.workspace_id == notification.workspace_id,
-                Device.revoked_at.is_(None),
-                Device.notification_token_encrypted.is_not(None),
-            )
-        )
+    devices_query = select(Device).where(
+        Device.workspace_id == notification.workspace_id,
+        Device.revoked_at.is_(None),
+        Device.notification_token_encrypted.is_not(None),
     )
+    if notification.machine_id is not None:
+        devices_query = devices_query.join(
+            MachineDeviceSubscription,
+            MachineDeviceSubscription.device_id == Device.id,
+        ).where(MachineDeviceSubscription.machine_id == notification.machine_id)
+    devices = list(session.scalars(devices_query))
     for device in devices:
         if notification.level == "success" and not device.success_notifications_enabled:
             continue
@@ -287,6 +290,7 @@ def _schedule_notification_push(
 
 def create_notification(
     session: Session,
+    settings: Settings,
     *,
     workspace_id: str,
     machine_id: str | None,
@@ -302,6 +306,11 @@ def create_notification(
         )
         if existing is not None:
             return existing
+    enforce_notification_daily_quota(
+        session,
+        settings,
+        workspace_id=workspace_id,
+    )
     notification = Notification(
         id=new_id("ntf"),
         workspace_id=workspace_id,
@@ -318,8 +327,40 @@ def create_notification(
     )
     session.add(notification)
     session.flush()
+    bump_workspace_revision(session, workspace_id)
     _schedule_notification_push(session, notification)
     return notification
+
+
+def _create_fallback_notification(
+    session: Session,
+    settings: Settings,
+    *,
+    workspace_id: str,
+    machine_id: str,
+    body: NotificationCreate,
+    dedupe_key: str,
+) -> None:
+    try:
+        # An automatic fallback must never prevent the terminal Run projection
+        # from converging. Roll back only notification accounting/materialization
+        # when the Workspace has exhausted its daily notification quota.
+        with session.begin_nested():
+            create_notification(
+                session,
+                settings,
+                workspace_id=workspace_id,
+                machine_id=machine_id,
+                body=body,
+                dedupe_key=dedupe_key,
+            )
+    except HTTPException as exc:
+        detail: dict[str, Any] = exc.detail if isinstance(exc.detail, dict) else {}
+        if (
+            exc.status_code != status.HTTP_429_TOO_MANY_REQUESTS
+            or detail.get("resource") != "notifications"
+        ):
+            raise
 
 
 def schedule_binding_end(
@@ -449,8 +490,9 @@ def schedule_run_pushes(
                 level="error",
                 run_id=run.id,
             )
-            create_notification(
+            _create_fallback_notification(
                 session,
+                settings,
                 workspace_id=run.workspace_id,
                 machine_id=run.machine_id,
                 body=body,
@@ -463,8 +505,9 @@ def schedule_run_pushes(
             and not sent_start_exists
         )
         if should_fallback_success:
-            create_notification(
+            _create_fallback_notification(
                 session,
+                settings,
                 workspace_id=run.workspace_id,
                 machine_id=run.machine_id,
                 body=NotificationCreate(
@@ -645,57 +688,9 @@ def cleanup_retention(
     settings: Settings,
     now: datetime | None = None,
 ) -> dict[str, int]:
-    current = now or utcnow()
-    expired_notifications = cast(
-        CursorResult[Any],
-        session.execute(
-            delete(Notification).where(
-                Notification.expires_at.is_not(None),
-                Notification.expires_at <= current,
-            )
-        ),
-    ).rowcount
-    cutoff = current - timedelta(hours=settings.event_retention_hours)
-    old_events = cast(
-        CursorResult[Any],
-        session.execute(
-            delete(RunEvent).where(
-                RunEvent.received_at < cutoff,
-                RunEvent.run_id.in_(select(Run.id).where(Run.ended_at.is_not(None))),
-            )
-        ),
-    ).rowcount
-    cleared_tails = cast(
-        CursorResult[Any],
-        session.execute(
-            update(Run)
-            .where(
-                Run.ended_at.is_not(None),
-                Run.ended_at < cutoff,
-                Run.safe_log_tail.is_not(None),
-            )
-            .values(safe_log_tail=None)
-        ),
-    ).rowcount
-    expired_pending_activities = cast(
-        CursorResult[Any],
-        session.execute(
-            update(LiveActivityBinding)
-            .where(
-                LiveActivityBinding.activity_id.like("pending:%"),
-                LiveActivityBinding.state == "active",
-                LiveActivityBinding.started_at
-                < current - timedelta(seconds=settings.live_activity_pending_ttl_seconds),
-            )
-            .values(state="expired", ended_at=current)
-        ),
-    ).rowcount
-    return {
-        "notifications": int(expired_notifications or 0),
-        "events": int(old_events or 0),
-        "safe_log_tails": int(cleared_tails or 0),
-        "pending_live_activities": int(expired_pending_activities or 0),
-    }
+    from .retention import cleanup_retention as cleanup
+
+    return cleanup(session, settings, now)
 
 
 def deterministic_webhook_run_id(webhook_id: str, external_run_id: str) -> str:

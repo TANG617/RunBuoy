@@ -6,6 +6,7 @@ on:
       - "cli-v*"
 
 permissions:
+  actions: read
   contents: read
 
 jobs:
@@ -13,9 +14,36 @@ jobs:
     name: Build and verify package
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           persist-credentials: false
+
+      - name: Verify release source is an exactly tested main commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          release_sha="$(git rev-parse "${GITHUB_SHA}^{commit}")"
+          ancestry="$(
+            gh api "repos/$GITHUB_REPOSITORY/compare/${release_sha}...main" --jq '.status'
+          )"
+          if [[ "$ancestry" != "ahead" && "$ancestry" != "identical" ]]; then
+            echo "::error::Release commit is not an ancestor of main."
+            exit 1
+          fi
+          successful_runs="$(
+            gh api --method GET \
+              "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs" \
+              -f head_sha="$release_sha" \
+              -f event=push \
+              -f status=completed \
+              -f per_page=100 \
+              --jq '[.workflow_runs[] | select(.conclusion == "success" and .head_branch == "main")] | length'
+          )"
+          if (( successful_runs < 1 )); then
+            echo "::error::No successful main push CI run exists for $release_sha."
+            exit 1
+          fi
 
       - name: Install uv
         uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
@@ -53,11 +81,25 @@ jobs:
           runbuoy --help
           runbuoy doctor --json
 
+      - name: Generate CLI SBOM
+        run: >-
+          uv run --no-project python scripts/generate_release_manifests.py
+          --component cli
+          --output-dir artifacts
+          --source-revision "$GITHUB_SHA"
+
       - name: Upload distributions
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
         with:
           name: python-package-distributions
           path: cli/dist/
+          if-no-files-found: error
+
+      - name: Upload CLI SBOM
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
+        with:
+          name: cli-release-manifest
+          path: artifacts/runbuoy-cli.cdx.json
           if-no-files-found: error
 
   publish:
@@ -72,10 +114,44 @@ jobs:
 
     steps:
       - name: Download distributions
-        uses: actions/download-artifact@v6
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0
         with:
           name: python-package-distributions
           path: dist/
 
       - name: Publish distributions
-        uses: pypa/gh-action-pypi-publish@release/v1
+        uses: pypa/gh-action-pypi-publish@4bb033805d9e19112d8c697528791ff53f6c2f74 # v1.9.0
+
+  release:
+    name: Create GitHub Release after PyPI publication
+    needs: publish
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      contents: write
+    steps:
+      - name: Download distributions
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0
+        with:
+          name: python-package-distributions
+          path: dist/
+      - name: Download CLI SBOM
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0
+        with:
+          name: cli-release-manifest
+          path: artifacts/
+      - name: Create or update GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" dist/* artifacts/* --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" \
+              dist/* artifacts/* \
+              --verify-tag \
+              --generate-notes \
+              --title "RunBuoy CLI ${GITHUB_REF_NAME#cli-v}"
+          fi

@@ -1,0 +1,318 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+umask 077
+
+BACKUP_DIRECTORY=""
+DB_CONTAINER="${RUNBUOY_DB_CONTAINER:-runbuoy-db-1}"
+TARGET_DATABASE=""
+TARGET_CONFIG_ROOT=""
+EXPECTED_REVISION="${RUNBUOY_EXPECTED_MIGRATION_REVISION:-}"
+CONFIRMATION=""
+PRODUCTION_RESTORE=0
+TEMP_DIRECTORY=""
+STAGED_CONFIG=""
+LOCK_DIRECTORY=""
+STAGING_DATABASE=""
+
+usage() {
+  cat >&2 <<'EOF'
+Usage: restore-runbuoy --backup DIR --target-database NAME --target-config-root DIR
+                       --confirm 'RESTORE DISPOSABLE' [--target-db-container NAME]
+                       [--expected-revision REVISION]
+
+Production restore additionally requires --production, an exact confirmation of
+'RESTORE RUNBUOY PRODUCTION', a configured expected revision, and stopped API/worker.
+EOF
+  exit 2
+}
+
+fail() {
+  echo "RunBuoy restore refused: $1" >&2
+  exit 2
+}
+
+cleanup() {
+  if [[ -n "$STAGING_DATABASE" ]]; then
+    docker exec "$DB_CONTAINER" dropdb \
+      --username "$DB_USER" --if-exists --force "$STAGING_DATABASE" >/dev/null 2>&1 || true
+  fi
+  if [[ -n "$STAGED_CONFIG" && -d "$STAGED_CONFIG" ]]; then
+    rm -r -- "$STAGED_CONFIG"
+  fi
+  if [[ -n "$TEMP_DIRECTORY" && -d "$TEMP_DIRECTORY" ]]; then
+    rm -r -- "$TEMP_DIRECTORY"
+  fi
+  if [[ -n "$LOCK_DIRECTORY" && -d "$LOCK_DIRECTORY" ]]; then
+    rmdir -- "$LOCK_DIRECTORY" 2>/dev/null || true
+  fi
+}
+trap cleanup EXIT
+
+while (($#)); do
+  case "$1" in
+    --backup) BACKUP_DIRECTORY="${2:-}"; shift 2 ;;
+    --target-db-container) DB_CONTAINER="${2:-}"; shift 2 ;;
+    --target-database) TARGET_DATABASE="${2:-}"; shift 2 ;;
+    --target-config-root) TARGET_CONFIG_ROOT="${2:-}"; shift 2 ;;
+    --expected-revision) EXPECTED_REVISION="${2:-}"; shift 2 ;;
+    --confirm) CONFIRMATION="${2:-}"; shift 2 ;;
+    --production) PRODUCTION_RESTORE=1; shift ;;
+    -h|--help) usage ;;
+    *) usage ;;
+  esac
+done
+
+if ((EUID != 0)) && [[ "${RUNBUOY_ALLOW_NON_ROOT:-0}" != "1" ]]; then
+  fail "must run as root"
+fi
+[[ -n "$BACKUP_DIRECTORY" && -d "$BACKUP_DIRECTORY" ]] || fail "backup directory is unavailable"
+[[ -n "$TARGET_DATABASE" ]] || fail "target database is required"
+[[ "$TARGET_DATABASE" =~ ^[A-Za-z_][A-Za-z0-9_.-]{0,62}$ ]] || fail "invalid target database"
+[[ "$TARGET_CONFIG_ROOT" == /* && "$TARGET_CONFIG_ROOT" != "/" ]] || \
+  fail "invalid target config root"
+
+if ((PRODUCTION_RESTORE)); then
+  [[ "$CONFIRMATION" == "RESTORE RUNBUOY PRODUCTION" ]] || \
+    fail "production confirmation did not match"
+  [[ -n "$EXPECTED_REVISION" ]] || fail "production restore requires an expected revision"
+  [[ "$TARGET_CONFIG_ROOT" == "${RUNBUOY_PRODUCTION_CONFIG_ROOT:-/etc/runbuoy}" ]] || \
+    fail "production config target does not match the configured root"
+  compose_project="${RUNBUOY_COMPOSE_PROJECT:-runbuoy}"
+  for service in api worker; do
+    running_containers="$(docker ps --quiet \
+      --filter "label=com.docker.compose.project=$compose_project" \
+      --filter "label=com.docker.compose.service=$service")"
+    [[ -z "$running_containers" ]] || fail "API and worker containers must be stopped"
+  done
+else
+  [[ "$CONFIRMATION" == "RESTORE DISPOSABLE" ]] || fail "disposable confirmation did not match"
+  [[ "$TARGET_DATABASE" == runbuoy_restore_* ]] || \
+    fail "disposable database name must start with runbuoy_restore_"
+  [[ "$TARGET_CONFIG_ROOT" == /tmp/* ]] || fail "disposable config root must be under /tmp"
+fi
+
+readonly BACKUP_DIRECTORY DB_CONTAINER TARGET_DATABASE TARGET_CONFIG_ROOT
+readonly EXPECTED_REVISION CONFIRMATION PRODUCTION_RESTORE
+TARGET_CONFIG_PARENT="$(dirname "$TARGET_CONFIG_ROOT")"
+readonly TARGET_CONFIG_PARENT
+if ((PRODUCTION_RESTORE)); then
+  install -d -m 0755 "${RUNBUOY_RESTORE_LOCK_ROOT:-/run/lock}"
+  LOCK_DIRECTORY="${RUNBUOY_RESTORE_LOCK_ROOT:-/run/lock}/runbuoy-restore.lock.d"
+else
+  install -d -m 0700 "$TARGET_CONFIG_PARENT"
+  LOCK_DIRECTORY="$TARGET_CONFIG_PARENT/.runbuoy-restore.lock.d"
+fi
+mkdir -m 0700 "$LOCK_DIRECTORY" 2>/dev/null || fail "another RunBuoy restore is running"
+
+for artifact in manifest.json SHA256SUMS runbuoy.pg_dump runbuoy-config.tar.gz; do
+  [[ -f "$BACKUP_DIRECTORY/$artifact" && ! -L "$BACKUP_DIRECTORY/$artifact" ]] || \
+    fail "required backup artifact is unavailable"
+done
+(
+  cd "$BACKUP_DIRECTORY"
+  sha256sum --check --strict SHA256SUMS >/dev/null
+) || fail "backup checksum list validation failed"
+
+MANIFEST_VALUES="$(python3 - "$BACKUP_DIRECTORY" <<'PY'
+import hashlib
+import json
+import pathlib
+import re
+import sys
+import tarfile
+
+root = pathlib.Path(sys.argv[1])
+manifest = json.loads((root / "manifest.json").read_text(encoding="utf-8"))
+if manifest.get("schema") != "runbuoy-backup/v1":
+    raise SystemExit("unsupported backup manifest")
+database = manifest.get("database")
+if not isinstance(database, dict) or database.get("engine") != "postgresql":
+    raise SystemExit("invalid database manifest")
+revision = database.get("migration_revision")
+version = database.get("server_version")
+config_root = manifest.get("config_root")
+if not isinstance(revision, str) or not re.fullmatch(r"[A-Za-z0-9_]+", revision):
+    raise SystemExit("invalid migration revision")
+if not isinstance(version, str) or not re.match(r"^[0-9]+(?:\.[0-9]+)*", version):
+    raise SystemExit("invalid PostgreSQL version")
+if not isinstance(config_root, str) or not config_root.startswith("/") or config_root == "/":
+    raise SystemExit("invalid config root")
+artifacts = manifest.get("artifacts")
+expected_names = {"runbuoy.pg_dump", "runbuoy-config.tar.gz"}
+if not isinstance(artifacts, dict) or set(artifacts) != expected_names:
+    raise SystemExit("invalid artifact manifest")
+for name in sorted(expected_names):
+    metadata = artifacts[name]
+    path = root / name
+    checksum = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            checksum.update(chunk)
+    digest = checksum.hexdigest()
+    if not isinstance(metadata, dict) or digest != metadata.get("sha256"):
+        raise SystemExit(f"checksum mismatch for {name}")
+    if path.stat().st_size != metadata.get("size"):
+        raise SystemExit(f"size mismatch for {name}")
+with tarfile.open(root / "runbuoy-config.tar.gz", "r:gz") as archive:
+    prefix = config_root.lstrip("/")
+    for member in archive.getmembers():
+        path = pathlib.PurePosixPath(member.name)
+        if path.is_absolute() or ".." in path.parts:
+            raise SystemExit("unsafe config archive path")
+        if not (member.name == prefix or member.name.startswith(prefix + "/")):
+            raise SystemExit("config archive is outside its declared root")
+        if member.issym() or member.islnk():
+            raise SystemExit("config archive contains a link")
+print("\t".join((revision, version, config_root)))
+PY
+)" || fail "manifest or checksum validation failed"
+IFS=$'\t' read -r MIGRATION_REVISION POSTGRES_VERSION SOURCE_CONFIG_ROOT <<<"$MANIFEST_VALUES"
+readonly MIGRATION_REVISION POSTGRES_VERSION SOURCE_CONFIG_ROOT
+if [[ -n "$EXPECTED_REVISION" && "$MIGRATION_REVISION" != "$EXPECTED_REVISION" ]]; then
+  fail "backup migration revision is incompatible with this release"
+fi
+
+docker inspect "$DB_CONTAINER" >/dev/null
+[[ "$(docker inspect --format '{{.State.Running}}' "$DB_CONTAINER")" == "true" ]] || \
+  fail "database container is not running"
+DB_USER="${RUNBUOY_DATABASE_USER:-$(docker exec "$DB_CONTAINER" sh -c 'printf %s "$POSTGRES_USER"')}"
+readonly DB_USER
+[[ "$DB_USER" =~ ^[A-Za-z_][A-Za-z0-9_.-]{0,62}$ ]] || fail "invalid database user"
+if ((PRODUCTION_RESTORE)); then
+  PRODUCTION_DATABASE="$(docker exec "$DB_CONTAINER" sh -c 'printf %s "$POSTGRES_DB"')"
+  [[ "$TARGET_DATABASE" == "$PRODUCTION_DATABASE" ]] || \
+    fail "production database target does not match the container database"
+fi
+TARGET_POSTGRES_VERSION="$(
+  docker exec "$DB_CONTAINER" psql \
+    --username "$DB_USER" --dbname postgres --tuples-only --no-align \
+    --command 'SHOW server_version'
+)"
+readonly TARGET_POSTGRES_VERSION
+SOURCE_MAJOR="${POSTGRES_VERSION%%.*}"
+TARGET_MAJOR="${TARGET_POSTGRES_VERSION%%.*}"
+((TARGET_MAJOR >= SOURCE_MAJOR)) || fail "target PostgreSQL is older than the backup source"
+docker exec -i "$DB_CONTAINER" pg_restore --list \
+  <"$BACKUP_DIRECTORY/runbuoy.pg_dump" >/dev/null
+
+install -d -m 0700 "$TARGET_CONFIG_PARENT"
+TEMP_DIRECTORY="$(mktemp -d "$TARGET_CONFIG_PARENT/.runbuoy-restore.XXXXXX")"
+tar --extract --gzip \
+  --file "$BACKUP_DIRECTORY/runbuoy-config.tar.gz" \
+  --directory "$TEMP_DIRECTORY"
+EXTRACTED_CONFIG="$TEMP_DIRECTORY/${SOURCE_CONFIG_ROOT#/}"
+readonly EXTRACTED_CONFIG
+[[ -d "$EXTRACTED_CONFIG" ]] || fail "config archive did not contain its declared root"
+STAGED_CONFIG="$TARGET_CONFIG_PARENT/.runbuoy-config-new.$$"
+[[ ! -e "$STAGED_CONFIG" ]] || fail "staged config path already exists"
+install -d -m 0700 "$STAGED_CONFIG"
+cp -a "$EXTRACTED_CONFIG/." "$STAGED_CONFIG/"
+find "$STAGED_CONFIG" -type d -exec chmod 0700 {} +
+find "$STAGED_CONFIG" -type f -exec chmod 0600 {} +
+if ((EUID == 0)); then
+  chown -R 0:0 "$STAGED_CONFIG"
+fi
+
+STAGING_DATABASE="${TARGET_DATABASE:0:36}_runbuoy_stage_$$"
+PREVIOUS_DATABASE="${TARGET_DATABASE:0:36}_runbuoy_previous_$$"
+readonly PREVIOUS_DATABASE
+docker exec "$DB_CONTAINER" dropdb \
+  --username "$DB_USER" --if-exists --force "$STAGING_DATABASE"
+docker exec "$DB_CONTAINER" createdb --username "$DB_USER" "$STAGING_DATABASE"
+if ! docker exec -i "$DB_CONTAINER" pg_restore \
+  --username "$DB_USER" \
+  --dbname "$STAGING_DATABASE" \
+  --exit-on-error \
+  --no-owner \
+  --no-privileges \
+  <"$BACKUP_DIRECTORY/runbuoy.pg_dump"; then
+  docker exec "$DB_CONTAINER" dropdb \
+    --username "$DB_USER" --if-exists --force "$STAGING_DATABASE" || true
+  STAGING_DATABASE=""
+  fail "database restore failed; the original target was left unchanged"
+fi
+restored_revision="$(docker exec "$DB_CONTAINER" psql \
+  --username "$DB_USER" --dbname "$STAGING_DATABASE" --tuples-only --no-align \
+  --command 'SELECT version_num FROM alembic_version')"
+[[ "$restored_revision" == "$MIGRATION_REVISION" ]] || \
+  fail "restored database migration revision does not match the manifest"
+
+target_exists="$(docker exec "$DB_CONTAINER" psql \
+  --username "$DB_USER" --dbname postgres --tuples-only --no-align \
+  --command "SELECT 1 FROM pg_database WHERE datname = '$TARGET_DATABASE'")"
+if [[ -n "$target_exists" ]]; then
+  previous_exists="$(docker exec "$DB_CONTAINER" psql \
+    --username "$DB_USER" --dbname postgres --tuples-only --no-align \
+    --command "SELECT 1 FROM pg_database WHERE datname = '$PREVIOUS_DATABASE'")"
+  [[ -z "$previous_exists" ]] || fail "database safety name already exists"
+  docker exec "$DB_CONTAINER" psql \
+    --username "$DB_USER" --dbname postgres --set=ON_ERROR_STOP=1 \
+    --command "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '$TARGET_DATABASE' AND pid <> pg_backend_pid()" \
+    >/dev/null
+  docker exec "$DB_CONTAINER" psql \
+    --username "$DB_USER" --dbname postgres --set=ON_ERROR_STOP=1 \
+    --command "ALTER DATABASE \"$TARGET_DATABASE\" RENAME TO \"$PREVIOUS_DATABASE\""
+fi
+if ! docker exec "$DB_CONTAINER" psql \
+  --username "$DB_USER" --dbname postgres --set=ON_ERROR_STOP=1 \
+  --command "ALTER DATABASE \"$STAGING_DATABASE\" RENAME TO \"$TARGET_DATABASE\""; then
+  database_rollback_ok=1
+  if [[ -n "$target_exists" ]]; then
+    if ! docker exec "$DB_CONTAINER" psql \
+      --username "$DB_USER" --dbname postgres --set=ON_ERROR_STOP=1 \
+      --command "ALTER DATABASE \"$PREVIOUS_DATABASE\" RENAME TO \"$TARGET_DATABASE\""; then
+      database_rollback_ok=0
+    fi
+  fi
+  if ((database_rollback_ok)); then
+    fail "database cutover failed; the original target was restored"
+  fi
+  fail "database cutover and automatic rollback failed; the original remains in $PREVIOUS_DATABASE"
+fi
+STAGING_DATABASE=""
+
+rollback_database_cutover() {
+  if ! docker exec "$DB_CONTAINER" dropdb \
+    --username "$DB_USER" --if-exists --force "$TARGET_DATABASE"; then
+    return 1
+  fi
+  if [[ -n "$target_exists" ]] && ! docker exec "$DB_CONTAINER" psql \
+    --username "$DB_USER" --dbname postgres --set=ON_ERROR_STOP=1 \
+    --command "ALTER DATABASE \"$PREVIOUS_DATABASE\" RENAME TO \"$TARGET_DATABASE\""; then
+    return 1
+  fi
+  return 0
+}
+
+PREVIOUS_CONFIG=""
+if [[ -e "$TARGET_CONFIG_ROOT" ]]; then
+  PREVIOUS_CONFIG="$TARGET_CONFIG_ROOT.pre-restore.$(date -u +%Y%m%dT%H%M%SZ)"
+  [[ ! -e "$PREVIOUS_CONFIG" ]] || fail "previous-config safety path already exists"
+  if ! mv "$TARGET_CONFIG_ROOT" "$PREVIOUS_CONFIG"; then
+    if rollback_database_cutover; then
+      fail "config cutover failed; the original database and config were restored"
+    fi
+    fail "config cutover and database rollback failed; the original database remains in $PREVIOUS_DATABASE"
+  fi
+fi
+readonly PREVIOUS_CONFIG
+if ! mv "$STAGED_CONFIG" "$TARGET_CONFIG_ROOT"; then
+  config_rollback_ok=1
+  if [[ -n "$PREVIOUS_CONFIG" ]] && ! mv "$PREVIOUS_CONFIG" "$TARGET_CONFIG_ROOT"; then
+    config_rollback_ok=0
+  fi
+  if rollback_database_cutover && ((config_rollback_ok)); then
+    fail "config activation failed; the original database and config were restored"
+  fi
+  fail "config activation and automatic rollback failed; safety copies were retained"
+fi
+STAGED_CONFIG=""
+rm -r -- "$TEMP_DIRECTORY"
+TEMP_DIRECTORY=""
+
+if [[ -n "$target_exists" ]]; then
+  docker exec "$DB_CONTAINER" dropdb \
+    --username "$DB_USER" --if-exists --force "$PREVIOUS_DATABASE"
+fi
+
+echo "RunBuoy restore completed and validated at migration $MIGRATION_REVISION"

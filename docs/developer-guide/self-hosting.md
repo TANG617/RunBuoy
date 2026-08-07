@@ -12,6 +12,7 @@
 
 ```bash
 cp infra/.env.example infra/.env
+# Set RUNBUOY_ENVIRONMENT=production and replace every placeholder for a real host.
 docker compose --env-file infra/.env -f infra/docker-compose.yml up --build
 ```
 
@@ -38,15 +39,20 @@ or repository files.
 
 ## Retention and operations
 
-- The current worker deletes notifications only when their explicit
-  `expires_at` has passed.
-- It deletes terminal Run events and clears explicitly shared log tails after
-  `EVENT_RETENTION_HOURS` (24 hours by default).
-- It marks remote-start Live Activity placeholders expired after
+Use `/healthz` only for process liveness and `/readyz` for ingress/deployment
+readiness. The latter verifies PostgreSQL, the Alembic head, required config,
+and a fresh persistent worker heartbeat. See the complete
+[operations, metrics, backup, and recovery runbook](operations.md).
+
+- Configure retention with `EVENT_RETENTION_HOURS` (24), `RUN_RETENTION_DAYS`
+  (30), `NOTIFICATION_RETENTION_DAYS` (30), `PUSH_ATTEMPT_RETENTION_DAYS` (7),
+  `OUTBOX_TERMINAL_RETENTION_DAYS` (7), `PAIRING_RETENTION_HOURS` (24),
+  `AUDIT_RETENTION_DAYS` (90), and `SAFE_LOG_TAIL_RETENTION_HOURS` (24).
+- Cleanup processes at most `RETENTION_CLEANUP_BATCH_SIZE` (500) rows per class
+  per pass and is safe to repeat. It excludes active Runs, active/stale Live
+  Activity Runs, pending outbox, and rows exactly on a retention cutoff.
+- Remote-start Live Activity placeholders expire after
   `LIVE_ACTIVITY_PENDING_TTL_SECONDS` (300 seconds by default).
-- Current cleanup does not delete Run snapshots, expired pairing-session rows,
-  audit logs, or notifications without `expires_at`; add an operator policy if
-  those tables require age-based retention.
 - Monitor outbox backlog, retries, permanent APNs failures, API latency, and
   PostgreSQL capacity without logging payload secrets.
 - Treat APNs 410 as token invalidation.

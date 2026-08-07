@@ -243,6 +243,35 @@ private struct PreviewAPI: RunBuoyAPI {
     }
     func listMachines() async throws -> [MachineSnapshot] { snapshot.machines }
     func listMessages() async throws -> [RichMessage] { snapshot.messages }
+    func sync(cursor: Int?) async throws -> SyncResult {
+        .snapshot(
+            SyncSnapshot(
+                nextCursor: snapshot.syncCursor ?? 1,
+                serverTime: snapshot.serverTime ?? snapshot.savedAt,
+                runs: snapshot.runs,
+                machines: snapshot.machines,
+                notifications: snapshot.messages,
+                historyRunsNextCursor: snapshot.historyRunsNextCursor,
+                historyRunsHasMore: snapshot.historyRunsHasMore,
+                historyNotificationsNextCursor: snapshot.historyMessagesNextCursor,
+                historyNotificationsHasMore: snapshot.historyMessagesHasMore
+            )
+        )
+    }
+    func historyRuns(
+        cursor: String?,
+        limit: Int,
+        machineID: String?
+    ) async throws -> HistoryPage<RunSnapshot> {
+        HistoryPage(items: [], nextCursor: nil, hasMore: false)
+    }
+    func historyMessages(
+        cursor: String?,
+        limit: Int,
+        machineID: String?
+    ) async throws -> HistoryPage<RichMessage> {
+        HistoryPage(items: [], nextCursor: nil, hasMore: false)
+    }
     func claimPairing(_ code: PairingCode) async throws {}
     func registerNotificationToken(_ token: String) async throws {}
     func registerPushToStartToken(_ token: String, generation: Int) async throws {}
@@ -258,4 +287,10 @@ private struct PreviewAPI: RunBuoyAPI {
     ) async throws {}
     func updatePreferences(_ preferences: DevicePreferences) async throws {}
     func deleteSubscription(_ id: String) async throws {}
+    func resetDevice() async throws {}
+    func revokeMachine(_ id: String) async throws {}
+    func requestWorkspaceDeletionChallenge() async throws -> WorkspaceDeletionChallenge {
+        WorkspaceDeletionChallenge(challenge: "preview-challenge", expiresAt: Date.distantFuture)
+    }
+    func deleteWorkspace(challenge: String) async throws {}
 }

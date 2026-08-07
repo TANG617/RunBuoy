@@ -93,6 +93,9 @@ class RemoteClient:
         assert_safe_remote_payload(payload)
         self._request("PATCH", f"/v1/machines/{machine_id}", json=payload)
 
+    def revoke_machine_self(self, machine_id: str) -> None:
+        self._request("POST", f"/v1/machines/{machine_id}/revoke-self")
+
     def upload_events(self, run_id: str, events: list[RunEvent]) -> None:
         payload = {"events": [event.model_dump(mode="json") for event in events]}
         assert_safe_remote_payload(payload)

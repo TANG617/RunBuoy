@@ -125,6 +125,52 @@ final class RunBuoyUITests: XCTestCase {
         XCTAssertFalse(element("machine.localLabel").exists)
     }
 
+    func testMachineStopReceivingAndRevokeHaveDistinctDestructiveConfirmations() {
+        launch()
+        openMachines()
+
+        element("machine.row.machine_mac_studio").tap()
+        XCTAssertTrue(element("screen.machineDetail").waitForExistence(timeout: 3))
+
+        let stopReceiving = element("machine.stopReceiving")
+        if !stopReceiving.isHittable {
+            element("screen.machineDetail").swipeUp()
+        }
+        XCTAssertTrue(stopReceiving.waitForExistence(timeout: 3))
+        stopReceiving.tap()
+        XCTAssertTrue(
+            app.staticTexts[
+                "Only this iPhone’s subscription is removed. The computer stays paired and other devices are unaffected."
+            ].waitForExistence(timeout: 2)
+        )
+
+        // Relaunch instead of relying on the system action sheet's cancel
+        // accessibility node, which differs across iOS 18 and the latest SDK.
+        app.terminate()
+        launch()
+        openMachines()
+        element("machine.row.machine_mac_studio").tap()
+        XCTAssertTrue(element("screen.machineDetail").waitForExistence(timeout: 3))
+
+        let revoke = element("machine.revoke")
+        if !revoke.isHittable {
+            element("screen.machineDetail").swipeUp()
+        }
+        waitForHittable(revoke)
+        revoke.tap()
+        XCTAssertTrue(
+            app.staticTexts
+                .matching(
+                    NSPredicate(
+                        format: "label CONTAINS %@",
+                        "immediately invalidates the computer and webhook credentials"
+                    )
+                )
+                .firstMatch
+                .waitForExistence(timeout: 2)
+        )
+    }
+
     func testManualPairingCodeCanBeConfirmed() {
         launch()
         openMachines()
@@ -372,6 +418,7 @@ final class RunBuoyUITests: XCTestCase {
         "Connections",
         "Notifications and Display",
         "Storage",
+        "Identity and Data",
         "About"
     ]
 }

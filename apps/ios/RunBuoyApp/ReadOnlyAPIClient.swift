@@ -6,6 +6,9 @@ enum DeviceAPIEndpoint: Equatable, Sendable {
     case run(UUID)
     case machines
     case messages
+    case sync
+    case historyRuns
+    case historyMessages
     case claimPairing(String)
     case notificationToken(String)
     case pushToStartToken(String)
@@ -13,18 +16,22 @@ enum DeviceAPIEndpoint: Equatable, Sendable {
     case activitySync(String)
     case preferences
     case subscription(String)
+    case resetDevice(String)
+    case revokeMachine(String)
+    case workspaceDeletionChallenge(String)
+    case deleteWorkspace(String)
 
     var method: String {
         switch self {
-        case .runs, .run, .machines, .messages:
+        case .runs, .run, .machines, .messages, .sync, .historyRuns, .historyMessages:
             "GET"
         case .notificationToken, .pushToStartToken, .activityToken:
             "PUT"
         case .preferences:
             "PATCH"
-        case .subscription:
+        case .subscription, .resetDevice, .deleteWorkspace:
             "DELETE"
-        case .bootstrap, .claimPairing, .activitySync:
+        case .bootstrap, .claimPairing, .activitySync, .revokeMachine, .workspaceDeletionChallenge:
             "POST"
         }
     }
@@ -36,6 +43,9 @@ enum DeviceAPIEndpoint: Equatable, Sendable {
         case .run(let id): "/v1/runs/\(id.uuidString.lowercased())"
         case .machines: "/v1/machines"
         case .messages: "/v1/notifications"
+        case .sync: "/v1/sync"
+        case .historyRuns: "/v1/history/runs"
+        case .historyMessages: "/v1/history/notifications"
         case .claimPairing(let id): "/v1/pairing-sessions/\(id.pathComponent)/claim"
         case .notificationToken(let id): "/v1/devices/\(id.pathComponent)/notification-token"
         case .pushToStartToken(let id): "/v1/devices/\(id.pathComponent)/push-to-start-token"
@@ -43,6 +53,11 @@ enum DeviceAPIEndpoint: Equatable, Sendable {
         case .activitySync(let id): "/v1/devices/\(id.pathComponent)/activity-sync"
         case .preferences: "/v1/device-preferences"
         case .subscription(let id): "/v1/machine-subscriptions/\(id.pathComponent)"
+        case .resetDevice(let id): "/v1/devices/\(id.pathComponent)"
+        case .revokeMachine(let id): "/v1/machines/\(id.pathComponent)/revoke"
+        case .workspaceDeletionChallenge(let id):
+            "/v1/workspaces/\(id.pathComponent)/deletion-challenge"
+        case .deleteWorkspace(let id): "/v1/workspaces/\(id.pathComponent)"
         }
     }
 }
@@ -60,6 +75,9 @@ protocol RunBuoyAPI: Sendable {
     func runDetail(id: UUID) async throws -> RunDetail
     func listMachines() async throws -> [MachineSnapshot]
     func listMessages() async throws -> [RichMessage]
+    func sync(cursor: Int?) async throws -> SyncResult
+    func historyRuns(cursor: String?, limit: Int, machineID: String?) async throws -> HistoryPage<RunSnapshot>
+    func historyMessages(cursor: String?, limit: Int, machineID: String?) async throws -> HistoryPage<RichMessage>
     func claimPairing(_ code: PairingCode) async throws
     func registerNotificationToken(_ token: String) async throws
     func registerPushToStartToken(_ token: String, generation: Int) async throws
@@ -75,6 +93,108 @@ protocol RunBuoyAPI: Sendable {
     ) async throws
     func updatePreferences(_ preferences: DevicePreferences) async throws
     func deleteSubscription(_ id: String) async throws
+    func resetDevice() async throws
+    func revokeMachine(_ id: String) async throws
+    func requestWorkspaceDeletionChallenge() async throws -> WorkspaceDeletionChallenge
+    func deleteWorkspace(challenge: String) async throws
+}
+
+struct WorkspaceDeletionChallenge: Decodable, Equatable, Sendable {
+    let challenge: String
+    let expiresAt: Date
+
+    private enum CodingKeys: String, CodingKey {
+        case challenge
+        case expiresAt = "expires_at"
+    }
+}
+
+struct SyncSnapshot: Decodable, Equatable, Sendable {
+    let schemaVersion: Int
+    let nextCursor: Int
+    let serverTime: Date
+    let runs: [RunSnapshot]
+    let machines: [MachineSnapshot]
+    let notifications: [RichMessage]
+    let historyRunsNextCursor: String?
+    let historyRunsHasMore: Bool
+    let historyNotificationsNextCursor: String?
+    let historyNotificationsHasMore: Bool
+
+    private enum CodingKeys: String, CodingKey {
+        case schemaVersion = "schema_version"
+        case nextCursor = "next_cursor"
+        case serverTime = "server_time"
+        case runs
+        case machines
+        case notifications
+        case historyRunsNextCursor = "history_runs_next_cursor"
+        case historyRunsHasMore = "history_runs_has_more"
+        case historyNotificationsNextCursor = "history_notifications_next_cursor"
+        case historyNotificationsHasMore = "history_notifications_has_more"
+    }
+
+    init(
+        schemaVersion: Int = 1,
+        nextCursor: Int,
+        serverTime: Date,
+        runs: [RunSnapshot],
+        machines: [MachineSnapshot],
+        notifications: [RichMessage],
+        historyRunsNextCursor: String? = nil,
+        historyRunsHasMore: Bool = false,
+        historyNotificationsNextCursor: String? = nil,
+        historyNotificationsHasMore: Bool = false
+    ) {
+        self.schemaVersion = schemaVersion
+        self.nextCursor = nextCursor
+        self.serverTime = serverTime
+        self.runs = runs
+        self.machines = machines
+        self.notifications = notifications
+        self.historyRunsNextCursor = historyRunsNextCursor
+        self.historyRunsHasMore = historyRunsHasMore
+        self.historyNotificationsNextCursor = historyNotificationsNextCursor
+        self.historyNotificationsHasMore = historyNotificationsHasMore
+    }
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        schemaVersion = try values.decode(Int.self, forKey: .schemaVersion)
+        nextCursor = try values.decode(Int.self, forKey: .nextCursor)
+        serverTime = try values.decode(Date.self, forKey: .serverTime)
+        runs = try values.decode([RunSnapshot].self, forKey: .runs)
+        machines = try values.decode([MachineSnapshot].self, forKey: .machines)
+        notifications = try values.decode([RichMessage].self, forKey: .notifications)
+        historyRunsNextCursor = try values.decodeIfPresent(String.self, forKey: .historyRunsNextCursor)
+        historyRunsHasMore = try values.decodeIfPresent(Bool.self, forKey: .historyRunsHasMore)
+            ?? (historyRunsNextCursor != nil)
+        historyNotificationsNextCursor = try values.decodeIfPresent(
+            String.self,
+            forKey: .historyNotificationsNextCursor
+        )
+        historyNotificationsHasMore = try values.decodeIfPresent(
+            Bool.self,
+            forKey: .historyNotificationsHasMore
+        ) ?? (historyNotificationsNextCursor != nil)
+    }
+}
+
+enum SyncResult: Equatable, Sendable {
+    case notModified
+    case snapshot(SyncSnapshot)
+}
+
+struct HistoryPage<Element: Decodable & Sendable>: Decodable, Sendable {
+    let items: [Element]
+    let nextCursor: String?
+    let hasMore: Bool
+
+    private enum CodingKeys: String, CodingKey {
+        case items
+        case nextCursor = "next_cursor"
+        case hasMore = "has_more"
+    }
 }
 
 struct DevicePreferences: Codable, Equatable, Sendable {
@@ -200,6 +320,44 @@ struct URLSessionRunBuoyAPI: RunBuoyAPI, @unchecked Sendable {
         try await requestList(.messages, key: "notifications")
     }
 
+    func sync(cursor: Int?) async throws -> SyncResult {
+        let identity = try requireIdentity()
+        let queryItems = cursor.map { [URLQueryItem(name: "cursor", value: String($0))] } ?? []
+        let headers = cursor.map {
+            ["If-None-Match": "\"sync-\(identity.workspaceID)-\($0)\""]
+        } ?? [:]
+        let (data, response) = try await performRequest(
+            .sync,
+            body: Optional<EmptyBody>.none,
+            authenticated: true,
+            queryItems: queryItems,
+            headers: headers
+        )
+        if response.statusCode == 304 {
+            return .notModified
+        }
+        guard 200..<300 ~= response.statusCode else {
+            throw APIError.httpStatus(response.statusCode)
+        }
+        return .snapshot(try JSONDecoder.runBuoy.decode(SyncSnapshot.self, from: data))
+    }
+
+    func historyRuns(
+        cursor: String?,
+        limit: Int,
+        machineID: String?
+    ) async throws -> HistoryPage<RunSnapshot> {
+        try await historyPage(.historyRuns, cursor: cursor, limit: limit, machineID: machineID)
+    }
+
+    func historyMessages(
+        cursor: String?,
+        limit: Int,
+        machineID: String?
+    ) async throws -> HistoryPage<RichMessage> {
+        try await historyPage(.historyMessages, cursor: cursor, limit: limit, machineID: machineID)
+    }
+
     func claimPairing(_ code: PairingCode) async throws {
         let body = ClaimBody(challenge: code.challenge)
         try await requestWithoutResponse(.claimPairing(code.sessionID), body: body)
@@ -261,6 +419,34 @@ struct URLSessionRunBuoyAPI: RunBuoyAPI, @unchecked Sendable {
         try await requestWithoutResponse(.subscription(id), body: Optional<EmptyBody>.none)
     }
 
+    func resetDevice() async throws {
+        let identity = try requireIdentity()
+        try await requestWithoutResponse(
+            .resetDevice(identity.deviceID),
+            body: Optional<EmptyBody>.none
+        )
+    }
+
+    func revokeMachine(_ id: String) async throws {
+        try await requestWithoutResponse(.revokeMachine(id), body: Optional<EmptyBody>.none)
+    }
+
+    func requestWorkspaceDeletionChallenge() async throws -> WorkspaceDeletionChallenge {
+        let identity = try requireIdentity()
+        return try await request(
+            .workspaceDeletionChallenge(identity.workspaceID),
+            body: WorkspaceDeletionChallengeBody(confirmation: "DELETE")
+        )
+    }
+
+    func deleteWorkspace(challenge: String) async throws {
+        let identity = try requireIdentity()
+        try await requestWithoutResponse(
+            .deleteWorkspace(identity.workspaceID),
+            body: WorkspaceDeleteBody(challenge: challenge)
+        )
+    }
+
     private func request<Response: Decodable, Body: Encodable>(
         _ endpoint: DeviceAPIEndpoint,
         body: Body?,
@@ -293,10 +479,59 @@ struct URLSessionRunBuoyAPI: RunBuoyAPI, @unchecked Sendable {
         body: Body?,
         authenticated: Bool
     ) async throws -> Data {
+        let (data, response) = try await performRequest(
+            endpoint,
+            body: body,
+            authenticated: authenticated
+        )
+        guard 200..<300 ~= response.statusCode else {
+            throw APIError.httpStatus(response.statusCode)
+        }
+        return data
+    }
+
+    private func historyPage<Element: Decodable & Sendable>(
+        _ endpoint: DeviceAPIEndpoint,
+        cursor: String?,
+        limit: Int,
+        machineID: String?
+    ) async throws -> HistoryPage<Element> {
+        var queryItems = [URLQueryItem(name: "limit", value: String(limit))]
+        if let cursor {
+            queryItems.append(URLQueryItem(name: "cursor", value: cursor))
+        }
+        if let machineID {
+            queryItems.append(URLQueryItem(name: "machine_id", value: machineID))
+        }
+        let (data, response) = try await performRequest(
+            endpoint,
+            body: Optional<EmptyBody>.none,
+            authenticated: true,
+            queryItems: queryItems
+        )
+        guard 200..<300 ~= response.statusCode else {
+            throw APIError.httpStatus(response.statusCode)
+        }
+        return try JSONDecoder.runBuoy.decode(HistoryPage<Element>.self, from: data)
+    }
+
+    private func performRequest<Body: Encodable>(
+        _ endpoint: DeviceAPIEndpoint,
+        body: Body?,
+        authenticated: Bool,
+        queryItems: [URLQueryItem] = [],
+        headers: [String: String] = [:]
+    ) async throws -> (Data, HTTPURLResponse) {
         let baseURL = baseURLProvider()
-        guard let url = URL(string: endpoint.path, relativeTo: baseURL)?.absoluteURL else {
+        guard let endpointURL = URL(string: endpoint.path, relativeTo: baseURL)?.absoluteURL,
+              var components = URLComponents(url: endpointURL, resolvingAgainstBaseURL: false)
+        else {
             throw APIError.invalidURL
         }
+        if !queryItems.isEmpty {
+            components.queryItems = queryItems
+        }
+        guard let url = components.url else { throw APIError.invalidURL }
         var request = URLRequest(url: url)
         request.httpMethod = endpoint.method
         request.setValue("application/json", forHTTPHeaderField: "Accept")
@@ -307,15 +542,15 @@ struct URLSessionRunBuoyAPI: RunBuoyAPI, @unchecked Sendable {
         if authenticated {
             request.setValue("Bearer \(try requireIdentity().credential)", forHTTPHeaderField: "Authorization")
         }
+        for (field, value) in headers {
+            request.setValue(value, forHTTPHeaderField: field)
+        }
 
         let (data, response) = try await session.data(for: request)
         guard let response = response as? HTTPURLResponse else {
             throw APIError.invalidResponse
         }
-        guard 200..<300 ~= response.statusCode else {
-            throw APIError.httpStatus(response.statusCode)
-        }
-        return data
+        return (data, response)
     }
 
     private func requireIdentity() throws -> DeviceIdentity {
@@ -348,6 +583,14 @@ struct URLSessionRunBuoyAPI: RunBuoyAPI, @unchecked Sendable {
     }
 
     private struct ClaimBody: Encodable {
+        let challenge: String
+    }
+
+    private struct WorkspaceDeletionChallengeBody: Encodable {
+        let confirmation: String
+    }
+
+    private struct WorkspaceDeleteBody: Encodable {
         let challenge: String
     }
 
@@ -449,5 +692,10 @@ enum APIError: LocalizedError, Equatable {
         case .missingIdentity:
             String(localized: "error.missing_identity")
         }
+    }
+
+    var isSyncUnsupported: Bool {
+        guard case .httpStatus(let status) = self else { return false }
+        return status == 404 || status == 405 || status == 501
     }
 }

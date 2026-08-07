@@ -67,7 +67,7 @@ struct PairMachineView: View {
                                 .frame(maxWidth: .infinity)
                         }
                     }
-                    .buttonStyle(.glassProminent)
+                    .runBuoyProminentButtonStyle()
                     .disabled(isWorking)
                     .accessibilityIdentifier("pairing.claim")
                 }

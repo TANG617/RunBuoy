@@ -5,13 +5,21 @@ import uuid
 from datetime import timedelta
 from typing import Any
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response, status
-from sqlalchemy import select
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Response, status
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
+from .abuse import (
+    acquire_quota_lock,
+    anonymized_key,
+    anonymous_ip_key,
+    enforce_rate_limit,
+    quota_exceeded,
+)
 from .auth import DEVICE_SCOPES, MACHINE_SCOPES, Principal, require_scope
 from .config import Settings
 from .database import get_session
+from .lifecycle import stop_receiving_subscription
 from .models import (
     AuditLog,
     Device,
@@ -59,8 +67,10 @@ from .services import (
     schedule_binding_update,
     schedule_run_pushes,
 )
+from .sync import bump_workspace_revision, decode_history_cursor, encode_history_cursor
 
 router = APIRouter(prefix="/v1")
+SYNC_SNAPSHOT_LIMIT = 200
 
 
 def settings_for(request: Request) -> Settings:
@@ -111,35 +121,129 @@ def _webhook_auth(
     return webhook
 
 
+def _machine_snapshot(
+    machine: Machine,
+    *,
+    subscription_id: str | None,
+) -> dict[str, Any]:
+    return {
+        "id": machine.id,
+        "display_name": machine.display_name,
+        "platform": machine.platform,
+        "architecture": machine.architecture,
+        "cli_version": machine.cli_version,
+        "last_seen_at": machine.last_seen_at,
+        "paired_at": machine.paired_at,
+        "subscription_id": subscription_id,
+        "is_subscribed": subscription_id is not None,
+    }
+
+
+def _subscription_ids_by_machine(
+    session: Session,
+    *,
+    device_id: str,
+    machine_ids: list[str],
+) -> dict[str, str]:
+    if not machine_ids:
+        return {}
+    rows = session.execute(
+        select(
+            MachineDeviceSubscription.machine_id,
+            MachineDeviceSubscription.id,
+        ).where(
+            MachineDeviceSubscription.device_id == device_id,
+            MachineDeviceSubscription.machine_id.in_(machine_ids),
+        )
+    )
+    return {machine_id: subscription_id for machine_id, subscription_id in rows}
+
+
+def _notification_snapshot(item: Notification) -> dict[str, Any]:
+    return {
+        "id": item.id,
+        "machine_id": item.machine_id,
+        "run_id": item.run_id,
+        "title": item.title,
+        "subtitle": item.subtitle,
+        "body": item.body,
+        "level": item.level,
+        "fields": item.fields,
+        "safe_link": item.safe_link,
+        "created_at": item.created_at,
+        "expires_at": item.expires_at,
+    }
+
+
+def _sync_etag(workspace_id: str, revision: int) -> str:
+    return f'"sync-{workspace_id}-{revision}"'
+
+
+def _etag_matches(if_none_match: str | None, etag: str) -> bool:
+    if if_none_match is None:
+        return False
+    candidates = {value.strip() for value in if_none_match.split(",")}
+    return "*" in candidates or etag in candidates or f"W/{etag}" in candidates
+
+
+def _runs_after_cursor(sort_time: Any, item_id: str) -> Any:
+    return or_(Run.updated_at < sort_time, (Run.updated_at == sort_time) & (Run.id < item_id))
+
+
+def _notifications_after_cursor(sort_time: Any, item_id: str) -> Any:
+    return or_(
+        Notification.created_at < sort_time,
+        (Notification.created_at == sort_time) & (Notification.id < item_id),
+    )
+
+
 @router.post("/devices/bootstrap", status_code=status.HTTP_201_CREATED)
 def bootstrap_device(
     body: DeviceBootstrapRequest,
     request: Request,
+    response: Response,
     session: Session = Depends(get_session),
 ) -> dict[str, str]:
     settings = settings_for(request)
+    enforce_rate_limit(
+        session,
+        settings,
+        response,
+        bucket_name="device_bootstrap",
+        subject_key=anonymous_ip_key(request, settings),
+        limit=settings.rate_limit_device_bootstrap_per_hour,
+        window_seconds=60 * 60,
+    )
+    acquire_quota_lock(
+        session,
+        settings,
+        namespace="device_bootstrap",
+        subject=body.installation_id,
+    )
     device = session.scalar(select(Device).where(Device.installation_id == body.installation_id))
-    now = utcnow()
-    if device is None:
-        workspace = Workspace(id=new_id("wsp"))
-        session.add(workspace)
-        session.flush()
-        device = Device(
-            id=new_id("dev"),
-            workspace_id=workspace.id,
-            installation_id=body.installation_id,
-            app_version=body.app_version,
-            os_version=body.os_version,
+    if device is not None:
+        # installation_id is an idempotency/collision identifier, never a
+        # recovery credential. Anonymous replay must not rotate an existing
+        # Device credential or resurrect a reset Device.
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            detail={
+                "code": "installation_already_registered",
+                "message": "generate a new installation identifier",
+            },
         )
-        session.add(device)
-        session.flush()
-    else:
-        device.app_version = body.app_version
-        device.os_version = body.os_version
-        device.last_seen_at = now
-        for credential in device.credentials:
-            if credential.revoked_at is None:
-                credential.revoked_at = now
+    workspace = Workspace(id=new_id("wsp"))
+    session.add(workspace)
+    session.flush()
+    device = Device(
+        id=new_id("dev"),
+        workspace_id=workspace.id,
+        installation_id=body.installation_id,
+        app_version=body.app_version,
+        os_version=body.os_version,
+    )
+    session.add(device)
+    session.flush()
 
     raw_token = new_bearer_token("rbd")
     session.add(
@@ -366,10 +470,8 @@ def delete_subscription(
     session: Session = Depends(get_session),
     principal: Principal = Depends(require_scope("subscriptions:delete")),
 ) -> Response:
-    subscription = session.get(MachineDeviceSubscription, subscription_id)
-    if subscription is None or subscription.device_id != principal.subject_id:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "subscription not found")
-    session.delete(subscription)
+    stop_receiving_subscription(session, principal, subscription_id)
+    bump_workspace_revision(session, principal.workspace_id)
     session.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
@@ -378,9 +480,39 @@ def delete_subscription(
 def create_pairing_session(
     body: MachineMetadata,
     request: Request,
+    response: Response,
     session: Session = Depends(get_session),
 ) -> dict[str, Any]:
     settings = settings_for(request)
+    creator_key = anonymous_ip_key(request, settings)
+    enforce_rate_limit(
+        session,
+        settings,
+        response,
+        bucket_name="pairing_create",
+        subject_key=creator_key,
+        limit=settings.rate_limit_pairing_create_per_hour,
+        window_seconds=60 * 60,
+    )
+    acquire_quota_lock(
+        session,
+        settings,
+        namespace="pending_pairings",
+        subject=creator_key,
+    )
+    pending_count = session.scalar(
+        select(func.count())
+        .select_from(PairingSession)
+        .where(
+            PairingSession.creator_key == creator_key,
+            PairingSession.claimed_at.is_(None),
+            PairingSession.expires_at > utcnow(),
+        )
+    )
+    if int(pending_count or 0) >= settings.max_pending_pairings_per_ip:
+        raise quota_exceeded(
+            "pending_pairing_sessions", settings.max_pending_pairings_per_ip, "anonymized_ip"
+        )
     raw_secret = new_bearer_token("rbx")
     pairing = PairingSession(
         id=new_id("pair"),
@@ -389,6 +521,7 @@ def create_pairing_session(
         exchange_secret_hash=token_hash(raw_secret, settings.credential_pepper),
         requested_machine_metadata=body.model_dump(),
         expires_at=utcnow() + timedelta(seconds=settings.pairing_ttl_seconds),
+        creator_key=creator_key,
     )
     session.add(pairing)
     session.commit()
@@ -405,13 +538,24 @@ def create_pairing_session(
 def get_pairing_session(
     session_id: str,
     request: Request,
+    response: Response,
     authorization: str | None = Header(default=None),
     session: Session = Depends(get_session),
 ) -> dict[str, Any]:
+    settings = settings_for(request)
+    enforce_rate_limit(
+        session,
+        settings,
+        response,
+        bucket_name="pairing_status_poll",
+        subject_key=anonymized_key(settings, "pairing_session", session_id),
+        limit=settings.rate_limit_pairing_poll_per_minute,
+        window_seconds=60,
+    )
     pairing = session.get(PairingSession, session_id)
     supplied = _bearer_value(authorization)
     if pairing is None or pairing.exchange_secret_hash != token_hash(
-        supplied, settings_for(request).credential_pepper
+        supplied, settings.credential_pepper
     ):
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "invalid pairing secret")
     if is_expired(pairing.expires_at):
@@ -429,10 +573,15 @@ def get_pairing_session(
 def claim_pairing_session(
     session_id: str,
     body: PairingClaim,
+    request: Request,
     session: Session = Depends(get_session),
     principal: Principal = Depends(require_scope("pairing:claim")),
 ) -> dict[str, Any]:
-    pairing = session.get(PairingSession, session_id)
+    # Pairing is a single-use handoff. Lock the row before checking/claiming so
+    # concurrent Devices cannot both attach it to different Workspaces.
+    pairing = session.scalar(
+        select(PairingSession).where(PairingSession.id == session_id).with_for_update()
+    )
     if pairing is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "pairing session not found")
     if is_expired(pairing.expires_at):
@@ -441,28 +590,68 @@ def claim_pairing_session(
         raise HTTPException(status.HTTP_409_CONFLICT, "pairing session already claimed")
     if not secrets.compare_digest(pairing.challenge, body.challenge):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "pairing challenge mismatch")
+    settings = settings_for(request)
+    acquire_quota_lock(
+        session,
+        settings,
+        namespace="workspace_machines",
+        subject=principal.workspace_id,
+    )
+    machine_count = session.scalar(
+        select(func.count())
+        .select_from(Machine)
+        .where(
+            Machine.workspace_id == principal.workspace_id,
+            Machine.revoked_at.is_(None),
+        )
+    )
+    if int(machine_count or 0) >= settings.max_machines_per_workspace:
+        raise quota_exceeded("machines", settings.max_machines_per_workspace, "workspace")
     metadata = pairing.requested_machine_metadata
     machine_id = metadata.get("machine_id") or new_id("mac")
-    if session.get(Machine, machine_id) is not None:
+    machine = session.get(Machine, machine_id)
+    if machine is not None and (
+        machine.revoked_at is None or machine.workspace_id != principal.workspace_id
+    ):
         raise HTTPException(status.HTTP_409_CONFLICT, "machine ID is already paired")
-    machine = Machine(
-        id=machine_id,
-        workspace_id=principal.workspace_id,
-        display_name=metadata["display_name"],
-        hostname=metadata.get("hostname"),
-        platform=metadata.get("platform"),
-        architecture=metadata.get("architecture"),
-        cli_version=metadata.get("cli_version"),
+    now = utcnow()
+    if machine is None:
+        machine = Machine(
+            id=machine_id,
+            workspace_id=principal.workspace_id,
+            display_name=metadata["display_name"],
+            hostname=metadata.get("hostname"),
+            platform=metadata.get("platform"),
+            architecture=metadata.get("architecture"),
+            cli_version=metadata.get("cli_version"),
+        )
+        session.add(machine)
+    else:
+        machine.display_name = metadata["display_name"]
+        machine.hostname = metadata.get("hostname")
+        machine.platform = metadata.get("platform")
+        machine.architecture = metadata.get("architecture")
+        machine.cli_version = metadata.get("cli_version")
+        machine.revoked_at = None
+        machine.paired_at = now
+        machine.last_seen_at = now
+    subscription = session.scalar(
+        select(MachineDeviceSubscription).where(
+            MachineDeviceSubscription.machine_id == machine.id,
+            MachineDeviceSubscription.device_id == principal.subject_id,
+        )
     )
-    subscription = MachineDeviceSubscription(
-        id=new_id("sub"),
-        machine_id=machine.id,
-        device_id=principal.subject_id,
-    )
-    pairing.claimed_at = utcnow()
+    if subscription is None:
+        subscription = MachineDeviceSubscription(
+            id=new_id("sub"),
+            machine_id=machine.id,
+            device_id=principal.subject_id,
+        )
+        session.add(subscription)
+    pairing.claimed_at = now
     pairing.workspace_id = principal.workspace_id
     pairing.machine_id = machine.id
-    session.add_all([machine, subscription])
+    bump_workspace_revision(session, principal.workspace_id)
     session.commit()
     return {
         "status": "claimed",
@@ -479,7 +668,11 @@ def exchange_pairing_session(
     session: Session = Depends(get_session),
 ) -> dict[str, Any]:
     settings = settings_for(request)
-    pairing = session.get(PairingSession, session_id)
+    # Serialize exchange against both a concurrent claim and another exchange.
+    # The second waiter observes exchanged_at after the first transaction commits.
+    pairing = session.scalar(
+        select(PairingSession).where(PairingSession.id == session_id).with_for_update()
+    )
     if pairing is None or pairing.exchange_secret_hash != token_hash(
         body.exchange_secret, settings.credential_pepper
     ):
@@ -512,16 +705,48 @@ def exchange_pairing_session(
 def upsert_run(
     run_id: uuid.UUID,
     body: RunUpsert,
+    request: Request,
+    response: Response,
     session: Session = Depends(get_session),
     principal: Principal = Depends(require_scope("runs:create")),
 ) -> dict[str, Any]:
+    settings = settings_for(request)
+    enforce_rate_limit(
+        session,
+        settings,
+        response,
+        bucket_name="run_upsert",
+        subject_key=anonymized_key(settings, "machine", principal.subject_id),
+        limit=settings.rate_limit_run_upsert_per_minute,
+        window_seconds=60,
+    )
     machine = _machine_owned(session, principal, body.machine_id)
     machine.last_seen_at = utcnow()
     if body.cli_version is not None:
         machine.cli_version = body.cli_version
     key = str(run_id)
-    run = session.get(Run, key)
+    run = session.scalar(select(Run).where(Run.id == key).with_for_update())
     if run is None:
+        acquire_quota_lock(
+            session,
+            settings,
+            namespace="machine_active_runs",
+            subject=body.machine_id,
+        )
+        # Another registration for the same ID may have committed while this
+        # transaction waited on the per-Machine quota lock.
+        run = session.scalar(select(Run).where(Run.id == key).with_for_update())
+    if run is None:
+        active_count = session.scalar(
+            select(func.count())
+            .select_from(Run)
+            .where(
+                Run.machine_id == body.machine_id,
+                ~Run.execution_status.in_(TERMINAL_STATUSES),
+            )
+        )
+        if int(active_count or 0) >= settings.max_active_runs_per_machine:
+            raise quota_exceeded("active_runs", settings.max_active_runs_per_machine, "machine")
         run = Run(
             id=key,
             workspace_id=principal.workspace_id,
@@ -556,6 +781,7 @@ def upsert_run(
         run.attention_status = body.attention_status
         run.live_activity_policy = body.live_activity_policy
         run.notification_policy = body.notification_policy
+    bump_workspace_revision(session, principal.workspace_id)
     session.commit()
     return run_snapshot(run)
 
@@ -565,20 +791,267 @@ def ingest_run_events(
     run_id: uuid.UUID,
     body: EventBatch,
     request: Request,
+    response: Response,
     session: Session = Depends(get_session),
     principal: Principal = Depends(require_scope("events:write")),
 ) -> dict[str, Any]:
-    run = session.get(Run, str(run_id))
+    settings = settings_for(request)
+    enforce_rate_limit(
+        session,
+        settings,
+        response,
+        bucket_name="event_batch",
+        subject_key=anonymized_key(settings, "machine", principal.subject_id),
+        limit=settings.rate_limit_event_batch_per_minute,
+        window_seconds=60,
+    )
+    if len(body.events) > settings.max_events_per_batch:
+        raise HTTPException(
+            status.HTTP_413_CONTENT_TOO_LARGE,
+            detail={
+                "code": "event_batch_too_large",
+                "limit": settings.max_events_per_batch,
+                "actual": len(body.events),
+            },
+        )
+    # Ordered events update one mutable projection. Serialize every batch on
+    # the Run row so last_seq and state transitions cannot regress.
+    run = session.scalar(select(Run).where(Run.id == str(run_id)).with_for_update())
     if run is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "run not found")
     _machine_owned(session, principal, run.machine_id)
     try:
-        result = ingest_events(session, settings_for(request), run, body.events)
+        result = ingest_events(session, settings, run, body.events)
+        if result["inserted"]:
+            bump_workspace_revision(session, principal.workspace_id)
         session.commit()
         return result
     except Exception:
         session.rollback()
         raise
+
+
+@router.get("/sync")
+def sync_snapshot(
+    response: Response,
+    request: Request,
+    cursor: int | None = Query(default=None, ge=0),
+    if_none_match: str | None = Header(default=None, alias="If-None-Match"),
+    session: Session = Depends(get_session),
+    principal: Principal = Depends(require_scope("runs:read")),
+) -> Any:
+    required_scopes = {"runs:read", "machines:read", "notifications:read"}
+    if not required_scopes.issubset(principal.scopes):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "missing sync read scopes")
+    # A shared row lock keeps the revision and all bounded projections in this
+    # response consistent with writers, which update this row atomically.
+    workspace = session.scalar(
+        select(Workspace).where(Workspace.id == principal.workspace_id).with_for_update(read=True)
+    )
+    if workspace is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "workspace not found")
+    revision = workspace.revision
+    if cursor is not None and cursor > revision:
+        raise HTTPException(status.HTTP_409_CONFLICT, "sync cursor is ahead of the workspace")
+
+    etag = _sync_etag(workspace.id, revision)
+    cache_headers = {"ETag": etag, "Cache-Control": "private, no-cache"}
+    if cursor == revision or _etag_matches(if_none_match, etag):
+        return Response(status_code=status.HTTP_304_NOT_MODIFIED, headers=cache_headers)
+
+    settings = settings_for(request)
+    # Active Runs have no history endpoint, so every Run allowed by the active
+    # quota must fit in the bounded sync projection. Terminal history remains a
+    # fixed-size window and can be paged through /history/runs.
+    active_run_limit = settings.max_machines_per_workspace * settings.max_active_runs_per_machine
+    active_runs = list(
+        session.scalars(
+            select(Run)
+            .where(
+                Run.workspace_id == workspace.id,
+                ~Run.execution_status.in_(TERMINAL_STATUSES),
+            )
+            .order_by(Run.updated_at.desc(), Run.id.desc())
+            .limit(active_run_limit)
+        )
+    )
+    terminal_runs = list(
+        session.scalars(
+            select(Run)
+            .where(
+                Run.workspace_id == workspace.id,
+                Run.execution_status.in_(TERMINAL_STATUSES),
+            )
+            .order_by(Run.updated_at.desc(), Run.id.desc())
+            .limit(SYNC_SNAPSHOT_LIMIT)
+        )
+    )
+    runs = [*active_runs, *terminal_runs]
+    machines = list(
+        session.scalars(
+            select(Machine)
+            .where(Machine.workspace_id == workspace.id, Machine.revoked_at.is_(None))
+            .order_by(Machine.paired_at.desc(), Machine.id.desc())
+            .limit(settings.max_machines_per_workspace)
+        )
+    )
+    notifications = list(
+        session.scalars(
+            select(Notification)
+            .where(Notification.workspace_id == workspace.id)
+            .order_by(Notification.created_at.desc(), Notification.id.desc())
+            .limit(SYNC_SNAPSHOT_LIMIT)
+        )
+    )
+    subscription_ids = _subscription_ids_by_machine(
+        session,
+        device_id=principal.subject_id,
+        machine_ids=[machine.id for machine in machines],
+    )
+
+    history_runs_cursor = None
+    if terminal_runs:
+        oldest_run = terminal_runs[-1]
+        has_more_runs = (
+            session.scalar(
+                select(Run.id).where(
+                    Run.workspace_id == workspace.id,
+                    Run.execution_status.in_(TERMINAL_STATUSES),
+                    _runs_after_cursor(oldest_run.updated_at, oldest_run.id),
+                )
+            )
+            is not None
+        )
+        if has_more_runs:
+            history_runs_cursor = encode_history_cursor(
+                "runs", oldest_run.updated_at, oldest_run.id, None
+            )
+    else:
+        has_more_runs = (
+            session.scalar(
+                select(Run.id).where(
+                    Run.workspace_id == workspace.id,
+                    Run.execution_status.in_(TERMINAL_STATUSES),
+                )
+            )
+            is not None
+        )
+
+    history_notifications_cursor = None
+    if notifications:
+        oldest_notification = notifications[-1]
+        has_more_notifications = (
+            session.scalar(
+                select(Notification.id).where(
+                    Notification.workspace_id == workspace.id,
+                    _notifications_after_cursor(
+                        oldest_notification.created_at, oldest_notification.id
+                    ),
+                )
+            )
+            is not None
+        )
+        if has_more_notifications:
+            history_notifications_cursor = encode_history_cursor(
+                "notifications",
+                oldest_notification.created_at,
+                oldest_notification.id,
+                None,
+            )
+    else:
+        has_more_notifications = False
+
+    response.headers.update(cache_headers)
+    return {
+        "schema_version": 1,
+        "next_cursor": revision,
+        "server_time": utcnow(),
+        "runs": [run_snapshot(run) for run in runs],
+        "machines": [
+            _machine_snapshot(machine, subscription_id=subscription_ids.get(machine.id))
+            for machine in machines
+        ],
+        "notifications": [_notification_snapshot(item) for item in notifications],
+        "history_runs_next_cursor": history_runs_cursor,
+        "history_runs_has_more": has_more_runs,
+        "history_notifications_next_cursor": history_notifications_cursor,
+        "history_notifications_has_more": has_more_notifications,
+    }
+
+
+@router.get("/history/runs")
+def list_run_history(
+    cursor: str | None = None,
+    limit: int = Query(default=50, ge=1, le=100),
+    machine_id: str | None = Query(default=None, max_length=64),
+    session: Session = Depends(get_session),
+    principal: Principal = Depends(require_scope("runs:read")),
+) -> dict[str, Any]:
+    query = select(Run).where(
+        Run.workspace_id == principal.workspace_id,
+        Run.execution_status.in_(TERMINAL_STATUSES),
+    )
+    if machine_id is not None:
+        query = query.where(Run.machine_id == machine_id)
+    if cursor is not None:
+        sort_time, item_id = decode_history_cursor(
+            cursor,
+            expected_kind="runs",
+            machine_id=machine_id,
+        )
+        query = query.where(_runs_after_cursor(sort_time, item_id))
+    rows = list(
+        session.scalars(query.order_by(Run.updated_at.desc(), Run.id.desc()).limit(limit + 1))
+    )
+    has_more = len(rows) > limit
+    items = rows[:limit]
+    next_cursor = (
+        encode_history_cursor("runs", items[-1].updated_at, items[-1].id, machine_id)
+        if has_more and items
+        else None
+    )
+    return {
+        "items": [run_snapshot(run) for run in items],
+        "next_cursor": next_cursor,
+        "has_more": has_more,
+    }
+
+
+@router.get("/history/notifications")
+def list_notification_history(
+    cursor: str | None = None,
+    limit: int = Query(default=50, ge=1, le=100),
+    machine_id: str | None = Query(default=None, max_length=64),
+    session: Session = Depends(get_session),
+    principal: Principal = Depends(require_scope("notifications:read")),
+) -> dict[str, Any]:
+    query = select(Notification).where(Notification.workspace_id == principal.workspace_id)
+    if machine_id is not None:
+        query = query.where(Notification.machine_id == machine_id)
+    if cursor is not None:
+        sort_time, item_id = decode_history_cursor(
+            cursor,
+            expected_kind="notifications",
+            machine_id=machine_id,
+        )
+        query = query.where(_notifications_after_cursor(sort_time, item_id))
+    rows = list(
+        session.scalars(
+            query.order_by(Notification.created_at.desc(), Notification.id.desc()).limit(limit + 1)
+        )
+    )
+    has_more = len(rows) > limit
+    items = rows[:limit]
+    next_cursor = (
+        encode_history_cursor("notifications", items[-1].created_at, items[-1].id, machine_id)
+        if has_more and items
+        else None
+    )
+    return {
+        "items": [_notification_snapshot(item) for item in items],
+        "next_cursor": next_cursor,
+        "has_more": has_more,
+    }
 
 
 @router.get("/runs")
@@ -638,35 +1111,13 @@ def list_machines(
             .order_by(Machine.paired_at.desc())
         )
     )
+    subscription_ids = _subscription_ids_by_machine(
+        session,
+        device_id=principal.subject_id,
+        machine_ids=[machine.id for machine in machines],
+    )
     return [
-        {
-            "id": machine.id,
-            "display_name": machine.display_name,
-            "platform": machine.platform,
-            "architecture": machine.architecture,
-            "cli_version": machine.cli_version,
-            "last_seen_at": machine.last_seen_at,
-            "paired_at": machine.paired_at,
-            "subscription_id": (
-                subscription.id
-                if (
-                    subscription := session.scalar(
-                        select(MachineDeviceSubscription).where(
-                            MachineDeviceSubscription.machine_id == machine.id,
-                            MachineDeviceSubscription.device_id == principal.subject_id,
-                        )
-                    )
-                )
-                else None
-            ),
-            "is_subscribed": session.scalar(
-                select(MachineDeviceSubscription.id).where(
-                    MachineDeviceSubscription.machine_id == machine.id,
-                    MachineDeviceSubscription.device_id == principal.subject_id,
-                )
-            )
-            is not None,
-        }
+        _machine_snapshot(machine, subscription_id=subscription_ids.get(machine.id))
         for machine in machines
     ]
 
@@ -698,6 +1149,7 @@ def update_machine(
             event_type="machine.renamed",
             previous_progress=run.progress,
         )
+    bump_workspace_revision(session, principal.workspace_id)
     session.commit()
     return {"id": machine.id, "display_name": machine.display_name}
 
@@ -715,33 +1167,31 @@ def list_notifications(
             .limit(200)
         )
     )
-    return [
-        {
-            "id": item.id,
-            "machine_id": item.machine_id,
-            "run_id": item.run_id,
-            "title": item.title,
-            "subtitle": item.subtitle,
-            "body": item.body,
-            "level": item.level,
-            "fields": item.fields,
-            "safe_link": item.safe_link,
-            "created_at": item.created_at,
-            "expires_at": item.expires_at,
-        }
-        for item in notifications
-    ]
+    return [_notification_snapshot(item) for item in notifications]
 
 
 @router.post("/notifications", status_code=status.HTTP_201_CREATED)
 def post_notification(
     body: NotificationCreate,
+    request: Request,
+    response: Response,
     session: Session = Depends(get_session),
     principal: Principal = Depends(require_scope("notifications:send")),
     idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
 ) -> dict[str, Any]:
+    settings = settings_for(request)
+    enforce_rate_limit(
+        session,
+        settings,
+        response,
+        bucket_name="notification",
+        subject_key=anonymized_key(settings, "machine", principal.subject_id),
+        limit=settings.rate_limit_notification_per_minute,
+        window_seconds=60,
+    )
     notification = create_notification(
         session,
+        settings,
         workspace_id=principal.workspace_id,
         machine_id=principal.subject_id,
         body=body,
@@ -758,13 +1208,30 @@ def create_webhook(
     session: Session = Depends(get_session),
     principal: Principal = Depends(require_scope("hooks:manage")),
 ) -> dict[str, str]:
+    settings = settings_for(request)
+    acquire_quota_lock(
+        session,
+        settings,
+        namespace="workspace_webhooks",
+        subject=principal.workspace_id,
+    )
+    webhook_count = session.scalar(
+        select(func.count())
+        .select_from(Webhook)
+        .where(
+            Webhook.workspace_id == principal.workspace_id,
+            Webhook.revoked_at.is_(None),
+        )
+    )
+    if int(webhook_count or 0) >= settings.max_webhooks_per_workspace:
+        raise quota_exceeded("webhooks", settings.max_webhooks_per_workspace, "workspace")
     raw_secret = new_bearer_token("rbh")
     webhook = Webhook(
         id=new_id("hook"),
         workspace_id=principal.workspace_id,
         machine_id=principal.subject_id,
         name=body.name,
-        token_hash=token_hash(raw_secret, settings_for(request).credential_pepper),
+        token_hash=token_hash(raw_secret, settings.credential_pepper),
     )
     session.add(webhook)
     session.commit()
@@ -790,13 +1257,25 @@ def webhook_notification(
     hook_id: str,
     body: NotificationCreate,
     request: Request,
+    response: Response,
     authorization: str | None = Header(default=None),
     idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
     session: Session = Depends(get_session),
 ) -> dict[str, str]:
-    webhook = _webhook_auth(session, settings_for(request), hook_id, authorization)
+    settings = settings_for(request)
+    webhook = _webhook_auth(session, settings, hook_id, authorization)
+    enforce_rate_limit(
+        session,
+        settings,
+        response,
+        bucket_name="notification",
+        subject_key=anonymized_key(settings, "webhook", hook_id),
+        limit=settings.rate_limit_notification_per_minute,
+        window_seconds=60,
+    )
     notification = create_notification(
         session,
+        settings,
         workspace_id=webhook.workspace_id,
         machine_id=webhook.machine_id,
         body=body,
@@ -812,14 +1291,44 @@ def webhook_run_upsert(
     external_run_id: str,
     body: RunUpsert,
     request: Request,
+    response: Response,
     authorization: str | None = Header(default=None),
     session: Session = Depends(get_session),
 ) -> dict[str, Any]:
-    webhook = _webhook_auth(session, settings_for(request), hook_id, authorization)
+    settings = settings_for(request)
+    webhook = _webhook_auth(session, settings, hook_id, authorization)
+    enforce_rate_limit(
+        session,
+        settings,
+        response,
+        bucket_name="webhook_run_event",
+        subject_key=anonymized_key(settings, "webhook", hook_id),
+        limit=settings.rate_limit_webhook_event_per_minute,
+        window_seconds=60,
+    )
     if body.machine_id != webhook.machine_id:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "webhook machine mismatch")
     run_id = deterministic_webhook_run_id(hook_id, external_run_id)
-    run = session.get(Run, run_id)
+    run = session.scalar(select(Run).where(Run.id == run_id).with_for_update())
+    if run is None:
+        acquire_quota_lock(
+            session,
+            settings,
+            namespace="machine_active_runs",
+            subject=webhook.machine_id,
+        )
+        run = session.scalar(select(Run).where(Run.id == run_id).with_for_update())
+    if run is None and body.execution_status not in TERMINAL_STATUSES:
+        active_count = session.scalar(
+            select(func.count())
+            .select_from(Run)
+            .where(
+                Run.machine_id == webhook.machine_id,
+                ~Run.execution_status.in_(TERMINAL_STATUSES),
+            )
+        )
+        if int(active_count or 0) >= settings.max_active_runs_per_machine:
+            raise quota_exceeded("active_runs", settings.max_active_runs_per_machine, "machine")
     if run is None:
         run = Run(
             id=run_id,
@@ -844,6 +1353,7 @@ def webhook_run_upsert(
             raise HTTPException(status.HTTP_409_CONFLICT, "terminal run state is immutable")
         run.title = body.title
         run.source = body.source or run.source
+    bump_workspace_revision(session, webhook.workspace_id)
     session.commit()
     return run_snapshot(run)
 
@@ -854,13 +1364,24 @@ def webhook_run_event(
     external_run_id: str,
     body: WebhookRunEvent,
     request: Request,
+    response: Response,
     authorization: str | None = Header(default=None),
     idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
     session: Session = Depends(get_session),
 ) -> dict[str, Any]:
-    webhook = _webhook_auth(session, settings_for(request), hook_id, authorization)
+    settings = settings_for(request)
+    webhook = _webhook_auth(session, settings, hook_id, authorization)
+    enforce_rate_limit(
+        session,
+        settings,
+        response,
+        bucket_name="webhook_run_event",
+        subject_key=anonymized_key(settings, "webhook", hook_id),
+        limit=settings.rate_limit_webhook_event_per_minute,
+        window_seconds=60,
+    )
     run_id = deterministic_webhook_run_id(hook_id, external_run_id)
-    run = session.get(Run, run_id)
+    run = session.scalar(select(Run).where(Run.id == run_id).with_for_update())
     if run is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "webhook run not found")
     event_uuid = (
@@ -882,6 +1403,8 @@ def webhook_run_event(
         occurred_at=body.occurred_at or utcnow(),
         payload=payload,
     )
-    result = ingest_events(session, settings_for(request), run, [event])
+    result = ingest_events(session, settings, run, [event])
+    if result["inserted"]:
+        bump_workspace_revision(session, webhook.workspace_id)
     session.commit()
     return result

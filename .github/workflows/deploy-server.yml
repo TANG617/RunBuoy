@@ -15,7 +15,8 @@ jobs:
     if: >-
       github.event.workflow_run.conclusion == 'success' &&
       github.event.workflow_run.event == 'push' &&
-      github.event.workflow_run.head_branch == 'main'
+      github.event.workflow_run.head_branch == 'main' &&
+      github.event.workflow_run.head_repository.full_name == github.repository
     runs-on: ubuntu-latest
     timeout-minutes: 20
     strategy:
@@ -24,7 +25,7 @@ jobs:
         include:
           - region: global
             environment: production
-            health_url: https://api.runbuoy.cloud/healthz
+            health_url: https://api.runbuoy.cloud/readyz
     concurrency:
       group: runbuoy-production-${{ matrix.region }}
       cancel-in-progress: false
@@ -83,5 +84,8 @@ jobs:
             --retry-all-errors \
             --retry-delay 5 \
             "$HEALTH_URL")"
-          [[ "$(jq -r '.status' <<<"$HEALTH_RESPONSE")" == "ok" ]]
+          [[ "$(jq -r '.status' <<<"$HEALTH_RESPONSE")" == "ready" ]]
           [[ "$(jq -r '.region' <<<"$HEALTH_RESPONSE")" == "$DEPLOY_REGION" ]]
+          [[ "$(jq -r '.checks.database.status' <<<"$HEALTH_RESPONSE")" == "ok" ]]
+          [[ "$(jq -r '.checks.migration.status' <<<"$HEALTH_RESPONSE")" == "ok" ]]
+          [[ "$(jq -r '.checks.worker.status' <<<"$HEALTH_RESPONSE")" == "ok" ]]

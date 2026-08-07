@@ -14,7 +14,10 @@ from typer.testing import CliRunner
 
 from runbuoy.cli import app as cli_app
 from runbuoy.cli.app import app
+from runbuoy.config import Config, CredentialStore, save_config
+from runbuoy.networking.client import RemoteError
 from runbuoy.pairing import flow
+from runbuoy.paths import AppPaths
 from runbuoy.persistence.store import EventQueue
 
 runner = CliRunner()
@@ -173,6 +176,116 @@ def test_pair_json_never_prints_exchange_secret(
     assert json.loads(result.stdout)["state"] == "pending"
     config = json.loads((tmp_path / "config" / "config.json").read_text())
     assert config["machine_id"].startswith("machine_")
+
+
+def test_device_unpair_revokes_server_before_deleting_local_credential(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("RUNBUOY_HOME", str(tmp_path))
+    monkeypatch.setenv("RUNBUOY_DISABLE_KEYRING", "1")
+    paths = AppPaths.discover()
+    config = Config(machine_id="machine_keep_identity")
+    save_config(paths, config)
+    credentials = CredentialStore(paths)
+    credentials.set("machine_credential", "credential-delete-after-server")
+    called: list[str] = []
+
+    class Client:
+        def __init__(self, supplied_config: Config, supplied_credentials: CredentialStore) -> None:
+            assert supplied_config.machine_id == "machine_keep_identity"
+            assert supplied_credentials.get("machine_credential") == (
+                "credential-delete-after-server"
+            )
+
+        def revoke_machine_self(self, machine_id: str) -> None:
+            assert credentials.get("machine_credential") is not None
+            called.append(machine_id)
+
+        def close(self) -> None:
+            pass
+
+    monkeypatch.setattr(cli_app, "RemoteClient", Client)
+    result = runner.invoke(app, ["device", "unpair", "--yes", "--json"])
+
+    assert result.exit_code == 0, result.output
+    assert called == ["machine_keep_identity"]
+    assert credentials.get("machine_credential") is None
+    assert json.loads(paths.config_file.read_text())["machine_id"] == "machine_keep_identity"
+    payload = json.loads(result.stdout)
+    assert payload["server_revoked"] is True
+    assert payload["local_runs_preserved"] is True
+
+
+def test_device_unpair_server_failure_preserves_credential(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("RUNBUOY_HOME", str(tmp_path))
+    monkeypatch.setenv("RUNBUOY_DISABLE_KEYRING", "1")
+    paths = AppPaths.discover()
+    save_config(paths, Config(machine_id="machine_retry"))
+    credentials = CredentialStore(paths)
+    credentials.set("machine_credential", "must-survive")
+
+    class Client:
+        def __init__(self, _config: Config, _credentials: CredentialStore) -> None:
+            pass
+
+        def revoke_machine_self(self, _machine_id: str) -> None:
+            raise RemoteError("server returned HTTP 503")
+
+        def close(self) -> None:
+            pass
+
+    monkeypatch.setattr(cli_app, "RemoteClient", Client)
+    result = runner.invoke(app, ["device", "unpair", "--yes", "--json"])
+
+    assert result.exit_code == 1
+    assert json.loads(result.stderr)["error"]["code"] == "server_revoke_failed"
+    assert credentials.get("machine_credential") == "must-survive"
+
+
+def test_device_unpair_local_only_warns_and_never_calls_server(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("RUNBUOY_HOME", str(tmp_path))
+    monkeypatch.setenv("RUNBUOY_DISABLE_KEYRING", "1")
+    paths = AppPaths.discover()
+    save_config(paths, Config(machine_id="machine_local_only"))
+    credentials = CredentialStore(paths)
+    credentials.set("machine_credential", "local-only")
+    monkeypatch.setattr(
+        cli_app,
+        "RemoteClient",
+        lambda *_args, **_kwargs: pytest.fail("must not contact Server"),
+    )
+
+    result = runner.invoke(
+        app,
+        ["device", "unpair", "--local-only", "--yes", "--json"],
+    )
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.stdout)
+    assert payload["server_revoked"] is False
+    assert "may remain valid" in payload["warning"]
+    assert credentials.get("machine_credential") is None
+
+
+def test_device_unpair_noninteractive_requires_yes_and_keeps_credential(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("RUNBUOY_HOME", str(tmp_path))
+    monkeypatch.setenv("RUNBUOY_DISABLE_KEYRING", "1")
+    paths = AppPaths.discover()
+    save_config(paths, Config(machine_id="machine_confirm"))
+    credentials = CredentialStore(paths)
+    credentials.set("machine_credential", "confirmation-required")
+
+    result = runner.invoke(app, ["device", "unpair", "--json"])
+
+    assert result.exit_code == 1
+    assert json.loads(result.stderr)["error"]["code"] == "confirmation_required"
+    assert credentials.get("machine_credential") == "confirmation-required"
 
 
 @pytest.mark.tmux

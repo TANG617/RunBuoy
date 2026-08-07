@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: RunBuoy API
-  version: 1.0.0
+  version: 1.1.0
   description: >-
     One-way synchronization API. Machines may write safe execution events;
     devices may read projections and manage only their own receiving plane.
@@ -14,6 +14,10 @@ paths:
       responses:
         "201":
           description: Anonymous workspace and scoped device credential
+        "409":
+          description: Installation identifier was already registered and cannot recover a credential
+        "413": { $ref: "#/components/responses/RequestBodyTooLarge" }
+        "429": { $ref: "#/components/responses/RateLimitExceeded" }
   /v1/devices/{device_id}/notification-token:
     put:
       operationId: registerNotificationToken
@@ -32,6 +36,23 @@ paths:
       security: [{ bearerAuth: [] }]
       parameters: [{ $ref: "#/components/parameters/DeviceId" }]
       responses: { "204": { description: Activities reconciled } }
+  /v1/devices/{device_id}:
+    delete:
+      operationId: resetDevice
+      summary: Reset this iPhone's Server-side receiving identity
+      description: >-
+        Revokes the authenticated Device credentials, clears its APNs tokens,
+        invalidates its Activity bindings, removes its subscriptions, and cancels
+        pending push delivery to the Device. It does not delete Workspace Run history.
+      security: [{ bearerAuth: [] }]
+      parameters: [{ $ref: "#/components/parameters/DeviceId" }]
+      responses:
+        "204": { description: Device receiving identity reset }
+        "403":
+          description: Authenticated Device does not own the path identity
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
   /v1/live-activities/{activity_id}/update-token:
     put:
       operationId: registerActivityUpdateToken
@@ -56,16 +77,26 @@ paths:
           in: path
           required: true
           schema: { type: string }
-      responses: { "204": { description: Subscription removed } }
+      responses:
+        "204":
+          description: >-
+            This Device stopped receiving from the Machine; the Machine and its
+            credentials remain active
   /v1/pairing-sessions:
     post:
       operationId: createPairingSession
-      responses: { "201": { description: One-time pairing session } }
+      responses:
+        "201": { description: One-time pairing session }
+        "409": { $ref: "#/components/responses/ResourceQuotaExceeded" }
+        "413": { $ref: "#/components/responses/RequestBodyTooLarge" }
+        "429": { $ref: "#/components/responses/RateLimitExceeded" }
   /v1/pairing-sessions/{session_id}:
     get:
       operationId: getPairingSession
       parameters: [{ $ref: "#/components/parameters/SessionId" }]
-      responses: { "200": { description: Pairing status } }
+      responses:
+        "200": { description: Pairing status }
+        "429": { $ref: "#/components/responses/RateLimitExceeded" }
   /v1/pairing-sessions/{session_id}/claim:
     post:
       operationId: claimPairingSession
@@ -89,6 +120,72 @@ paths:
               schema:
                 type: array
                 items: { $ref: "#/components/schemas/RunProjection" }
+  /v1/sync:
+    get:
+      operationId: syncDeviceSnapshot
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: cursor
+          in: query
+          schema: { type: integer, minimum: 0 }
+        - name: If-None-Match
+          in: header
+          schema: { type: string }
+      responses:
+        "200":
+          description: Bounded workspace snapshot at one persistent revision
+          headers:
+            ETag: { schema: { type: string } }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SyncSnapshot" }
+        "304":
+          description: The workspace revision has not changed
+          headers:
+            ETag: { schema: { type: string } }
+        "409": { description: Cursor is ahead of the workspace revision }
+  /v1/history/runs:
+    get:
+      operationId: listRunHistory
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { $ref: "#/components/parameters/HistoryCursor" }
+        - { $ref: "#/components/parameters/HistoryLimit" }
+        - { $ref: "#/components/parameters/MachineFilter" }
+      responses:
+        "200":
+          description: Stable keyset page containing terminal Runs only
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - { $ref: "#/components/schemas/HistoryPage" }
+                  - type: object
+                    properties:
+                      items:
+                        type: array
+                        items: { $ref: "#/components/schemas/RunProjection" }
+  /v1/history/notifications:
+    get:
+      operationId: listNotificationHistory
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { $ref: "#/components/parameters/HistoryCursor" }
+        - { $ref: "#/components/parameters/HistoryLimit" }
+        - { $ref: "#/components/parameters/MachineFilter" }
+      responses:
+        "200":
+          description: Stable keyset page of notifications
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - { $ref: "#/components/schemas/HistoryPage" }
+                  - type: object
+                    properties:
+                      items:
+                        type: array
+                        items: { $ref: "#/components/schemas/NotificationProjection" }
   /v1/runs/{run_id}:
     put:
       operationId: upsertRun
@@ -105,6 +202,9 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/RunProjection" }
+        "409": { $ref: "#/components/responses/ResourceQuotaExceeded" }
+        "413": { $ref: "#/components/responses/RequestBodyTooLarge" }
+        "429": { $ref: "#/components/responses/RateLimitExceeded" }
     get:
       operationId: getRun
       security: [{ bearerAuth: [] }]
@@ -133,7 +233,10 @@ paths:
                   minItems: 1
                   maxItems: 100
                   items: { $ref: "#/components/schemas/RunEvent" }
-      responses: { "200": { description: Idempotent ingestion result } }
+      responses:
+        "200": { description: Idempotent ingestion result }
+        "413": { $ref: "#/components/responses/RequestBodyTooLarge" }
+        "429": { $ref: "#/components/responses/RateLimitExceeded" }
   /v1/machines:
     get:
       operationId: listMachines
@@ -151,6 +254,84 @@ paths:
             schema: { $ref: "#/components/schemas/MachinePatch" }
       responses:
         "200": { description: Machine display name updated }
+  /v1/machines/{machine_id}/revoke:
+    post:
+      operationId: revokeMachine
+      summary: Revoke a Machine from an owning Device
+      description: >-
+        Revokes Machine and Webhook credentials, removes subscriptions, invalidates
+        Activity bindings, and cancels pending push. Historical Runs remain readable.
+        No instruction or control message is sent to the Machine.
+      security: [{ bearerAuth: [] }]
+      parameters: [{ $ref: "#/components/parameters/MachineId" }]
+      responses:
+        "204": { description: Machine credentials revoked }
+        "404":
+          description: Machine is not in the authenticated Device Workspace
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+  /v1/machines/{machine_id}/revoke-self:
+    post:
+      operationId: revokeMachineSelf
+      summary: Revoke the authenticated Machine credential
+      description: >-
+        Used by CLI unpair before deleting its local credential. This is an identity
+        operation and never creates a Server-to-Machine command channel.
+      security: [{ bearerAuth: [] }]
+      parameters: [{ $ref: "#/components/parameters/MachineId" }]
+      responses:
+        "204": { description: Machine credential revoked }
+        "403":
+          description: Authenticated Machine does not own the path identity
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+  /v1/workspaces/{workspace_id}/deletion-challenge:
+    post:
+      operationId: createWorkspaceDeletionChallenge
+      summary: Create a short-lived deletion challenge
+      security: [{ bearerAuth: [] }]
+      parameters: [{ $ref: "#/components/parameters/WorkspaceId" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/DeletionChallengeRequest" }
+      responses:
+        "200":
+          description: One-use challenge bound to the Device and Workspace
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DeletionChallenge" }
+        "409":
+          description: Explicit confirmation did not match
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+  /v1/workspaces/{workspace_id}:
+    delete:
+      operationId: deleteWorkspace
+      summary: Delete all data in the authenticated anonymous Workspace
+      description: >-
+        Atomically deletes Machines, credentials, Devices, subscriptions, Runs,
+        RunEvents, Notifications, Webhooks, Activity bindings, push outbox/attempts,
+        deletion challenges, and audit rows. Backup copies expire under the configured
+        backup retention policy.
+      security: [{ bearerAuth: [] }]
+      parameters: [{ $ref: "#/components/parameters/WorkspaceId" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/WorkspaceDeleteRequest" }
+      responses:
+        "204": { description: Workspace and all associated cloud data deleted }
+        "409":
+          description: Challenge is missing, invalid, rotated, used, or expired
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
   /v1/notifications:
     get:
       operationId: listNotifications
@@ -159,13 +340,27 @@ paths:
     post:
       operationId: createNotification
       security: [{ bearerAuth: [] }]
-      responses: { "201": { description: Notification accepted } }
+      responses:
+        "201": { description: Notification accepted }
+        "413": { $ref: "#/components/responses/RequestBodyTooLarge" }
+        "429": { $ref: "#/components/responses/RateLimitExceeded" }
+  /v1/webhooks:
+    post:
+      operationId: createWebhook
+      security: [{ bearerAuth: [] }]
+      responses:
+        "201": { description: Webhook credential created }
+        "409": { $ref: "#/components/responses/ResourceQuotaExceeded" }
+        "413": { $ref: "#/components/responses/RequestBodyTooLarge" }
   /v1/hooks/{hook_id}/notifications:
     post:
       operationId: createWebhookNotification
       security: [{ bearerAuth: [] }]
       parameters: [{ $ref: "#/components/parameters/HookId" }]
-      responses: { "201": { description: Notification accepted } }
+      responses:
+        "201": { description: Notification accepted }
+        "413": { $ref: "#/components/responses/RequestBodyTooLarge" }
+        "429": { $ref: "#/components/responses/RateLimitExceeded" }
   /v1/hooks/{hook_id}/runs/{external_run_id}:
     put:
       operationId: upsertWebhookRun
@@ -173,7 +368,11 @@ paths:
       parameters:
         - { $ref: "#/components/parameters/HookId" }
         - { $ref: "#/components/parameters/ExternalRunId" }
-      responses: { "200": { description: Webhook Run projection } }
+      responses:
+        "200": { description: Webhook Run projection }
+        "409": { $ref: "#/components/responses/ResourceQuotaExceeded" }
+        "413": { $ref: "#/components/responses/RequestBodyTooLarge" }
+        "429": { $ref: "#/components/responses/RateLimitExceeded" }
   /v1/hooks/{hook_id}/runs/{external_run_id}/events:
     post:
       operationId: createWebhookRunEvent
@@ -181,7 +380,10 @@ paths:
       parameters:
         - { $ref: "#/components/parameters/HookId" }
         - { $ref: "#/components/parameters/ExternalRunId" }
-      responses: { "202": { description: Event accepted } }
+      responses:
+        "202": { description: Event accepted }
+        "413": { $ref: "#/components/responses/RequestBodyTooLarge" }
+        "429": { $ref: "#/components/responses/RateLimitExceeded" }
 components:
   securitySchemes:
     bearerAuth:
@@ -208,6 +410,11 @@ components:
       in: path
       required: true
       schema: { type: string }
+    WorkspaceId:
+      name: workspace_id
+      in: path
+      required: true
+      schema: { type: string }
     HookId:
       name: hook_id
       in: path
@@ -218,7 +425,99 @@ components:
       in: path
       required: true
       schema: { type: string }
+    HistoryCursor:
+      name: cursor
+      in: query
+      schema: { type: string }
+    HistoryLimit:
+      name: limit
+      in: query
+      schema: { type: integer, minimum: 1, maximum: 100, default: 50 }
+    MachineFilter:
+      name: machine_id
+      in: query
+      schema: { type: string, maxLength: 64 }
+  headers:
+    RateLimitBucket:
+      description: Stable application rate-limit bucket name.
+      schema: { type: string }
+    RateLimitLimit:
+      description: Maximum requests in the current fixed window.
+      schema: { type: integer, minimum: 1 }
+    RateLimitRemaining:
+      description: Requests remaining in the current fixed window.
+      schema: { type: integer, minimum: 0 }
+    RateLimitReset:
+      description: Unix timestamp when the current fixed window resets.
+      schema: { type: integer, minimum: 0 }
+    RetryAfter:
+      description: Seconds until this request may be retried.
+      schema: { type: integer, minimum: 1 }
+  responses:
+    RequestBodyTooLarge:
+      description: Request body or event batch exceeds the configured limit.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/AbuseError" }
+    RateLimitExceeded:
+      description: The caller exhausted an application rate-limit bucket.
+      headers:
+        X-RateLimit-Bucket: { $ref: "#/components/headers/RateLimitBucket" }
+        X-RateLimit-Limit: { $ref: "#/components/headers/RateLimitLimit" }
+        X-RateLimit-Remaining: { $ref: "#/components/headers/RateLimitRemaining" }
+        X-RateLimit-Reset: { $ref: "#/components/headers/RateLimitReset" }
+        Retry-After: { $ref: "#/components/headers/RetryAfter" }
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/AbuseError" }
+    ResourceQuotaExceeded:
+      description: A scoped resource quota has been reached.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/AbuseError" }
   schemas:
+    ErrorEnvelope:
+      type: object
+      required: [detail]
+      properties:
+        detail:
+          type: object
+          required: [code, message]
+          properties:
+            code: { type: string }
+            message: { type: string }
+          additionalProperties: false
+      additionalProperties: false
+    DeletionChallengeRequest:
+      type: object
+      required: [confirmation]
+      properties:
+        confirmation: { const: DELETE }
+      additionalProperties: false
+    DeletionChallenge:
+      type: object
+      required: [challenge, expires_at]
+      properties:
+        challenge: { type: string, minLength: 16 }
+        expires_at: { type: string, format: date-time }
+      additionalProperties: false
+    WorkspaceDeleteRequest:
+      type: object
+      required: [challenge]
+      properties:
+        challenge: { type: string, minLength: 16, maxLength: 256 }
+      additionalProperties: false
+    AbuseError:
+      type: object
+      required: [detail]
+      properties:
+        detail:
+          type: object
+          required: [code]
+          properties:
+            code: { type: string }
+          additionalProperties: true
+      additionalProperties: false
     MachinePatch:
       type: object
       required: [display_name]
@@ -287,6 +586,76 @@ components:
         events:
           type: array
           items: { type: object, additionalProperties: true }
+      additionalProperties: false
+    MachineProjection:
+      type: object
+      required: [id, display_name, last_seen_at, paired_at, is_subscribed]
+      properties:
+        id: { type: string }
+        display_name: { type: string, maxLength: 120 }
+        platform: { type: [string, "null"], maxLength: 64 }
+        architecture: { type: [string, "null"], maxLength: 64 }
+        cli_version: { type: [string, "null"], maxLength: 64 }
+        last_seen_at: { type: string, format: date-time }
+        paired_at: { type: string, format: date-time }
+        subscription_id: { type: [string, "null"] }
+        is_subscribed: { type: boolean }
+      additionalProperties: false
+    NotificationProjection:
+      type: object
+      required: [id, title, body, level, fields, created_at]
+      properties:
+        id: { type: string }
+        machine_id: { type: [string, "null"] }
+        run_id: { type: [string, "null"] }
+        title: { type: string, maxLength: 200 }
+        subtitle: { type: [string, "null"], maxLength: 200 }
+        body: { type: string, maxLength: 2000 }
+        level: { enum: [info, success, warning, error] }
+        fields: { type: array, items: { type: object, additionalProperties: true } }
+        safe_link: { type: [string, "null"], format: uri }
+        created_at: { type: string, format: date-time }
+        expires_at: { type: [string, "null"], format: date-time }
+      additionalProperties: false
+    SyncSnapshot:
+      type: object
+      required:
+        - schema_version
+        - next_cursor
+        - server_time
+        - runs
+        - machines
+        - notifications
+        - history_runs_has_more
+        - history_notifications_has_more
+      properties:
+        schema_version: { const: 1 }
+        next_cursor: { type: integer, minimum: 0 }
+        server_time: { type: string, format: date-time }
+        runs:
+          type: array
+          maxItems: 200
+          items: { $ref: "#/components/schemas/RunProjection" }
+        machines:
+          type: array
+          maxItems: 200
+          items: { $ref: "#/components/schemas/MachineProjection" }
+        notifications:
+          type: array
+          maxItems: 200
+          items: { $ref: "#/components/schemas/NotificationProjection" }
+        history_runs_next_cursor: { type: [string, "null"] }
+        history_runs_has_more: { type: boolean }
+        history_notifications_next_cursor: { type: [string, "null"] }
+        history_notifications_has_more: { type: boolean }
+      additionalProperties: false
+    HistoryPage:
+      type: object
+      required: [items, next_cursor, has_more]
+      properties:
+        items: { type: array }
+        next_cursor: { type: [string, "null"] }
+        has_more: { type: boolean }
       additionalProperties: false
     RunEvent:
       type: object

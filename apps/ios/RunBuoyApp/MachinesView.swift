@@ -280,7 +280,9 @@ private struct MachineDetailContent: View {
     @Environment(RunBuoyStore.self) private var store
 
     let machine: MachineSnapshot
-    @State private var notice: LocalizedStringKey?
+    @State private var notice: String?
+    @State private var pendingAction: MachineLifecycleAction?
+    @State private var isPerformingAction = false
     @AppStorage private var machineIconName: String
 
     init(machine: MachineSnapshot) {
@@ -333,19 +335,23 @@ private struct MachineDetailContent: View {
 
             Section {
                 if machine.isSubscribed, machine.subscriptionID != nil {
-                    Button(
-                        "machine.stop_receiving",
-                        role: .destructive,
-                        action: stopReceiving
-                    )
+                    Button("machine.stop_receiving", role: .destructive) {
+                        pendingAction = .stopReceiving
+                    }
+                    .disabled(isPerformingAction)
+                    .accessibilityIdentifier("machine.stopReceiving")
                 }
-                Button(
-                    "machine.remove_pairing",
-                    role: .destructive,
-                    action: removePairing
-                )
+                Button("machine.revoke", role: .destructive) {
+                    pendingAction = .revoke
+                }
+                .disabled(isPerformingAction)
+                .accessibilityIdentifier("machine.revoke")
+
+                if isPerformingAction {
+                    ProgressView("machine.lifecycle_working")
+                }
             } footer: {
-                Text("machine.removal_explanation")
+                Text("machine.lifecycle_explanation")
             }
 
             if let notice {
@@ -358,20 +364,92 @@ private struct MachineDetailContent: View {
         .accessibilityIdentifier("screen.machineDetail")
         .navigationTitle(machine.displayName)
         .navigationBarTitleDisplayMode(.inline)
-    }
-
-    private func stopReceiving() {
-        guard let subscriptionID = machine.subscriptionID else { return }
-        Task {
-            try? await store.stopReceiving(subscriptionID: subscriptionID)
-            notice = "machine.receiving_stopped"
+        .confirmationDialog(
+            pendingAction?.title ?? "",
+            isPresented: Binding(
+                get: { pendingAction != nil },
+                set: { if !$0 { pendingAction = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            if let pendingAction {
+                Button(pendingAction.confirmationTitle, role: .destructive) {
+                    perform(pendingAction)
+                }
+            }
+            Button("common.cancel", role: .cancel) {}
+        } message: {
+            Text(pendingAction?.message ?? "")
         }
     }
 
-    private func removePairing() {
-        Task {
-            try? await store.removeLocalPairing(subscriptionID: machine.subscriptionID)
-            notice = "machine.pairing_removed"
+    private func perform(_ action: MachineLifecycleAction) {
+        guard !isPerformingAction else { return }
+        isPerformingAction = true
+        notice = nil
+        Task { @MainActor in
+            let authorized = await LocalDeviceOwnerAuthorizer().authorize(
+                reason: action.authorizationReason
+            )
+            guard authorized else {
+                notice = String(localized: "machine.lifecycle_auth_cancelled")
+                isPerformingAction = false
+                return
+            }
+            do {
+                switch action {
+                case .stopReceiving:
+                    guard let subscriptionID = machine.subscriptionID else {
+                        notice = String(localized: "machine.subscription_missing")
+                        isPerformingAction = false
+                        return
+                    }
+                    try await store.stopReceiving(subscriptionID: subscriptionID)
+                    notice = String(localized: "machine.receiving_stopped")
+                case .revoke:
+                    try await store.revokeMachine(machineID: machine.id)
+                    notice = String(localized: "machine.revoked")
+                }
+            } catch {
+                notice = String(
+                    format: String(localized: "machine.lifecycle_failed"),
+                    error.localizedDescription
+                )
+            }
+            isPerformingAction = false
+        }
+    }
+}
+
+private enum MachineLifecycleAction {
+    case stopReceiving
+    case revoke
+
+    var title: String {
+        switch self {
+        case .stopReceiving: String(localized: "machine.stop_receiving_confirm_title")
+        case .revoke: String(localized: "machine.revoke_confirm_title")
+        }
+    }
+
+    var confirmationTitle: LocalizedStringKey {
+        switch self {
+        case .stopReceiving: "machine.stop_receiving_confirm"
+        case .revoke: "machine.revoke_confirm"
+        }
+    }
+
+    var message: String {
+        switch self {
+        case .stopReceiving: String(localized: "machine.stop_receiving_confirm_message")
+        case .revoke: String(localized: "machine.revoke_confirm_message")
+        }
+    }
+
+    var authorizationReason: String {
+        switch self {
+        case .stopReceiving: String(localized: "machine.stop_receiving_auth_reason")
+        case .revoke: String(localized: "machine.revoke_auth_reason")
         }
     }
 }

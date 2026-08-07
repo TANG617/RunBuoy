@@ -234,8 +234,8 @@ Server 实现了 API 级 Webhook：
 
 以下内容尤其容易被旧文档或协议字段误导：
 
-1. **当前 iOS 最低部署版本是 26.0。** Xcode 工程和 SwiftUI API 均以 iOS 26 为基线；不要在官网写
-   “当前 App 支持 iOS 18+”，除非代码先完成兼容。
+1. **当前 App 需要 iOS 18 或更高版本。** App、Widget、unit-test 和 UI-test target 均以 iOS 18.0
+   为最低版本；iOS 26+ 使用 guarded Liquid Glass，iOS 18–25 使用完整的标准 SwiftUI fallback。
 2. **托管 iOS 只启用 Global。** CLI 仍有 `--region cn` 和中国区 URL 常量，但 iOS 的
    `hostedRegions` 只有 Global，并把 China 兼容值归一到 Global；中国大陆独立托管尚不能作为可用功能宣传。
 3. **自托管 App 没有服务器地址输入界面。** 需要自有构建或预置配置。

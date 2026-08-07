@@ -4,7 +4,7 @@ description: 查看 RunBuoy iOS App 的当前可用状态、系统要求与源�
 
 # iOS App
 
-RunBuoy iOS App 需要 **iOS 26 或更新版本**，App Store 版本正在准备发布，当前尚未开放公开下载或预订。
+RunBuoy iOS App 需要 **iOS 18 或更新版本**，App Store 版本正在准备发布，当前尚未开放公开下载或预订。
 
 App Store 产品页公开后，这个页面会更新为 Apple 官方下载或预订链接。现在可以先：
 

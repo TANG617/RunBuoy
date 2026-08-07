@@ -5,6 +5,7 @@ from typing import Any
 
 from sqlalchemy import (
     JSON,
+    BigInteger,
     Boolean,
     DateTime,
     ForeignKey,
@@ -29,6 +30,31 @@ class Workspace(Base):
 
     id: Mapped[str] = mapped_column(String(64), primary_key=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    revision: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+
+
+class WorkspaceDeletionChallenge(Base):
+    __tablename__ = "workspace_deletion_challenges"
+    __table_args__ = (
+        UniqueConstraint(
+            "workspace_id",
+            "device_id",
+            name="uq_workspace_deletion_challenges_workspace_device",
+        ),
+        Index(
+            "ix_workspace_deletion_challenges_workspace_expires",
+            "workspace_id",
+            "expires_at",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    workspace_id: Mapped[str] = mapped_column(ForeignKey("workspaces.id"), index=True)
+    device_id: Mapped[str] = mapped_column(ForeignKey("devices.id"), index=True)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class Device(Base):
@@ -131,12 +157,34 @@ class PairingSession(Base):
     exchanged_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     workspace_id: Mapped[str | None] = mapped_column(ForeignKey("workspaces.id"))
     machine_id: Mapped[str | None] = mapped_column(ForeignKey("machines.id"))
+    creator_key: Mapped[str | None] = mapped_column(String(64), index=True)
+
+
+class RateLimitBucket(Base):
+    __tablename__ = "rate_limit_buckets"
+    __table_args__ = (Index("ix_rate_limit_buckets_expires_at", "expires_at"),)
+
+    bucket_name: Mapped[str] = mapped_column(String(64), primary_key=True)
+    subject_key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    window_start: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    request_count: Mapped[int] = mapped_column(Integer, default=0)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class QuotaLock(Base):
+    __tablename__ = "quota_locks"
+
+    lock_key: Mapped[str] = mapped_column(String(128), primary_key=True)
+    last_used_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
 class Run(Base):
     __tablename__ = "runs"
     __table_args__ = (
         Index("ix_runs_workspace_status_started", "workspace_id", "execution_status", "started_at"),
+        Index("ix_runs_retention", "execution_status", "ended_at"),
+        Index("ix_runs_updated_at", "updated_at"),
     )
 
     id: Mapped[str] = mapped_column(String(64), primary_key=True)
@@ -170,6 +218,7 @@ class RunEvent(Base):
         UniqueConstraint("run_id", "seq", name="uq_run_events_run_seq"),
         UniqueConstraint("event_id", name="uq_run_events_event_id"),
         Index("ix_run_events_run_seq", "run_id", "seq"),
+        Index("ix_run_events_received_at", "received_at"),
     )
 
     id: Mapped[str] = mapped_column(String(64), primary_key=True)
@@ -188,6 +237,7 @@ class Notification(Base):
     __tablename__ = "notifications"
     __table_args__ = (
         UniqueConstraint("workspace_id", "dedupe_key", name="uq_notifications_workspace_dedupe"),
+        Index("ix_notifications_created_at", "created_at"),
     )
 
     id: Mapped[str] = mapped_column(String(64), primary_key=True)
@@ -228,7 +278,10 @@ class LiveActivityBinding(Base):
 
 class PushOutbox(Base):
     __tablename__ = "push_outbox"
-    __table_args__ = (Index("ix_push_outbox_status_available", "status", "available_at"),)
+    __table_args__ = (
+        Index("ix_push_outbox_status_available", "status", "available_at"),
+        Index("ix_push_outbox_status_updated", "status", "updated_at"),
+    )
 
     id: Mapped[str] = mapped_column(String(64), primary_key=True)
     kind: Mapped[str] = mapped_column(String(32))
@@ -248,6 +301,7 @@ class PushOutbox(Base):
 
 class PushAttempt(Base):
     __tablename__ = "push_attempts"
+    __table_args__ = (Index("ix_push_attempts_attempted_at", "attempted_at"),)
 
     id: Mapped[str] = mapped_column(String(64), primary_key=True)
     outbox_id: Mapped[str] = mapped_column(ForeignKey("push_outbox.id"), index=True)
@@ -259,6 +313,21 @@ class PushAttempt(Base):
     reason: Mapped[str | None] = mapped_column(String(255))
     request_payload: Mapped[dict[str, Any]] = mapped_column(JSON)
     request_headers: Mapped[dict[str, str]] = mapped_column(JSON)
+
+
+class ServiceHeartbeat(Base):
+    __tablename__ = "service_heartbeats"
+    __table_args__ = (
+        Index("ix_service_heartbeats_service_last_seen", "service_name", "last_seen_at"),
+    )
+
+    service_name: Mapped[str] = mapped_column(String(64), primary_key=True)
+    instance_id: Mapped[str] = mapped_column(String(128), primary_key=True)
+    status: Mapped[str] = mapped_column(String(16), default="healthy")
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    error_code: Mapped[str | None] = mapped_column(String(128))
+    counters_json: Mapped[dict[str, int]] = mapped_column(JSON, default=dict)
 
 
 class Webhook(Base):
@@ -275,6 +344,7 @@ class Webhook(Base):
 
 class AuditLog(Base):
     __tablename__ = "audit_logs"
+    __table_args__ = (Index("ix_audit_logs_created_at", "created_at"),)
 
     id: Mapped[str] = mapped_column(String(64), primary_key=True)
     workspace_id: Mapped[str | None] = mapped_column(ForeignKey("workspaces.id"), index=True)

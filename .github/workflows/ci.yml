@@ -19,8 +19,10 @@ jobs:
       run:
         working-directory: website
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: "22"
           cache: npm
@@ -33,8 +35,10 @@ jobs:
   protocol-and-security:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v6
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
         with:
           python-version: "3.12"
           enable-cache: true
@@ -42,6 +46,9 @@ jobs:
       - run: uv run python scripts/generate_protocol_fixtures.py --check
       - run: uv run pytest packages/protocol/tests skills/runbuoy/tests
       - run: uv run python scripts/check_read_only_boundary.py
+      - run: uv run python scripts/check_ios_privacy_manifests.py
+      - run: uv run python scripts/check_workflow_pins.py
+      - run: uv run python scripts/check_markdown_links.py
       - run: uvx openapi-spec-validator packages/protocol/openapi.yaml
       - name: License and provenance
         run: test -s LICENSE && test -s THIRD_PARTY_NOTICES.md && test -s docs/code-provenance.md
@@ -49,8 +56,10 @@ jobs:
   python-lint-typecheck:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v6
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
         with:
           python-version: "3.12"
           enable-cache: true
@@ -95,8 +104,10 @@ jobs:
       CREDENTIAL_PEPPER: ci-only-pepper
       TOKEN_ENCRYPTION_KEY: 9G0Q7EN-bipfrNClR7aoX_E6IlWzzKwriC2aUn7-G_0=
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v6
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
         with:
           python-version: "3.12"
           enable-cache: true
@@ -110,9 +121,11 @@ jobs:
   cli-linux:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
       - run: sudo apt-get update && sudo apt-get install -y tmux
-      - uses: astral-sh/setup-uv@v6
+      - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
         with:
           python-version: "3.12"
           enable-cache: true
@@ -124,9 +137,11 @@ jobs:
   cli-macos:
     runs-on: macos-15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
       - run: brew install tmux
-      - uses: astral-sh/setup-uv@v6
+      - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
         with:
           python-version: "3.12"
           enable-cache: true
@@ -135,52 +150,166 @@ jobs:
           uv sync --all-groups
           uv run pytest
 
-  ios-build:
-    runs-on: macos-26
+  ios-18-tests:
+    name: iOS 18 build, unit tests, and UI smoke
+    runs-on: macos-15
+    timeout-minutes: 45
+    env:
+      IOS_RESULT_DIR: RunBuoy-iOS18-results
     steps:
-      - uses: actions/checkout@v4
-      - name: Build app and widget without signing
-        run: >-
-          xcodebuild
-          -project apps/ios/RunBuoy.xcodeproj
-          -scheme RunBuoy
-          -destination 'generic/platform=iOS Simulator'
-          CODE_SIGNING_ALLOWED=NO
-          build
-      # - name: Run iOS unit tests
-      #   run: >-
-      #     xcodebuild
-      #     -project apps/ios/RunBuoy.xcodeproj
-      #     -scheme RunBuoy
-      #     -destination 'platform=iOS Simulator,name=iPhone 17,OS=latest'
-      #     CODE_SIGNING_ALLOWED=NO
-      #     -only-testing:RunBuoyTests
-      #     test
-      # - name: Run iOS UI tests
-      #   run: >-
-      #     xcodebuild
-      #     -project apps/ios/RunBuoy.xcodeproj
-      #     -scheme RunBuoy
-      #     -destination 'platform=iOS Simulator,name=iPhone 17,OS=latest'
-      #     -resultBundlePath "$RUNNER_TEMP/RunBuoyUITests.xcresult"
-      #     CODE_SIGNING_ALLOWED=NO
-      #     -only-testing:RunBuoyUITests
-      #     test
-      - name: Upload UI test failure screenshots and diagnostics
-        if: failure()
-        uses: actions/upload-artifact@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
-          name: RunBuoyUITests-${{ github.run_id }}
-          path: ${{ runner.temp }}/RunBuoyUITests.xcresult
-          if-no-files-found: ignore
+          persist-credentials: false
+      - name: Select Xcode 16.4 and iOS 18.5
+        run: |
+          sudo xcode-select --switch /Applications/Xcode_16.4.app
+          xcodebuild -version
+          xcrun simctl list runtimes | grep 'iOS 18.5'
+          mkdir -p "$RUNNER_TEMP/$IOS_RESULT_DIR"
+      - name: Validate deployment targets and privacy manifests
+        run: python3 scripts/check_ios_privacy_manifests.py
+      - name: Build the iOS 18 fallback app and widget
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -project apps/ios/RunBuoy.xcodeproj \
+            -scheme RunBuoy \
+            -destination 'platform=iOS Simulator,name=iPhone 16,OS=18.5' \
+            -derivedDataPath "$RUNNER_TEMP/RunBuoy-iOS18-DerivedData" \
+            -resultBundlePath "$RUNNER_TEMP/$IOS_RESULT_DIR/RunBuoyBuild.xcresult" \
+            CODE_SIGNING_ALLOWED=NO \
+            ASSETCATALOG_COMPILER_APPICON_NAME= \
+            EXCLUDED_SOURCE_FILE_NAMES=icon.icon \
+            build
+      - name: Run iOS 18 unit tests
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -project apps/ios/RunBuoy.xcodeproj \
+            -scheme RunBuoy \
+            -destination 'platform=iOS Simulator,name=iPhone 16,OS=18.5' \
+            -derivedDataPath "$RUNNER_TEMP/RunBuoy-iOS18-DerivedData" \
+            -resultBundlePath "$RUNNER_TEMP/$IOS_RESULT_DIR/RunBuoyUnitTests.xcresult" \
+            CODE_SIGNING_ALLOWED=NO \
+            ASSETCATALOG_COMPILER_APPICON_NAME= \
+            EXCLUDED_SOURCE_FILE_NAMES=icon.icon \
+            -only-testing:RunBuoyTests \
+            test
+      - name: Run iOS 18 onboarding and run-detail UI smoke
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -project apps/ios/RunBuoy.xcodeproj \
+            -scheme RunBuoy \
+            -destination 'platform=iOS Simulator,name=iPhone 16,OS=18.5' \
+            -derivedDataPath "$RUNNER_TEMP/RunBuoy-iOS18-DerivedData" \
+            -resultBundlePath "$RUNNER_TEMP/$IOS_RESULT_DIR/RunBuoyUISmoke.xcresult" \
+            CODE_SIGNING_ALLOWED=NO \
+            ASSETCATALOG_COMPILER_APPICON_NAME= \
+            EXCLUDED_SOURCE_FILE_NAMES=icon.icon \
+            -only-testing:RunBuoyUITests/RunBuoyUITests/testOnboardingCompletesWithSeededPairingCode \
+            -only-testing:RunBuoyUITests/RunBuoyUITests/testActiveRunOpensDetailAndNavigatesBack \
+            -only-testing:RunBuoyUITests/RunBuoyUITests/testMachineStopReceivingAndRevokeHaveDistinctDestructiveConfirmations \
+            test
+      - name: Collect iOS 18 simulator diagnostics
+        if: failure()
+        continue-on-error: true
+        run: >-
+          xcrun simctl diagnose
+          --output="$RUNNER_TEMP/RunBuoy-iOS18-simulator-diagnostics"
+      - name: Upload iOS 18 test failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: RunBuoy-iOS18-failure-${{ github.run_id }}
+          path: |
+            ${{ runner.temp }}/${{ env.IOS_RESULT_DIR }}
+            ${{ runner.temp }}/RunBuoy-iOS18-simulator-diagnostics*
+          if-no-files-found: warn
+          retention-days: 14
+
+  ios-latest-tests:
+    name: Latest iOS build, unit tests, and archive
+    runs-on: macos-26
+    timeout-minutes: 45
+    env:
+      IOS_RESULT_DIR: RunBuoy-iOS-latest-results
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+      - name: Record latest Xcode and simulator runtime
+        run: |
+          xcodebuild -version
+          xcrun simctl list runtimes
+          mkdir -p "$RUNNER_TEMP/$IOS_RESULT_DIR"
+      - name: Validate deployment targets and privacy manifests
+        run: python3 scripts/check_ios_privacy_manifests.py
+      - name: Build app and widget without signing
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -project apps/ios/RunBuoy.xcodeproj \
+            -scheme RunBuoy \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath "$RUNNER_TEMP/RunBuoy-iOS-latest-DerivedData" \
+            -resultBundlePath "$RUNNER_TEMP/$IOS_RESULT_DIR/RunBuoyBuild.xcresult" \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+      - name: Run latest iOS unit tests
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -project apps/ios/RunBuoy.xcodeproj \
+            -scheme RunBuoy \
+            -destination 'platform=iOS Simulator,name=iPhone 17,OS=latest' \
+            -derivedDataPath "$RUNNER_TEMP/RunBuoy-iOS-latest-DerivedData" \
+            -resultBundlePath "$RUNNER_TEMP/$IOS_RESULT_DIR/RunBuoyUnitTests.xcresult" \
+            CODE_SIGNING_ALLOWED=NO \
+            -only-testing:RunBuoyTests \
+            test
+      - name: Archive app and embedded widget without signing
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -project apps/ios/RunBuoy.xcodeproj \
+            -scheme RunBuoy \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -archivePath "$RUNNER_TEMP/RunBuoy.xcarchive" \
+            -derivedDataPath "$RUNNER_TEMP/RunBuoy-iOS-latest-ArchiveData" \
+            -resultBundlePath "$RUNNER_TEMP/$IOS_RESULT_DIR/RunBuoyArchive.xcresult" \
+            CODE_SIGNING_ALLOWED=NO \
+            archive
+      - name: Verify privacy manifests in the archive
+        run: >-
+          python3 scripts/check_ios_privacy_manifests.py
+          --archive "$RUNNER_TEMP/RunBuoy.xcarchive"
+      - name: Collect latest iOS simulator diagnostics
+        if: failure()
+        continue-on-error: true
+        run: >-
+          xcrun simctl diagnose
+          --output="$RUNNER_TEMP/RunBuoy-iOS-latest-simulator-diagnostics"
+      - name: Upload latest iOS failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: RunBuoy-iOS-latest-failure-${{ github.run_id }}
+          path: |
+            ${{ runner.temp }}/${{ env.IOS_RESULT_DIR }}
+            ${{ runner.temp }}/RunBuoy-iOS-latest-simulator-diagnostics*
+          if-no-files-found: warn
           retention-days: 14
 
   e2e-mock-apns:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
       - run: sudo apt-get update && sudo apt-get install -y tmux
-      - uses: astral-sh/setup-uv@v6
+      - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
         with:
           python-version: "3.12"
           enable-cache: true
@@ -190,3 +319,85 @@ jobs:
         run: docker compose --env-file infra/.env.example -f infra/docker-compose.yml logs
       - if: always()
         run: docker compose --env-file infra/.env.example -f infra/docker-compose.yml down -v
+
+  operations-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+        with:
+          python-version: "3.12"
+          enable-cache: true
+      - name: Build and start mock-APNs stack
+        run: docker compose --env-file infra/.env.example -f infra/docker-compose.yml up -d --build
+      - name: Wait for readiness
+        run: >-
+          curl --fail --silent --show-error
+          --retry 30 --retry-all-errors --retry-delay 2
+          http://127.0.0.1:8000/readyz
+      - name: Backup and restore disposable PostgreSQL/config
+        run: ./scripts/backup_restore_smoke.sh
+      - name: Bounded lifecycle load smoke
+        run: uv run --project server python scripts/load_smoke.py --runs 6 --concurrency 3
+      - name: Check metrics exposition and label redaction
+        run: |
+          curl --fail --silent --show-error http://127.0.0.1:8000/metrics > "$RUNNER_TEMP/runbuoy-metrics.txt"
+          grep -q '^runbuoy_outbox_items' "$RUNNER_TEMP/runbuoy-metrics.txt"
+          grep -q '^runbuoy_worker_heartbeat_age_seconds' "$RUNNER_TEMP/runbuoy-metrics.txt"
+          ! grep -Eqi 'authorization|credential|machine_id|device_id|workspace_id|safe_message|token=' "$RUNNER_TEMP/runbuoy-metrics.txt"
+      - name: Capture failure diagnostics
+        if: failure()
+        run: |
+          mkdir -p "$RUNNER_TEMP/runbuoy-ops-diagnostics"
+          docker compose --env-file infra/.env.example -f infra/docker-compose.yml ps --all > "$RUNNER_TEMP/runbuoy-ops-diagnostics/compose-ps.txt"
+          docker compose --env-file infra/.env.example -f infra/docker-compose.yml logs --no-color > "$RUNNER_TEMP/runbuoy-ops-diagnostics/compose.log" 2>&1
+      - name: Upload failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: runbuoy-operations-${{ github.run_id }}
+          path: ${{ runner.temp }}/runbuoy-ops-diagnostics
+          if-no-files-found: ignore
+          retention-days: 14
+      - if: always()
+        run: docker compose --env-file infra/.env.example -f infra/docker-compose.yml down -v
+
+  release-manifests:
+    name: Generate release manifests and container SBOM
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+        with:
+          python-version: "3.12"
+      - name: Generate CLI SBOM and iOS source manifest
+        run: >-
+          uv run --no-project python scripts/generate_release_manifests.py
+          --output-dir artifacts
+          --source-revision "$GITHUB_SHA"
+      - name: Build Server container for inventory
+        run: docker build --file infra/Dockerfile.api --tag runbuoy-api:sbom .
+      - name: Generate Server container SBOM
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
+        with:
+          image: runbuoy-api:sbom
+          format: cyclonedx-json
+          output-file: artifacts/runbuoy-server-container.cdx.json
+          syft-version: v1.50.0
+          upload-artifact: false
+          upload-release-assets: false
+      - name: Validate generated JSON
+        run: >-
+          uv run python -c
+          'import json,pathlib; [json.loads(p.read_text()) for p in pathlib.Path("artifacts").glob("*.json")]'
+      - name: Upload release manifests
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: release-manifests-${{ github.sha }}
+          path: artifacts/*.json
+          if-no-files-found: error
+          retention-days: 30
