@@ -23,6 +23,14 @@ FORBIDDEN_PATH_FRAGMENTS = (
     "/approve",
     "/keys",
 )
+REQUIRED_RECEIVING_PLANE_PATHS = (
+    "/v1/devices/{device_id}",
+    "/v1/machine-subscriptions/{subscription_id}",
+    "/v1/machines/{machine_id}/revoke",
+    "/v1/machines/{machine_id}/revoke-self",
+    "/v1/workspaces/{workspace_id}/deletion-challenge",
+    "/v1/workspaces/{workspace_id}",
+)
 FORBIDDEN_IOS_DEPENDENCIES = (
     "react-native",
     "expo",
@@ -103,6 +111,9 @@ def main() -> int:
         route_pattern = re.compile(rf"^\s{{2}}[^\n]*{re.escape(fragment)}[^\n]*:\s*$", re.M)
         if route_pattern.search(openapi):
             failures.append(f"OpenAPI exposes forbidden route fragment: {fragment}")
+    for path in REQUIRED_RECEIVING_PLANE_PATHS:
+        if f"  {path}:" not in openapi:
+            failures.append(f"OpenAPI omits required identity/receiving route: {path}")
 
     for path, source in text_files("server", {".py"}):
         lowered = source.lower()
@@ -154,6 +165,7 @@ def main() -> int:
 
     print("RunBuoy read-only boundary: PASS")
     print("- no remote-control OpenAPI or server routes")
+    print("- identity, receiving, revocation, and deletion routes remain explicit")
     print("- no server WebSocket or machine command polling")
     print("- no forbidden iOS runtime, terminal dependency, or mutation UI")
     print("- default remote payload excludes sensitive execution data")

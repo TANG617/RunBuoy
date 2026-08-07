@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: RunBuoy API
-  version: 1.0.0
+  version: 1.1.0
   description: >-
     One-way synchronization API. Machines may write safe execution events;
     devices may read projections and manage only their own receiving plane.
@@ -32,6 +32,23 @@ paths:
       security: [{ bearerAuth: [] }]
       parameters: [{ $ref: "#/components/parameters/DeviceId" }]
       responses: { "204": { description: Activities reconciled } }
+  /v1/devices/{device_id}:
+    delete:
+      operationId: resetDevice
+      summary: Reset this iPhone's Server-side receiving identity
+      description: >-
+        Revokes the authenticated Device credentials, clears its APNs tokens,
+        invalidates its Activity bindings, removes its subscriptions, and cancels
+        pending push delivery to the Device. It does not delete Workspace Run history.
+      security: [{ bearerAuth: [] }]
+      parameters: [{ $ref: "#/components/parameters/DeviceId" }]
+      responses:
+        "204": { description: Device receiving identity reset }
+        "403":
+          description: Authenticated Device does not own the path identity
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
   /v1/live-activities/{activity_id}/update-token:
     put:
       operationId: registerActivityUpdateToken
@@ -56,7 +73,11 @@ paths:
           in: path
           required: true
           schema: { type: string }
-      responses: { "204": { description: Subscription removed } }
+      responses:
+        "204":
+          description: >-
+            This Device stopped receiving from the Machine; the Machine and its
+            credentials remain active
   /v1/pairing-sessions:
     post:
       operationId: createPairingSession
@@ -151,6 +172,84 @@ paths:
             schema: { $ref: "#/components/schemas/MachinePatch" }
       responses:
         "200": { description: Machine display name updated }
+  /v1/machines/{machine_id}/revoke:
+    post:
+      operationId: revokeMachine
+      summary: Revoke a Machine from an owning Device
+      description: >-
+        Revokes Machine and Webhook credentials, removes subscriptions, invalidates
+        Activity bindings, and cancels pending push. Historical Runs remain readable.
+        No instruction or control message is sent to the Machine.
+      security: [{ bearerAuth: [] }]
+      parameters: [{ $ref: "#/components/parameters/MachineId" }]
+      responses:
+        "204": { description: Machine credentials revoked }
+        "404":
+          description: Machine is not in the authenticated Device Workspace
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+  /v1/machines/{machine_id}/revoke-self:
+    post:
+      operationId: revokeMachineSelf
+      summary: Revoke the authenticated Machine credential
+      description: >-
+        Used by CLI unpair before deleting its local credential. This is an identity
+        operation and never creates a Server-to-Machine command channel.
+      security: [{ bearerAuth: [] }]
+      parameters: [{ $ref: "#/components/parameters/MachineId" }]
+      responses:
+        "204": { description: Machine credential revoked }
+        "403":
+          description: Authenticated Machine does not own the path identity
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+  /v1/workspaces/{workspace_id}/deletion-challenge:
+    post:
+      operationId: createWorkspaceDeletionChallenge
+      summary: Create a short-lived deletion challenge
+      security: [{ bearerAuth: [] }]
+      parameters: [{ $ref: "#/components/parameters/WorkspaceId" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/DeletionChallengeRequest" }
+      responses:
+        "200":
+          description: One-use challenge bound to the Device and Workspace
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DeletionChallenge" }
+        "409":
+          description: Explicit confirmation did not match
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+  /v1/workspaces/{workspace_id}:
+    delete:
+      operationId: deleteWorkspace
+      summary: Delete all data in the authenticated anonymous Workspace
+      description: >-
+        Atomically deletes Machines, credentials, Devices, subscriptions, Runs,
+        RunEvents, Notifications, Webhooks, Activity bindings, push outbox/attempts,
+        deletion challenges, and audit rows. Backup copies expire under the configured
+        backup retention policy.
+      security: [{ bearerAuth: [] }]
+      parameters: [{ $ref: "#/components/parameters/WorkspaceId" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/WorkspaceDeleteRequest" }
+      responses:
+        "204": { description: Workspace and all associated cloud data deleted }
+        "409":
+          description: Challenge is missing, invalid, rotated, used, or expired
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
   /v1/notifications:
     get:
       operationId: listNotifications
@@ -208,6 +307,11 @@ components:
       in: path
       required: true
       schema: { type: string }
+    WorkspaceId:
+      name: workspace_id
+      in: path
+      required: true
+      schema: { type: string }
     HookId:
       name: hook_id
       in: path
@@ -219,6 +323,37 @@ components:
       required: true
       schema: { type: string }
   schemas:
+    ErrorEnvelope:
+      type: object
+      required: [detail]
+      properties:
+        detail:
+          type: object
+          required: [code, message]
+          properties:
+            code: { type: string }
+            message: { type: string }
+          additionalProperties: false
+      additionalProperties: false
+    DeletionChallengeRequest:
+      type: object
+      required: [confirmation]
+      properties:
+        confirmation: { const: DELETE }
+      additionalProperties: false
+    DeletionChallenge:
+      type: object
+      required: [challenge, expires_at]
+      properties:
+        challenge: { type: string, minLength: 16 }
+        expires_at: { type: string, format: date-time }
+      additionalProperties: false
+    WorkspaceDeleteRequest:
+      type: object
+      required: [challenge]
+      properties:
+        challenge: { type: string, minLength: 16, maxLength: 256 }
+      additionalProperties: false
     MachinePatch:
       type: object
       required: [display_name]

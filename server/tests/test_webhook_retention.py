@@ -129,12 +129,13 @@ def test_retention_cleanup(harness: Harness) -> None:
         session.commit()
         result = cleanup_retention(session, harness.settings)
         session.commit()
-        assert result == {
+        expected = {
             "notifications": 1,
             "events": 1,
             "safe_log_tails": 1,
             "pending_live_activities": 1,
         }
+        assert {key: result[key] for key in expected} == expected
         assert session.get(Run, run_id).safe_log_tail is None  # type: ignore[union-attr]
         binding = session.get(LiveActivityBinding, "lab_expired_pending")
         assert binding is not None and binding.state == "expired"

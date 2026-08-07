@@ -46,4 +46,18 @@ dependencies, mutation labels in iOS, and sensitive default fixture keys.
 Runtime authorization tests verify that Device credentials receive 403 on
 Machine write APIs and Machine credentials cannot retrieve Device secrets.
 
+## Revocation and deletion
+
+Stopping reception deletes only the authenticated Device subscription. Machine
+revocation invalidates Machine and Hook bearers without sending a command to the
+Machine. Device reset invalidates the authenticated Device bearer and all of its
+push targets. Full anonymous Workspace deletion requires a short-lived,
+Device-bound challenge and removes credentials and user data in one transaction.
+Lifecycle endpoints return stable JSON error codes and deliberately use request
+bodies—not URLs—for deletion challenges and bearer material.
+
+Online deletion cannot rewrite already-created encrypted backup archives. Those
+copies remain inaccessible to product APIs and expire according to the operator's
+documented backup retention period.
+
 Report vulnerabilities privately as described in the repository `SECURITY.md`.

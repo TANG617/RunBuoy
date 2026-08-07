@@ -51,6 +51,8 @@ subscriptions:delete
 ```
 
 Device 能读取投影、注册自己的接收 token、claim pairing、改自己的接收偏好、删除自己的 subscription。
+它还可以重置自己的接收身份、撤销同 Workspace 的 Machine，以及通过短期 challenge 删除自己的匿名
+Workspace。这些都是身份/接收平面操作，不会向 Machine 发送指令。
 不能创建 Run、写事件、发机器通知或改 Machine 名。
 
 ### Machine credential
@@ -68,6 +70,7 @@ pairing:poll
 ```
 
 Machine 能写自己的 Run/事件/通知/名字和管理 Hook，不能读取 Device Run 列表或 APNs token。
+Machine 可用自己的 bearer 调用 `revoke-self`；成功后该 bearer 和它创建的 Hook bearer 都失效。
 
 ### Webhook credential
 
@@ -91,6 +94,11 @@ Machine 能写自己的 Run/事件/通知/名字和管理 Hook，不能读取 De
 | `PUT /v1/live-activities/{activity_id}/update-token` | owner Device | 注册/轮换某 Activity update token |
 | `PATCH /v1/device-preferences` | Device | 修改 Live Activity、成功/失败通知接收偏好 |
 | `DELETE /v1/machine-subscriptions/{id}` | owner Device | 停止该 Device 接收某 Machine |
+| `DELETE /v1/devices/{id}` | owner Device | 重置本 Device credential、tokens、subscriptions、bindings 和 pending push |
+| `POST /v1/machines/{id}/revoke` | owner Device | 撤销同 Workspace Machine/Hook credentials 并停止后续接收 |
+| `POST /v1/machines/{id}/revoke-self` | owner Machine | CLI unpair 使用；撤销自己的 Server credential |
+| `POST /v1/workspaces/{id}/deletion-challenge` | owner Device | 创建绑定 Device/Workspace 的短期、单次删除 challenge |
+| `DELETE /v1/workspaces/{id}` | owner Device | challenge 验证后事务删除整个匿名 Workspace 云端数据 |
 | `POST /v1/pairing-sessions` | 匿名 Machine pre-pair | 创建短期配对 session |
 | `GET /v1/pairing-sessions/{id}` | exchange secret | 轮询 pending/claimed/exchanged |
 | `POST /v1/pairing-sessions/{id}/claim` | Device | 用 challenge claim Machine 到自己的 Workspace |
@@ -110,6 +118,44 @@ Machine 能写自己的 Run/事件/通知/名字和管理 Hook，不能读取 De
 | `POST /v1/hooks/{id}/runs/{external_id}/events` | Hook bearer | 向外部 Run 追加一个事件 |
 
 代码中没有任何 cancel、retry、execute、signal、input、approve、terminal、command 或 WebSocket route。
+
+## 身份和数据生命周期
+
+“Stop receiving”只删除当前 Device 与该 Machine 的 subscription，并取消已经排队、但尚未发送给该
+Device 的相关 push；Machine、Machine credential 和历史 Runs 保持不变。
+
+“Revoke computer”会撤销 Machine 及其 Webhook bearer、删除所有 subscriptions、invalidate 相关
+Activity bindings 并取消 pending push。它不会删除历史 Runs，也不会向 Machine 建立消息或控制通道。
+Machine 的下一个上传会收到 401。已撤销的固定 machine ID 可以在同一个 Workspace 重新配对。
+
+“Reset this iPhone”撤销当前 Device bearer、清除 APNs/push-to-start tokens、invalidate Activity
+bindings、删除 subscriptions 并取消目标 pending outbox。Server 成功后，iOS 才应清理 Keychain、cache
+和相关 UserDefaults；Server 失败时应保留本地身份，除非用户明确选择 local-only reset。
+
+Workspace 删除分两步：先提交字面确认 `DELETE` 换取 `rbdc_...` challenge，再在默认 300 秒内把
+challenge 放在 DELETE JSON body 中。challenge 不放在 URL，按 Device/Workspace 绑定，后一次创建会
+使前一次失效。最终删除在单一数据库事务中完成，包括所有 bearer、Machines、Devices、Runs、事件、
+通知、Webhooks、bindings、outbox/attempts、challenge 和该 Workspace audit rows。
+
+## Retention cleanup
+
+Worker 每轮最多按 `RETENTION_CLEANUP_BATCH_SIZE` 处理每类数据，并由索引支持。清理可安全重复：精确位于
+cutoff 的数据留到下一轮；active Run 不删；仍有 active/stale Live Activity binding 的终态 Run 不删；
+pending outbox 不按 terminal retention 清理。旧 Run 删除时，其依赖事件、终态 push 数据和非活动 binding
+在同一事务处理，仍在独立 notification retention 内的消息只解除 Run FK。
+
+| 环境变量 | 默认值 | 含义 |
+| --- | ---: | --- |
+| `EVENT_RETENTION_HOURS` | 24 | 终态 Run events |
+| `RUN_RETENTION_DAYS` | 30 | 无活动 Live Activity 的终态 Runs |
+| `NOTIFICATION_RETENTION_DAYS` | 30 | 非 active Run notifications |
+| `PUSH_ATTEMPT_RETENTION_DAYS` | 7 | APNs attempts |
+| `OUTBOX_TERMINAL_RETENTION_DAYS` | 7 | sent/cancelled/failed/expired/suppressed outbox |
+| `PAIRING_RETENTION_HOURS` | 24 | 已过期 pairing sessions 之后的保留窗口 |
+| `AUDIT_RETENTION_DAYS` | 90 | lifecycle audit metadata |
+| `SAFE_LOG_TAIL_RETENTION_HOURS` | 24 | opt-in safe log tail；过期后写 SQL NULL |
+| `RETENTION_CLEANUP_BATCH_SIZE` | 500 | 每类每轮最大处理行数 |
+| `WORKSPACE_DELETION_CHALLENGE_TTL_SECONDS` | 300 | Workspace 删除 challenge 有效期 |
 
 ## 配对协议
 
@@ -489,14 +535,9 @@ iOS 同步当前 Activity 后：
 
 ## Retention
 
-outbox worker 每轮执行 cleanup：
-
-- 删除已过 `expires_at` 的 Notification；未设置 expires_at 的普通通知不由这条规则自动删除；
-- 删除已终态 Run 中 received_at 早于 `EVENT_RETENTION_HOURS`（默认 24h）的 append-only events；
-- 清空 ended_at 早于同一 cutoff 的 safe_log_tail；
-- 释放过期 pending Live Activity placeholder。
-
-Run snapshot 本身没有在当前 cleanup 中按年龄删除；iOS Read API 最多返回最近 200 条。
+outbox worker 每轮执行上文列出的批量 retention cleanup。它会覆盖终态 Runs、events、notifications、
+push attempts、terminal outbox、pairing sessions、audit metadata、safe log tails 和过期 pending Activity
+placeholder；active Runs、active/stale Live Activities、pending outbox 以及精确位于 cutoff 的数据不会被误删。
 
 ## 自托管
 
@@ -526,6 +567,15 @@ APNS_PRIVATE_KEY_PATH=/run/secrets/apns_key.p8
 
 PAIRING_TTL_SECONDS=300
 EVENT_RETENTION_HOURS=24
+RUN_RETENTION_DAYS=30
+NOTIFICATION_RETENTION_DAYS=30
+PUSH_ATTEMPT_RETENTION_DAYS=7
+OUTBOX_TERMINAL_RETENTION_DAYS=7
+PAIRING_RETENTION_HOURS=24
+AUDIT_RETENTION_DAYS=90
+SAFE_LOG_TAIL_RETENTION_HOURS=24
+RETENTION_CLEANUP_BATCH_SIZE=500
+WORKSPACE_DELETION_CHALLENGE_TTL_SECONDS=300
 LIVE_ACTIVITY_START_DELAY_SECONDS=5
 LIVE_ACTIVITY_UPDATE_INTERVAL_SECONDS=1
 LIVE_ACTIVITY_MAX_PER_DEVICE=2

@@ -81,6 +81,20 @@ Pair this machine with the RunBuoy iOS app:
 runbuoy device pair
 ```
 
+To stop delivery from this machine, revoke the Server credential before removing
+its local copy:
+
+```bash
+runbuoy device unpair
+runbuoy device unpair --yes --json       # automation/non-interactive use
+runbuoy device unpair --local-only --yes # emergency local cleanup only
+```
+
+The default command keeps the local credential if Server revocation fails, so it
+can be retried safely. `--local-only` warns that the Server credential may still
+be valid. Neither form deletes the stable machine ID, local Runs, SQLite outbox,
+or logs.
+
 Verify delivery with built-in examples:
 
 ```bash

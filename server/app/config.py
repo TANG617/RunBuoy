@@ -20,6 +20,15 @@ class Settings:
     token_encryption_key: str = _development_fernet_key()
     pairing_ttl_seconds: int = 300
     event_retention_hours: int = 24
+    run_retention_days: int = 30
+    notification_retention_days: int = 30
+    push_attempt_retention_days: int = 7
+    outbox_terminal_retention_days: int = 7
+    pairing_retention_hours: int = 24
+    audit_retention_days: int = 90
+    safe_log_tail_retention_hours: int = 24
+    retention_cleanup_batch_size: int = 500
+    workspace_deletion_challenge_ttl_seconds: int = 300
     apns_mode: str = "mock"
     apns_environment: str = "development"
     apns_key_id: str | None = None
@@ -46,6 +55,51 @@ class Settings:
             ),
             event_retention_hours=int(
                 os.getenv("EVENT_RETENTION_HOURS", str(defaults.event_retention_hours))
+            ),
+            run_retention_days=int(
+                os.getenv("RUN_RETENTION_DAYS", str(defaults.run_retention_days))
+            ),
+            notification_retention_days=int(
+                os.getenv(
+                    "NOTIFICATION_RETENTION_DAYS",
+                    str(defaults.notification_retention_days),
+                )
+            ),
+            push_attempt_retention_days=int(
+                os.getenv(
+                    "PUSH_ATTEMPT_RETENTION_DAYS",
+                    str(defaults.push_attempt_retention_days),
+                )
+            ),
+            outbox_terminal_retention_days=int(
+                os.getenv(
+                    "OUTBOX_TERMINAL_RETENTION_DAYS",
+                    str(defaults.outbox_terminal_retention_days),
+                )
+            ),
+            pairing_retention_hours=int(
+                os.getenv("PAIRING_RETENTION_HOURS", str(defaults.pairing_retention_hours))
+            ),
+            audit_retention_days=int(
+                os.getenv("AUDIT_RETENTION_DAYS", str(defaults.audit_retention_days))
+            ),
+            safe_log_tail_retention_hours=int(
+                os.getenv(
+                    "SAFE_LOG_TAIL_RETENTION_HOURS",
+                    str(defaults.safe_log_tail_retention_hours),
+                )
+            ),
+            retention_cleanup_batch_size=int(
+                os.getenv(
+                    "RETENTION_CLEANUP_BATCH_SIZE",
+                    str(defaults.retention_cleanup_batch_size),
+                )
+            ),
+            workspace_deletion_challenge_ttl_seconds=int(
+                os.getenv(
+                    "WORKSPACE_DELETION_CHALLENGE_TTL_SECONDS",
+                    str(defaults.workspace_deletion_challenge_ttl_seconds),
+                )
             ),
             apns_mode=os.getenv("APNS_MODE", defaults.apns_mode),
             apns_environment=os.getenv("APNS_ENVIRONMENT", defaults.apns_environment),
@@ -90,6 +144,23 @@ class Settings:
             raise ValueError("APNS_MODE must be mock or production")
         if self.apns_environment not in {"development", "production"}:
             raise ValueError("APNS_ENVIRONMENT must be development or production")
+        positive_retention_values = {
+            "EVENT_RETENTION_HOURS": self.event_retention_hours,
+            "RUN_RETENTION_DAYS": self.run_retention_days,
+            "NOTIFICATION_RETENTION_DAYS": self.notification_retention_days,
+            "PUSH_ATTEMPT_RETENTION_DAYS": self.push_attempt_retention_days,
+            "OUTBOX_TERMINAL_RETENTION_DAYS": self.outbox_terminal_retention_days,
+            "PAIRING_RETENTION_HOURS": self.pairing_retention_hours,
+            "AUDIT_RETENTION_DAYS": self.audit_retention_days,
+            "SAFE_LOG_TAIL_RETENTION_HOURS": self.safe_log_tail_retention_hours,
+            "RETENTION_CLEANUP_BATCH_SIZE": self.retention_cleanup_batch_size,
+            "WORKSPACE_DELETION_CHALLENGE_TTL_SECONDS": (
+                self.workspace_deletion_challenge_ttl_seconds
+            ),
+        }
+        invalid = [name for name, value in positive_retention_values.items() if value <= 0]
+        if invalid:
+            raise ValueError(f"retention settings must be positive: {', '.join(invalid)}")
         if self.apns_mode == "production":
             missing = [
                 name

@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from .auth import DEVICE_SCOPES, MACHINE_SCOPES, Principal, require_scope
 from .config import Settings
 from .database import get_session
+from .lifecycle import stop_receiving_subscription
 from .models import (
     AuditLog,
     Device,
@@ -366,10 +367,7 @@ def delete_subscription(
     session: Session = Depends(get_session),
     principal: Principal = Depends(require_scope("subscriptions:delete")),
 ) -> Response:
-    subscription = session.get(MachineDeviceSubscription, subscription_id)
-    if subscription is None or subscription.device_id != principal.subject_id:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "subscription not found")
-    session.delete(subscription)
+    stop_receiving_subscription(session, principal, subscription_id)
     session.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
@@ -443,26 +441,48 @@ def claim_pairing_session(
         raise HTTPException(status.HTTP_403_FORBIDDEN, "pairing challenge mismatch")
     metadata = pairing.requested_machine_metadata
     machine_id = metadata.get("machine_id") or new_id("mac")
-    if session.get(Machine, machine_id) is not None:
+    machine = session.get(Machine, machine_id)
+    if machine is not None and (
+        machine.revoked_at is None or machine.workspace_id != principal.workspace_id
+    ):
         raise HTTPException(status.HTTP_409_CONFLICT, "machine ID is already paired")
-    machine = Machine(
-        id=machine_id,
-        workspace_id=principal.workspace_id,
-        display_name=metadata["display_name"],
-        hostname=metadata.get("hostname"),
-        platform=metadata.get("platform"),
-        architecture=metadata.get("architecture"),
-        cli_version=metadata.get("cli_version"),
+    now = utcnow()
+    if machine is None:
+        machine = Machine(
+            id=machine_id,
+            workspace_id=principal.workspace_id,
+            display_name=metadata["display_name"],
+            hostname=metadata.get("hostname"),
+            platform=metadata.get("platform"),
+            architecture=metadata.get("architecture"),
+            cli_version=metadata.get("cli_version"),
+        )
+        session.add(machine)
+    else:
+        machine.display_name = metadata["display_name"]
+        machine.hostname = metadata.get("hostname")
+        machine.platform = metadata.get("platform")
+        machine.architecture = metadata.get("architecture")
+        machine.cli_version = metadata.get("cli_version")
+        machine.revoked_at = None
+        machine.paired_at = now
+        machine.last_seen_at = now
+    subscription = session.scalar(
+        select(MachineDeviceSubscription).where(
+            MachineDeviceSubscription.machine_id == machine.id,
+            MachineDeviceSubscription.device_id == principal.subject_id,
+        )
     )
-    subscription = MachineDeviceSubscription(
-        id=new_id("sub"),
-        machine_id=machine.id,
-        device_id=principal.subject_id,
-    )
-    pairing.claimed_at = utcnow()
+    if subscription is None:
+        subscription = MachineDeviceSubscription(
+            id=new_id("sub"),
+            machine_id=machine.id,
+            device_id=principal.subject_id,
+        )
+        session.add(subscription)
+    pairing.claimed_at = now
     pairing.workspace_id = principal.workspace_id
     pairing.machine_id = machine.id
-    session.add_all([machine, subscription])
     session.commit()
     return {
         "status": "claimed",

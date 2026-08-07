@@ -5,6 +5,7 @@ from fastapi import FastAPI
 
 from .api import router
 from .config import Settings
+from .lifecycle import router as lifecycle_router
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -12,7 +13,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     configured.validate()
     application = FastAPI(
         title="RunBuoy API",
-        version="1.0.0",
+        version="1.1.0",
         description=(
             "One-way Machine-to-iPhone execution projection. "
             "No remote command or terminal control plane exists."
@@ -20,6 +21,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
     application.state.settings = configured
     application.include_router(router)
+    application.include_router(lifecycle_router)
 
     @application.get("/healthz", include_in_schema=False)
     def health() -> dict[str, str]:
