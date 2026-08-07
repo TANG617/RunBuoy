@@ -12,11 +12,11 @@
   },
   "dependencies": {
     "@phosphor-icons/react": "^2.1.10",
-    "@rspress/core": "2.0.18"
+    "@rspress/core": "2.0.19"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
-    "@types/react": "^19.0.0",
+    "@types/react": "^19.2.18",
     "typescript": "5.9.3"
   }
 }
