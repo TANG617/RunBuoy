@@ -99,7 +99,7 @@ struct SettingsView: View {
                 .tint(.primary)
             }
         }
-        .scrollEdgeEffectHidden(true, for: .bottom)
+        .runBuoyBottomScrollEdgeStyle()
         .accessibilityIdentifier("screen.settings")
         .navigationTitle("settings.title")
         .onChange(of: notificationsEnabled) { _, _ in savePreferences() }

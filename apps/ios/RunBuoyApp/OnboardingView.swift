@@ -73,7 +73,7 @@ struct OnboardingView: View {
                         .frame(maxWidth: .infinity)
                 }
             }
-            .buttonStyle(.glassProminent)
+            .runBuoyProminentButtonStyle()
             .controlSize(.large)
             .disabled(isWorking || (page == 1 && selectedRegion == nil))
             .accessibilityIdentifier("onboarding.primary-action")

@@ -286,32 +286,61 @@ private struct RunElapsedView: View {
 private struct RunDetailActionBar: View {
     let run: RunSnapshot
 
+    @ViewBuilder
     var body: some View {
+#if compiler(>=6.2)
+        if #available(iOS 26.0, *), RunBuoyVisualStyle.current == .liquidGlass {
+            liquidGlassActionBar
+        } else {
+            materialActionBar
+        }
+#else
+        materialActionBar
+#endif
+    }
+
+#if compiler(>=6.2)
+    @available(iOS 26.0, *)
+    private var liquidGlassActionBar: some View {
         GlassEffectContainer(spacing: 12) {
-            HStack(spacing: 12) {
-                Spacer(minLength: 0)
-
-                Button(action: copyID) {
-                    Image(systemName: "doc.on.doc")
-                        .frame(minWidth: 44, minHeight: 44)
-                        .contentShape(Circle())
-                }
-                .buttonStyle(.glass)
-                .buttonBorderShape(.circle)
-                .accessibilityLabel("run.copy_id")
-
-                ShareLink(item: shareSummary) {
-                    Image(systemName: "square.and.arrow.up")
-                        .frame(minWidth: 44, minHeight: 44)
-                        .contentShape(Circle())
-                }
-                .buttonStyle(.glassProminent)
-                .buttonBorderShape(.circle)
-                .accessibilityLabel("run.share_summary")
-            }
+            actionButtons
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 8)
+    }
+#endif
+
+    private var materialActionBar: some View {
+        actionButtons
+            .padding(.horizontal, 16)
+            .padding(.vertical, 8)
+            .background(.ultraThinMaterial)
+    }
+
+    private var actionButtons: some View {
+        HStack(spacing: 12) {
+            Spacer(minLength: 0)
+
+            Button(action: copyID) {
+                Image(systemName: "doc.on.doc")
+                    .frame(minWidth: 44, minHeight: 44)
+                    .contentShape(Circle())
+            }
+            .runBuoySecondaryButtonStyle()
+            .buttonBorderShape(.circle)
+            .accessibilityLabel("run.copy_id")
+            .accessibilityIdentifier("run.copyID")
+
+            ShareLink(item: shareSummary) {
+                Image(systemName: "square.and.arrow.up")
+                    .frame(minWidth: 44, minHeight: 44)
+                    .contentShape(Circle())
+            }
+            .runBuoyProminentButtonStyle()
+            .buttonBorderShape(.circle)
+            .accessibilityLabel("run.share_summary")
+            .accessibilityIdentifier("run.shareSummary")
+        }
     }
 
     private var shareSummary: String {

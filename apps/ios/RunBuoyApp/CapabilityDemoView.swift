@@ -478,7 +478,7 @@ struct CapabilityDemoView: View {
                 }
             }
         }
-        .scrollEdgeEffectHidden(true, for: .bottom)
+        .runBuoyBottomScrollEdgeStyle()
         .navigationTitle("demo.title")
         .navigationBarTitleDisplayMode(.inline)
         .accessibilityIdentifier("screen.capabilityDemo")
