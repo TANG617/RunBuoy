@@ -1,8 +1,15 @@
+# Keep the network-generation label on every service. Bumping it forces a
+# one-time recreation so containers cannot remain attached to an older
+# physical network while Compose's logical `default` network stays unchanged.
 services:
   db:
+    labels:
+      com.runbuoy.network-generation: "1"
     restart: unless-stopped
 
   api:
+    labels:
+      com.runbuoy.network-generation: "1"
     env_file: !override
       - ${RUNBUOY_ENV_FILE:-.env.example}
     ports: !override
@@ -25,17 +32,23 @@ services:
       start_period: 10s
 
   worker:
+    labels:
+      com.runbuoy.network-generation: "1"
     env_file: !override
       - ${RUNBUOY_ENV_FILE:-.env.example}
     volumes:
       - "${APNS_PRIVATE_KEY_HOST_PATH:?set APNS_PRIVATE_KEY_HOST_PATH}:/run/secrets/apns_key.p8:ro"
 
   migrate:
+    labels:
+      com.runbuoy.network-generation: "1"
     env_file: !override
       - ${RUNBUOY_ENV_FILE:-.env.example}
 
   caddy:
     image: caddy:2-alpine
+    labels:
+      com.runbuoy.network-generation: "1"
     environment:
       RUNBUOY_HOST: "${RUNBUOY_HOST:?set RUNBUOY_HOST}"
     depends_on:
