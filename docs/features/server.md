@@ -33,6 +33,44 @@ GET /healthz
 
 region 来自 `RUNBUOY_REGION=global|cn`。它只说明 API 进程配置/可达，不验证 APNs 已成功送达。
 
+## 请求限制、限流和资源配额
+
+API 在 FastAPI 解析 body 之前执行有界流读取。默认 request body 上限为 256 KiB；即使请求没有
+`Content-Length` 或使用 chunked transfer，累计超过 `MAX_REQUEST_BODY_BYTES` 也会返回 413，且不会进入业务
+handler。`/healthz` 和 `/readyz` 不读取无关 request body，因此不受该 middleware 影响。
+
+业务限流使用 PostgreSQL/SQLAlchemy fixed-window bucket 和原子 upsert，多 API worker 共享同一计数；不使用
+进程内字典。默认 bucket 为：
+
+| Bucket | 默认值 | Key |
+| --- | ---: | --- |
+| Device bootstrap | 20/hour | HMAC 匿名 IP |
+| Pairing create | 30/hour | HMAC 匿名 IP |
+| Pairing status poll | 120/minute | pairing session |
+| Run upsert | 120/minute | Machine |
+| Event batch | 240/minute | Machine |
+| Notification | 60/minute | Machine 或 Hook |
+| Webhook Run upsert/event | 240/minute | Hook |
+
+成功响应包含稳定的 `X-RateLimit-Bucket`、`X-RateLimit-Limit`、`X-RateLimit-Remaining` 和
+`X-RateLimit-Reset`。超限返回 429，并额外提供 `Retry-After` 和结构化 `rate_limit_exceeded` error。
+默认 `RATE_LIMIT_FAIL_OPEN=false`：limiter accounting 失败时返回 503；只有运营方明确接受失去防护的风险时才
+可设置为 `true`。worker retention cleanup 会删除已过 reset + retention grace 的 bucket 和闲置 quota lock。
+
+Server 不保存原始 IP。IP key 使用独立的 `RATE_LIMIT_IP_PEPPER` 做 HMAC-SHA256。默认忽略
+`X-Forwarded-For`；仅当直连 peer 属于 `TRUSTED_PROXY_CIDRS` 时，才从右向左剥离可信代理并使用第一个不可信
+地址。不要把公网 CIDR 加入 trusted proxy 配置，入口代理必须 append 或 sanitize 该 header。
+
+默认资源配额全部可通过环境变量调整：每 Workspace 25 台未撤销 Machine、每 Machine 100 个活动 Run、每
+HMAC IP 10 个未 claim 且未过期 pairing session、每 Workspace 50 个未撤销 Webhook、每 Workspace 每 UTC
+日 1000 条 Notification，以及每 event batch 100 个事件。资源容量错误返回结构化
+`resource_quota_exceeded`；event batch 超限返回结构化 413。配额在应用层按 Workspace/Machine 所有权执行，
+数据库行锁避免并发绕过。100-event batch 与 240 batches/minute 允许合法 offline outbox 高速恢复，15 秒
+heartbeat 仅占每分钟 4 个事件。
+
+Caddy 可继续负责 TLS、连接数和基础传输保护；request ownership、业务 bucket 和资源配额必须由 App 层执行，
+不依赖定制 Caddy 插件。
+
 ## 身份、凭证和 Scope
 
 ### Device credential
@@ -581,6 +619,24 @@ LIVE_ACTIVITY_UPDATE_INTERVAL_SECONDS=1
 LIVE_ACTIVITY_MAX_PER_DEVICE=2
 LIVE_ACTIVITY_PENDING_TTL_SECONDS=300
 OUTBOX_MAX_ATTEMPTS=6
+
+MAX_REQUEST_BODY_BYTES=262144
+RATE_LIMIT_IP_PEPPER=...
+TRUSTED_PROXY_CIDRS=
+RATE_LIMIT_FAIL_OPEN=false
+RATE_LIMIT_DEVICE_BOOTSTRAP_PER_HOUR=20
+RATE_LIMIT_PAIRING_CREATE_PER_HOUR=30
+RATE_LIMIT_PAIRING_POLL_PER_MINUTE=120
+RATE_LIMIT_RUN_UPSERT_PER_MINUTE=120
+RATE_LIMIT_EVENT_BATCH_PER_MINUTE=240
+RATE_LIMIT_NOTIFICATION_PER_MINUTE=60
+RATE_LIMIT_WEBHOOK_EVENT_PER_MINUTE=240
+MAX_MACHINES_PER_WORKSPACE=25
+MAX_ACTIVE_RUNS_PER_MACHINE=100
+MAX_PENDING_PAIRINGS_PER_IP=10
+MAX_WEBHOOKS_PER_WORKSPACE=50
+MAX_NOTIFICATIONS_PER_WORKSPACE_DAY=1000
+MAX_EVENTS_PER_BATCH=100
 ```
 
 生产部署要求：

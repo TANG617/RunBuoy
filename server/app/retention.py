@@ -6,6 +6,7 @@ from typing import Any
 from sqlalchemy import Select, delete, null, or_, select, update
 from sqlalchemy.orm import Session
 
+from .abuse import cleanup_abuse_state
 from .config import Settings
 from .models import (
     AuditLog,
@@ -211,6 +212,8 @@ def cleanup_retention(
         )
         old_runs = _delete_ids(session, Run, old_run_ids)
 
+    abuse_cleanup = cleanup_abuse_state(session, settings, now=current)
+
     return {
         "notifications": expired_notifications,
         "events": old_events,
@@ -222,4 +225,5 @@ def cleanup_retention(
         "audit_logs": old_audit_logs,
         "deletion_challenges": expired_deletion_challenges,
         "runs": old_runs,
+        **abuse_cleanup,
     }

@@ -8,6 +8,7 @@ from fastapi import HTTPException, status
 from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
+from .abuse import enforce_notification_daily_quota
 from .config import Settings
 from .models import (
     Device,
@@ -288,6 +289,7 @@ def _schedule_notification_push(
 
 def create_notification(
     session: Session,
+    settings: Settings,
     *,
     workspace_id: str,
     machine_id: str | None,
@@ -303,6 +305,11 @@ def create_notification(
         )
         if existing is not None:
             return existing
+    enforce_notification_daily_quota(
+        session,
+        settings,
+        workspace_id=workspace_id,
+    )
     notification = Notification(
         id=new_id("ntf"),
         workspace_id=workspace_id,
@@ -321,6 +328,37 @@ def create_notification(
     session.flush()
     _schedule_notification_push(session, notification)
     return notification
+
+
+def _create_fallback_notification(
+    session: Session,
+    settings: Settings,
+    *,
+    workspace_id: str,
+    machine_id: str,
+    body: NotificationCreate,
+    dedupe_key: str,
+) -> None:
+    try:
+        # An automatic fallback must never prevent the terminal Run projection
+        # from converging. Roll back only notification accounting/materialization
+        # when the Workspace has exhausted its daily notification quota.
+        with session.begin_nested():
+            create_notification(
+                session,
+                settings,
+                workspace_id=workspace_id,
+                machine_id=machine_id,
+                body=body,
+                dedupe_key=dedupe_key,
+            )
+    except HTTPException as exc:
+        detail: dict[str, Any] = exc.detail if isinstance(exc.detail, dict) else {}
+        if (
+            exc.status_code != status.HTTP_429_TOO_MANY_REQUESTS
+            or detail.get("resource") != "notifications"
+        ):
+            raise
 
 
 def schedule_binding_end(
@@ -450,8 +488,9 @@ def schedule_run_pushes(
                 level="error",
                 run_id=run.id,
             )
-            create_notification(
+            _create_fallback_notification(
                 session,
+                settings,
                 workspace_id=run.workspace_id,
                 machine_id=run.machine_id,
                 body=body,
@@ -464,8 +503,9 @@ def schedule_run_pushes(
             and not sent_start_exists
         )
         if should_fallback_success:
-            create_notification(
+            _create_fallback_notification(
                 session,
+                settings,
                 workspace_id=run.workspace_id,
                 machine_id=run.machine_id,
                 body=NotificationCreate(

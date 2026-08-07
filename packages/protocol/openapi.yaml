@@ -14,6 +14,8 @@ paths:
       responses:
         "201":
           description: Anonymous workspace and scoped device credential
+        "413": { $ref: "#/components/responses/RequestBodyTooLarge" }
+        "429": { $ref: "#/components/responses/RateLimitExceeded" }
   /v1/devices/{device_id}/notification-token:
     put:
       operationId: registerNotificationToken
@@ -81,12 +83,18 @@ paths:
   /v1/pairing-sessions:
     post:
       operationId: createPairingSession
-      responses: { "201": { description: One-time pairing session } }
+      responses:
+        "201": { description: One-time pairing session }
+        "409": { $ref: "#/components/responses/ResourceQuotaExceeded" }
+        "413": { $ref: "#/components/responses/RequestBodyTooLarge" }
+        "429": { $ref: "#/components/responses/RateLimitExceeded" }
   /v1/pairing-sessions/{session_id}:
     get:
       operationId: getPairingSession
       parameters: [{ $ref: "#/components/parameters/SessionId" }]
-      responses: { "200": { description: Pairing status } }
+      responses:
+        "200": { description: Pairing status }
+        "429": { $ref: "#/components/responses/RateLimitExceeded" }
   /v1/pairing-sessions/{session_id}/claim:
     post:
       operationId: claimPairingSession
@@ -126,6 +134,9 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/RunProjection" }
+        "409": { $ref: "#/components/responses/ResourceQuotaExceeded" }
+        "413": { $ref: "#/components/responses/RequestBodyTooLarge" }
+        "429": { $ref: "#/components/responses/RateLimitExceeded" }
     get:
       operationId: getRun
       security: [{ bearerAuth: [] }]
@@ -154,7 +165,10 @@ paths:
                   minItems: 1
                   maxItems: 100
                   items: { $ref: "#/components/schemas/RunEvent" }
-      responses: { "200": { description: Idempotent ingestion result } }
+      responses:
+        "200": { description: Idempotent ingestion result }
+        "413": { $ref: "#/components/responses/RequestBodyTooLarge" }
+        "429": { $ref: "#/components/responses/RateLimitExceeded" }
   /v1/machines:
     get:
       operationId: listMachines
@@ -258,13 +272,27 @@ paths:
     post:
       operationId: createNotification
       security: [{ bearerAuth: [] }]
-      responses: { "201": { description: Notification accepted } }
+      responses:
+        "201": { description: Notification accepted }
+        "413": { $ref: "#/components/responses/RequestBodyTooLarge" }
+        "429": { $ref: "#/components/responses/RateLimitExceeded" }
+  /v1/webhooks:
+    post:
+      operationId: createWebhook
+      security: [{ bearerAuth: [] }]
+      responses:
+        "201": { description: Webhook credential created }
+        "409": { $ref: "#/components/responses/ResourceQuotaExceeded" }
+        "413": { $ref: "#/components/responses/RequestBodyTooLarge" }
   /v1/hooks/{hook_id}/notifications:
     post:
       operationId: createWebhookNotification
       security: [{ bearerAuth: [] }]
       parameters: [{ $ref: "#/components/parameters/HookId" }]
-      responses: { "201": { description: Notification accepted } }
+      responses:
+        "201": { description: Notification accepted }
+        "413": { $ref: "#/components/responses/RequestBodyTooLarge" }
+        "429": { $ref: "#/components/responses/RateLimitExceeded" }
   /v1/hooks/{hook_id}/runs/{external_run_id}:
     put:
       operationId: upsertWebhookRun
@@ -272,7 +300,11 @@ paths:
       parameters:
         - { $ref: "#/components/parameters/HookId" }
         - { $ref: "#/components/parameters/ExternalRunId" }
-      responses: { "200": { description: Webhook Run projection } }
+      responses:
+        "200": { description: Webhook Run projection }
+        "409": { $ref: "#/components/responses/ResourceQuotaExceeded" }
+        "413": { $ref: "#/components/responses/RequestBodyTooLarge" }
+        "429": { $ref: "#/components/responses/RateLimitExceeded" }
   /v1/hooks/{hook_id}/runs/{external_run_id}/events:
     post:
       operationId: createWebhookRunEvent
@@ -280,7 +312,10 @@ paths:
       parameters:
         - { $ref: "#/components/parameters/HookId" }
         - { $ref: "#/components/parameters/ExternalRunId" }
-      responses: { "202": { description: Event accepted } }
+      responses:
+        "202": { description: Event accepted }
+        "413": { $ref: "#/components/responses/RequestBodyTooLarge" }
+        "429": { $ref: "#/components/responses/RateLimitExceeded" }
 components:
   securitySchemes:
     bearerAuth:
@@ -322,6 +357,44 @@ components:
       in: path
       required: true
       schema: { type: string }
+  headers:
+    RateLimitBucket:
+      description: Stable application rate-limit bucket name.
+      schema: { type: string }
+    RateLimitLimit:
+      description: Maximum requests in the current fixed window.
+      schema: { type: integer, minimum: 1 }
+    RateLimitRemaining:
+      description: Requests remaining in the current fixed window.
+      schema: { type: integer, minimum: 0 }
+    RateLimitReset:
+      description: Unix timestamp when the current fixed window resets.
+      schema: { type: integer, minimum: 0 }
+    RetryAfter:
+      description: Seconds until this request may be retried.
+      schema: { type: integer, minimum: 1 }
+  responses:
+    RequestBodyTooLarge:
+      description: Request body or event batch exceeds the configured limit.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/AbuseError" }
+    RateLimitExceeded:
+      description: The caller exhausted an application rate-limit bucket.
+      headers:
+        X-RateLimit-Bucket: { $ref: "#/components/headers/RateLimitBucket" }
+        X-RateLimit-Limit: { $ref: "#/components/headers/RateLimitLimit" }
+        X-RateLimit-Remaining: { $ref: "#/components/headers/RateLimitRemaining" }
+        X-RateLimit-Reset: { $ref: "#/components/headers/RateLimitReset" }
+        Retry-After: { $ref: "#/components/headers/RetryAfter" }
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/AbuseError" }
+    ResourceQuotaExceeded:
+      description: A scoped resource quota has been reached.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/AbuseError" }
   schemas:
     ErrorEnvelope:
       type: object
@@ -353,6 +426,17 @@ components:
       required: [challenge]
       properties:
         challenge: { type: string, minLength: 16, maxLength: 256 }
+      additionalProperties: false
+    AbuseError:
+      type: object
+      required: [detail]
+      properties:
+        detail:
+          type: object
+          required: [code]
+          properties:
+            code: { type: string }
+          additionalProperties: true
       additionalProperties: false
     MachinePatch:
       type: object

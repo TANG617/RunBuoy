@@ -148,7 +148,9 @@ class RunEvent(APIModel):
 
 
 class EventBatch(APIModel):
-    events: list[RunEvent] = Field(min_length=1, max_length=100)
+    # The deploy-time quota is enforced in the application layer. Keep only a
+    # generous parser safety ceiling here so MAX_EVENTS_PER_BATCH is effective.
+    events: list[RunEvent] = Field(min_length=1, max_length=10_000)
 
     @model_validator(mode="after")
     def unique_batch_keys(self) -> EventBatch:

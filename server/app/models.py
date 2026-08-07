@@ -5,6 +5,7 @@ from typing import Any
 
 from sqlalchemy import (
     JSON,
+    BigInteger,
     Boolean,
     DateTime,
     ForeignKey,
@@ -155,6 +156,26 @@ class PairingSession(Base):
     exchanged_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     workspace_id: Mapped[str | None] = mapped_column(ForeignKey("workspaces.id"))
     machine_id: Mapped[str | None] = mapped_column(ForeignKey("machines.id"))
+    creator_key: Mapped[str | None] = mapped_column(String(64), index=True)
+
+
+class RateLimitBucket(Base):
+    __tablename__ = "rate_limit_buckets"
+    __table_args__ = (Index("ix_rate_limit_buckets_expires_at", "expires_at"),)
+
+    bucket_name: Mapped[str] = mapped_column(String(64), primary_key=True)
+    subject_key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    window_start: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    request_count: Mapped[int] = mapped_column(Integer, default=0)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class QuotaLock(Base):
+    __tablename__ = "quota_locks"
+
+    lock_key: Mapped[str] = mapped_column(String(128), primary_key=True)
+    last_used_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
 class Run(Base):

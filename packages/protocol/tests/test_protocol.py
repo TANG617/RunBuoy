@@ -145,3 +145,29 @@ def test_openapi_contract_is_valid_and_has_no_control_paths() -> None:
     }
     paths = "\n".join(spec["paths"]).lower()
     assert not any(fragment in paths for fragment in forbidden)
+
+
+def test_openapi_documents_stable_413_and_429_abuse_contracts() -> None:
+    spec = yaml.safe_load((PROTOCOL_DIR / "openapi.yaml").read_text(encoding="utf-8"))
+    responses = spec["components"]["responses"]
+    assert "RequestBodyTooLarge" in responses
+    rate_limited = responses["RateLimitExceeded"]
+    assert set(rate_limited["headers"]) == {
+        "Retry-After",
+        "X-RateLimit-Bucket",
+        "X-RateLimit-Limit",
+        "X-RateLimit-Remaining",
+        "X-RateLimit-Reset",
+    }
+    for path, method in [
+        ("/v1/devices/bootstrap", "post"),
+        ("/v1/pairing-sessions", "post"),
+        ("/v1/runs/{run_id}", "put"),
+        ("/v1/runs/{run_id}/events:batch", "post"),
+        ("/v1/notifications", "post"),
+        ("/v1/hooks/{hook_id}/notifications", "post"),
+        ("/v1/hooks/{hook_id}/runs/{external_run_id}/events", "post"),
+    ]:
+        operation_responses = spec["paths"][path][method]["responses"]
+        assert operation_responses["413"]["$ref"].endswith("RequestBodyTooLarge")
+        assert operation_responses["429"]["$ref"].endswith("RateLimitExceeded")

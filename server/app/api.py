@@ -6,9 +6,16 @@ from datetime import timedelta
 from typing import Any
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response, status
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from .abuse import (
+    acquire_quota_lock,
+    anonymized_key,
+    anonymous_ip_key,
+    enforce_rate_limit,
+    quota_exceeded,
+)
 from .auth import DEVICE_SCOPES, MACHINE_SCOPES, Principal, require_scope
 from .config import Settings
 from .database import get_session
@@ -116,9 +123,19 @@ def _webhook_auth(
 def bootstrap_device(
     body: DeviceBootstrapRequest,
     request: Request,
+    response: Response,
     session: Session = Depends(get_session),
 ) -> dict[str, str]:
     settings = settings_for(request)
+    enforce_rate_limit(
+        session,
+        settings,
+        response,
+        bucket_name="device_bootstrap",
+        subject_key=anonymous_ip_key(request, settings),
+        limit=settings.rate_limit_device_bootstrap_per_hour,
+        window_seconds=60 * 60,
+    )
     device = session.scalar(select(Device).where(Device.installation_id == body.installation_id))
     now = utcnow()
     if device is None:
@@ -376,9 +393,39 @@ def delete_subscription(
 def create_pairing_session(
     body: MachineMetadata,
     request: Request,
+    response: Response,
     session: Session = Depends(get_session),
 ) -> dict[str, Any]:
     settings = settings_for(request)
+    creator_key = anonymous_ip_key(request, settings)
+    enforce_rate_limit(
+        session,
+        settings,
+        response,
+        bucket_name="pairing_create",
+        subject_key=creator_key,
+        limit=settings.rate_limit_pairing_create_per_hour,
+        window_seconds=60 * 60,
+    )
+    acquire_quota_lock(
+        session,
+        settings,
+        namespace="pending_pairings",
+        subject=creator_key,
+    )
+    pending_count = session.scalar(
+        select(func.count())
+        .select_from(PairingSession)
+        .where(
+            PairingSession.creator_key == creator_key,
+            PairingSession.claimed_at.is_(None),
+            PairingSession.expires_at > utcnow(),
+        )
+    )
+    if int(pending_count or 0) >= settings.max_pending_pairings_per_ip:
+        raise quota_exceeded(
+            "pending_pairing_sessions", settings.max_pending_pairings_per_ip, "anonymized_ip"
+        )
     raw_secret = new_bearer_token("rbx")
     pairing = PairingSession(
         id=new_id("pair"),
@@ -387,6 +434,7 @@ def create_pairing_session(
         exchange_secret_hash=token_hash(raw_secret, settings.credential_pepper),
         requested_machine_metadata=body.model_dump(),
         expires_at=utcnow() + timedelta(seconds=settings.pairing_ttl_seconds),
+        creator_key=creator_key,
     )
     session.add(pairing)
     session.commit()
@@ -403,13 +451,24 @@ def create_pairing_session(
 def get_pairing_session(
     session_id: str,
     request: Request,
+    response: Response,
     authorization: str | None = Header(default=None),
     session: Session = Depends(get_session),
 ) -> dict[str, Any]:
+    settings = settings_for(request)
+    enforce_rate_limit(
+        session,
+        settings,
+        response,
+        bucket_name="pairing_status_poll",
+        subject_key=anonymized_key(settings, "pairing_session", session_id),
+        limit=settings.rate_limit_pairing_poll_per_minute,
+        window_seconds=60,
+    )
     pairing = session.get(PairingSession, session_id)
     supplied = _bearer_value(authorization)
     if pairing is None or pairing.exchange_secret_hash != token_hash(
-        supplied, settings_for(request).credential_pepper
+        supplied, settings.credential_pepper
     ):
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "invalid pairing secret")
     if is_expired(pairing.expires_at):
@@ -427,6 +486,7 @@ def get_pairing_session(
 def claim_pairing_session(
     session_id: str,
     body: PairingClaim,
+    request: Request,
     session: Session = Depends(get_session),
     principal: Principal = Depends(require_scope("pairing:claim")),
 ) -> dict[str, Any]:
@@ -439,6 +499,23 @@ def claim_pairing_session(
         raise HTTPException(status.HTTP_409_CONFLICT, "pairing session already claimed")
     if not secrets.compare_digest(pairing.challenge, body.challenge):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "pairing challenge mismatch")
+    settings = settings_for(request)
+    acquire_quota_lock(
+        session,
+        settings,
+        namespace="workspace_machines",
+        subject=principal.workspace_id,
+    )
+    machine_count = session.scalar(
+        select(func.count())
+        .select_from(Machine)
+        .where(
+            Machine.workspace_id == principal.workspace_id,
+            Machine.revoked_at.is_(None),
+        )
+    )
+    if int(machine_count or 0) >= settings.max_machines_per_workspace:
+        raise quota_exceeded("machines", settings.max_machines_per_workspace, "workspace")
     metadata = pairing.requested_machine_metadata
     machine_id = metadata.get("machine_id") or new_id("mac")
     machine = session.get(Machine, machine_id)
@@ -532,9 +609,21 @@ def exchange_pairing_session(
 def upsert_run(
     run_id: uuid.UUID,
     body: RunUpsert,
+    request: Request,
+    response: Response,
     session: Session = Depends(get_session),
     principal: Principal = Depends(require_scope("runs:create")),
 ) -> dict[str, Any]:
+    settings = settings_for(request)
+    enforce_rate_limit(
+        session,
+        settings,
+        response,
+        bucket_name="run_upsert",
+        subject_key=anonymized_key(settings, "machine", principal.subject_id),
+        limit=settings.rate_limit_run_upsert_per_minute,
+        window_seconds=60,
+    )
     machine = _machine_owned(session, principal, body.machine_id)
     machine.last_seen_at = utcnow()
     if body.cli_version is not None:
@@ -542,6 +631,22 @@ def upsert_run(
     key = str(run_id)
     run = session.get(Run, key)
     if run is None:
+        acquire_quota_lock(
+            session,
+            settings,
+            namespace="machine_active_runs",
+            subject=body.machine_id,
+        )
+        active_count = session.scalar(
+            select(func.count())
+            .select_from(Run)
+            .where(
+                Run.machine_id == body.machine_id,
+                ~Run.execution_status.in_(TERMINAL_STATUSES),
+            )
+        )
+        if int(active_count or 0) >= settings.max_active_runs_per_machine:
+            raise quota_exceeded("active_runs", settings.max_active_runs_per_machine, "machine")
         run = Run(
             id=key,
             workspace_id=principal.workspace_id,
@@ -585,15 +690,35 @@ def ingest_run_events(
     run_id: uuid.UUID,
     body: EventBatch,
     request: Request,
+    response: Response,
     session: Session = Depends(get_session),
     principal: Principal = Depends(require_scope("events:write")),
 ) -> dict[str, Any]:
+    settings = settings_for(request)
+    enforce_rate_limit(
+        session,
+        settings,
+        response,
+        bucket_name="event_batch",
+        subject_key=anonymized_key(settings, "machine", principal.subject_id),
+        limit=settings.rate_limit_event_batch_per_minute,
+        window_seconds=60,
+    )
+    if len(body.events) > settings.max_events_per_batch:
+        raise HTTPException(
+            status.HTTP_413_CONTENT_TOO_LARGE,
+            detail={
+                "code": "event_batch_too_large",
+                "limit": settings.max_events_per_batch,
+                "actual": len(body.events),
+            },
+        )
     run = session.get(Run, str(run_id))
     if run is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "run not found")
     _machine_owned(session, principal, run.machine_id)
     try:
-        result = ingest_events(session, settings_for(request), run, body.events)
+        result = ingest_events(session, settings, run, body.events)
         session.commit()
         return result
     except Exception:
@@ -756,12 +881,25 @@ def list_notifications(
 @router.post("/notifications", status_code=status.HTTP_201_CREATED)
 def post_notification(
     body: NotificationCreate,
+    request: Request,
+    response: Response,
     session: Session = Depends(get_session),
     principal: Principal = Depends(require_scope("notifications:send")),
     idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
 ) -> dict[str, Any]:
+    settings = settings_for(request)
+    enforce_rate_limit(
+        session,
+        settings,
+        response,
+        bucket_name="notification",
+        subject_key=anonymized_key(settings, "machine", principal.subject_id),
+        limit=settings.rate_limit_notification_per_minute,
+        window_seconds=60,
+    )
     notification = create_notification(
         session,
+        settings,
         workspace_id=principal.workspace_id,
         machine_id=principal.subject_id,
         body=body,
@@ -778,13 +916,30 @@ def create_webhook(
     session: Session = Depends(get_session),
     principal: Principal = Depends(require_scope("hooks:manage")),
 ) -> dict[str, str]:
+    settings = settings_for(request)
+    acquire_quota_lock(
+        session,
+        settings,
+        namespace="workspace_webhooks",
+        subject=principal.workspace_id,
+    )
+    webhook_count = session.scalar(
+        select(func.count())
+        .select_from(Webhook)
+        .where(
+            Webhook.workspace_id == principal.workspace_id,
+            Webhook.revoked_at.is_(None),
+        )
+    )
+    if int(webhook_count or 0) >= settings.max_webhooks_per_workspace:
+        raise quota_exceeded("webhooks", settings.max_webhooks_per_workspace, "workspace")
     raw_secret = new_bearer_token("rbh")
     webhook = Webhook(
         id=new_id("hook"),
         workspace_id=principal.workspace_id,
         machine_id=principal.subject_id,
         name=body.name,
-        token_hash=token_hash(raw_secret, settings_for(request).credential_pepper),
+        token_hash=token_hash(raw_secret, settings.credential_pepper),
     )
     session.add(webhook)
     session.commit()
@@ -810,13 +965,25 @@ def webhook_notification(
     hook_id: str,
     body: NotificationCreate,
     request: Request,
+    response: Response,
     authorization: str | None = Header(default=None),
     idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
     session: Session = Depends(get_session),
 ) -> dict[str, str]:
-    webhook = _webhook_auth(session, settings_for(request), hook_id, authorization)
+    settings = settings_for(request)
+    webhook = _webhook_auth(session, settings, hook_id, authorization)
+    enforce_rate_limit(
+        session,
+        settings,
+        response,
+        bucket_name="notification",
+        subject_key=anonymized_key(settings, "webhook", hook_id),
+        limit=settings.rate_limit_notification_per_minute,
+        window_seconds=60,
+    )
     notification = create_notification(
         session,
+        settings,
         workspace_id=webhook.workspace_id,
         machine_id=webhook.machine_id,
         body=body,
@@ -832,14 +999,42 @@ def webhook_run_upsert(
     external_run_id: str,
     body: RunUpsert,
     request: Request,
+    response: Response,
     authorization: str | None = Header(default=None),
     session: Session = Depends(get_session),
 ) -> dict[str, Any]:
-    webhook = _webhook_auth(session, settings_for(request), hook_id, authorization)
+    settings = settings_for(request)
+    webhook = _webhook_auth(session, settings, hook_id, authorization)
+    enforce_rate_limit(
+        session,
+        settings,
+        response,
+        bucket_name="webhook_run_event",
+        subject_key=anonymized_key(settings, "webhook", hook_id),
+        limit=settings.rate_limit_webhook_event_per_minute,
+        window_seconds=60,
+    )
     if body.machine_id != webhook.machine_id:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "webhook machine mismatch")
     run_id = deterministic_webhook_run_id(hook_id, external_run_id)
     run = session.get(Run, run_id)
+    if run is None and body.execution_status not in TERMINAL_STATUSES:
+        acquire_quota_lock(
+            session,
+            settings,
+            namespace="machine_active_runs",
+            subject=webhook.machine_id,
+        )
+        active_count = session.scalar(
+            select(func.count())
+            .select_from(Run)
+            .where(
+                Run.machine_id == webhook.machine_id,
+                ~Run.execution_status.in_(TERMINAL_STATUSES),
+            )
+        )
+        if int(active_count or 0) >= settings.max_active_runs_per_machine:
+            raise quota_exceeded("active_runs", settings.max_active_runs_per_machine, "machine")
     if run is None:
         run = Run(
             id=run_id,
@@ -874,11 +1069,22 @@ def webhook_run_event(
     external_run_id: str,
     body: WebhookRunEvent,
     request: Request,
+    response: Response,
     authorization: str | None = Header(default=None),
     idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
     session: Session = Depends(get_session),
 ) -> dict[str, Any]:
-    webhook = _webhook_auth(session, settings_for(request), hook_id, authorization)
+    settings = settings_for(request)
+    webhook = _webhook_auth(session, settings, hook_id, authorization)
+    enforce_rate_limit(
+        session,
+        settings,
+        response,
+        bucket_name="webhook_run_event",
+        subject_key=anonymized_key(settings, "webhook", hook_id),
+        limit=settings.rate_limit_webhook_event_per_minute,
+        window_seconds=60,
+    )
     run_id = deterministic_webhook_run_id(hook_id, external_run_id)
     run = session.get(Run, run_id)
     if run is None:
@@ -902,6 +1108,6 @@ def webhook_run_event(
         occurred_at=body.occurred_at or utcnow(),
         payload=payload,
     )
-    result = ingest_events(session, settings_for(request), run, [event])
+    result = ingest_events(session, settings, run, [event])
     session.commit()
     return result

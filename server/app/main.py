@@ -3,6 +3,7 @@ from __future__ import annotations
 import uvicorn
 from fastapi import FastAPI
 
+from .abuse import RequestBodyLimitMiddleware
 from .api import router
 from .config import Settings
 from .lifecycle import router as lifecycle_router
@@ -20,6 +21,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         ),
     )
     application.state.settings = configured
+    application.add_middleware(
+        RequestBodyLimitMiddleware,
+        max_bytes=configured.max_request_body_bytes,
+    )
     application.include_router(router)
     application.include_router(lifecycle_router)
 

@@ -55,9 +55,7 @@ def upgrade() -> None:
         },
         "run_events": {"ix_run_events_received_at": ["received_at"]},
         "notifications": {"ix_notifications_created_at": ["created_at"]},
-        "push_outbox": {
-            "ix_push_outbox_status_updated": ["status", "updated_at"]
-        },
+        "push_outbox": {"ix_push_outbox_status_updated": ["status", "updated_at"]},
         "push_attempts": {"ix_push_attempts_attempted_at": ["attempted_at"]},
         "audit_logs": {"ix_audit_logs_created_at": ["created_at"]},
     }

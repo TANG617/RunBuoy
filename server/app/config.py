@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import ipaddress
 import os
 from dataclasses import dataclass
 
@@ -10,6 +11,25 @@ def _development_fernet_key() -> str:
     """Stable local-only key; deployments must replace it."""
     digest = hashlib.sha256(b"runbuoy-development-only-encryption-key").digest()
     return base64.urlsafe_b64encode(digest).decode()
+
+
+def _env_bool(name: str, default: bool) -> bool:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    normalized = value.strip().lower()
+    if normalized in {"1", "true", "yes", "on"}:
+        return True
+    if normalized in {"0", "false", "no", "off"}:
+        return False
+    raise ValueError(f"{name} must be a boolean")
+
+
+def _env_csv(name: str, default: tuple[str, ...]) -> tuple[str, ...]:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    return tuple(item.strip() for item in value.split(",") if item.strip())
 
 
 @dataclass(frozen=True, slots=True)
@@ -41,6 +61,24 @@ class Settings:
     live_activity_max_per_device: int = 2
     live_activity_pending_ttl_seconds: int = 300
     outbox_max_attempts: int = 6
+    max_request_body_bytes: int = 256 * 1024
+    rate_limit_ip_pepper: str = "runbuoy-development-only-rate-limit-ip-pepper"
+    trusted_proxy_cidrs: tuple[str, ...] = ()
+    rate_limit_fail_open: bool = False
+    rate_limit_bucket_retention_seconds: int = 3600
+    rate_limit_device_bootstrap_per_hour: int = 20
+    rate_limit_pairing_create_per_hour: int = 30
+    rate_limit_pairing_poll_per_minute: int = 120
+    rate_limit_run_upsert_per_minute: int = 120
+    rate_limit_event_batch_per_minute: int = 240
+    rate_limit_notification_per_minute: int = 60
+    rate_limit_webhook_event_per_minute: int = 240
+    max_machines_per_workspace: int = 25
+    max_active_runs_per_machine: int = 100
+    max_pending_pairings_per_ip: int = 10
+    max_webhooks_per_workspace: int = 50
+    max_notifications_per_workspace_day: int = 1000
+    max_events_per_batch: int = 100
 
     @classmethod
     def from_env(cls) -> Settings:
@@ -135,6 +173,90 @@ class Settings:
             outbox_max_attempts=int(
                 os.getenv("OUTBOX_MAX_ATTEMPTS", str(defaults.outbox_max_attempts))
             ),
+            max_request_body_bytes=int(
+                os.getenv("MAX_REQUEST_BODY_BYTES", str(defaults.max_request_body_bytes))
+            ),
+            rate_limit_ip_pepper=os.getenv("RATE_LIMIT_IP_PEPPER", defaults.rate_limit_ip_pepper),
+            trusted_proxy_cidrs=_env_csv("TRUSTED_PROXY_CIDRS", defaults.trusted_proxy_cidrs),
+            rate_limit_fail_open=_env_bool("RATE_LIMIT_FAIL_OPEN", defaults.rate_limit_fail_open),
+            rate_limit_bucket_retention_seconds=int(
+                os.getenv(
+                    "RATE_LIMIT_BUCKET_RETENTION_SECONDS",
+                    str(defaults.rate_limit_bucket_retention_seconds),
+                )
+            ),
+            rate_limit_device_bootstrap_per_hour=int(
+                os.getenv(
+                    "RATE_LIMIT_DEVICE_BOOTSTRAP_PER_HOUR",
+                    str(defaults.rate_limit_device_bootstrap_per_hour),
+                )
+            ),
+            rate_limit_pairing_create_per_hour=int(
+                os.getenv(
+                    "RATE_LIMIT_PAIRING_CREATE_PER_HOUR",
+                    str(defaults.rate_limit_pairing_create_per_hour),
+                )
+            ),
+            rate_limit_pairing_poll_per_minute=int(
+                os.getenv(
+                    "RATE_LIMIT_PAIRING_POLL_PER_MINUTE",
+                    str(defaults.rate_limit_pairing_poll_per_minute),
+                )
+            ),
+            rate_limit_run_upsert_per_minute=int(
+                os.getenv(
+                    "RATE_LIMIT_RUN_UPSERT_PER_MINUTE",
+                    str(defaults.rate_limit_run_upsert_per_minute),
+                )
+            ),
+            rate_limit_event_batch_per_minute=int(
+                os.getenv(
+                    "RATE_LIMIT_EVENT_BATCH_PER_MINUTE",
+                    str(defaults.rate_limit_event_batch_per_minute),
+                )
+            ),
+            rate_limit_notification_per_minute=int(
+                os.getenv(
+                    "RATE_LIMIT_NOTIFICATION_PER_MINUTE",
+                    str(defaults.rate_limit_notification_per_minute),
+                )
+            ),
+            rate_limit_webhook_event_per_minute=int(
+                os.getenv(
+                    "RATE_LIMIT_WEBHOOK_EVENT_PER_MINUTE",
+                    str(defaults.rate_limit_webhook_event_per_minute),
+                )
+            ),
+            max_machines_per_workspace=int(
+                os.getenv("MAX_MACHINES_PER_WORKSPACE", str(defaults.max_machines_per_workspace))
+            ),
+            max_active_runs_per_machine=int(
+                os.getenv(
+                    "MAX_ACTIVE_RUNS_PER_MACHINE",
+                    str(defaults.max_active_runs_per_machine),
+                )
+            ),
+            max_pending_pairings_per_ip=int(
+                os.getenv(
+                    "MAX_PENDING_PAIRINGS_PER_IP",
+                    str(defaults.max_pending_pairings_per_ip),
+                )
+            ),
+            max_webhooks_per_workspace=int(
+                os.getenv(
+                    "MAX_WEBHOOKS_PER_WORKSPACE",
+                    str(defaults.max_webhooks_per_workspace),
+                )
+            ),
+            max_notifications_per_workspace_day=int(
+                os.getenv(
+                    "MAX_NOTIFICATIONS_PER_WORKSPACE_DAY",
+                    str(defaults.max_notifications_per_workspace_day),
+                )
+            ),
+            max_events_per_batch=int(
+                os.getenv("MAX_EVENTS_PER_BATCH", str(defaults.max_events_per_batch))
+            ),
         )
 
     def validate(self) -> None:
@@ -161,6 +283,33 @@ class Settings:
         invalid = [name for name, value in positive_retention_values.items() if value <= 0]
         if invalid:
             raise ValueError(f"retention settings must be positive: {', '.join(invalid)}")
+        positive_limits = {
+            "MAX_REQUEST_BODY_BYTES": self.max_request_body_bytes,
+            "RATE_LIMIT_BUCKET_RETENTION_SECONDS": self.rate_limit_bucket_retention_seconds,
+            "RATE_LIMIT_DEVICE_BOOTSTRAP_PER_HOUR": self.rate_limit_device_bootstrap_per_hour,
+            "RATE_LIMIT_PAIRING_CREATE_PER_HOUR": self.rate_limit_pairing_create_per_hour,
+            "RATE_LIMIT_PAIRING_POLL_PER_MINUTE": self.rate_limit_pairing_poll_per_minute,
+            "RATE_LIMIT_RUN_UPSERT_PER_MINUTE": self.rate_limit_run_upsert_per_minute,
+            "RATE_LIMIT_EVENT_BATCH_PER_MINUTE": self.rate_limit_event_batch_per_minute,
+            "RATE_LIMIT_NOTIFICATION_PER_MINUTE": self.rate_limit_notification_per_minute,
+            "RATE_LIMIT_WEBHOOK_EVENT_PER_MINUTE": self.rate_limit_webhook_event_per_minute,
+            "MAX_MACHINES_PER_WORKSPACE": self.max_machines_per_workspace,
+            "MAX_ACTIVE_RUNS_PER_MACHINE": self.max_active_runs_per_machine,
+            "MAX_PENDING_PAIRINGS_PER_IP": self.max_pending_pairings_per_ip,
+            "MAX_WEBHOOKS_PER_WORKSPACE": self.max_webhooks_per_workspace,
+            "MAX_NOTIFICATIONS_PER_WORKSPACE_DAY": self.max_notifications_per_workspace_day,
+            "MAX_EVENTS_PER_BATCH": self.max_events_per_batch,
+        }
+        invalid = [name for name, value in positive_limits.items() if value <= 0]
+        if invalid:
+            raise ValueError(f"limits must be positive: {', '.join(invalid)}")
+        if not self.rate_limit_ip_pepper:
+            raise ValueError("RATE_LIMIT_IP_PEPPER must not be empty")
+        for network in self.trusted_proxy_cidrs:
+            try:
+                ipaddress.ip_network(network, strict=False)
+            except ValueError as exc:
+                raise ValueError(f"invalid TRUSTED_PROXY_CIDRS entry: {network}") from exc
         if self.apns_mode == "production":
             missing = [
                 name
