@@ -298,3 +298,45 @@ jobs:
         run: docker compose --env-file infra/.env.example -f infra/docker-compose.yml logs
       - if: always()
         run: docker compose --env-file infra/.env.example -f infra/docker-compose.yml down -v
+
+  operations-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+          enable-cache: true
+      - name: Build and start mock-APNs stack
+        run: docker compose --env-file infra/.env.example -f infra/docker-compose.yml up -d --build
+      - name: Wait for readiness
+        run: >-
+          curl --fail --silent --show-error
+          --retry 30 --retry-all-errors --retry-delay 2
+          http://127.0.0.1:8000/readyz
+      - name: Backup and restore disposable PostgreSQL/config
+        run: ./scripts/backup_restore_smoke.sh
+      - name: Bounded lifecycle load smoke
+        run: uv run --project server python scripts/load_smoke.py --runs 6 --concurrency 3
+      - name: Check metrics exposition and label redaction
+        run: |
+          curl --fail --silent --show-error http://127.0.0.1:8000/metrics > "$RUNNER_TEMP/runbuoy-metrics.txt"
+          grep -q '^runbuoy_outbox_items' "$RUNNER_TEMP/runbuoy-metrics.txt"
+          grep -q '^runbuoy_worker_heartbeat_age_seconds' "$RUNNER_TEMP/runbuoy-metrics.txt"
+          ! grep -Eqi 'authorization|credential|machine_id|device_id|workspace_id|safe_message|token=' "$RUNNER_TEMP/runbuoy-metrics.txt"
+      - name: Capture failure diagnostics
+        if: failure()
+        run: |
+          mkdir -p "$RUNNER_TEMP/runbuoy-ops-diagnostics"
+          docker compose --env-file infra/.env.example -f infra/docker-compose.yml ps --all > "$RUNNER_TEMP/runbuoy-ops-diagnostics/compose-ps.txt"
+          docker compose --env-file infra/.env.example -f infra/docker-compose.yml logs --no-color > "$RUNNER_TEMP/runbuoy-ops-diagnostics/compose.log" 2>&1
+      - name: Upload failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: runbuoy-operations-${{ github.run_id }}
+          path: ${{ runner.temp }}/runbuoy-ops-diagnostics
+          if-no-files-found: ignore
+          retention-days: 14
+      - if: always()
+        run: docker compose --env-file infra/.env.example -f infra/docker-compose.yml down -v

@@ -88,6 +88,15 @@ def test_readyz_rejects_stale_worker_revision_and_bad_config(harness: Harness) -
     assert invalid.token_encryption_key not in serialized
 
 
+def test_readyz_returns_503_when_heartbeat_table_is_not_migrated(harness: Harness) -> None:
+    with harness.session_factory() as session:
+        session.execute(text("DROP TABLE service_heartbeats"))
+        session.commit()
+    response = harness.client.get("/readyz")
+    assert response.status_code == 503
+    assert response.json()["checks"]["worker"]["status"] == "failed"
+
+
 def test_request_log_is_json_allowlisted_and_uses_route_template(
     harness: Harness, monkeypatch: object
 ) -> None:
@@ -99,13 +108,14 @@ def test_request_log_is_json_allowlisted_and_uses_route_template(
         headers={"Authorization": f"Bearer {secret}", "X-Request-ID": "request.safe-1"},
     )
     assert response.status_code == 401
-    assert response.headers["x-request-id"] == "request.safe-1"
+    assert response.headers["x-request-id"].startswith("req_")
     event = json.loads(logged[-1])
     assert event["event"] == "http_request"
     assert event["route"] == "/v1/runs/{run_id}"
     assert event["status"] == 401
     assert secret not in logged[-1]
     assert "query-secret" not in logged[-1]
+    assert "request.safe-1" not in logged[-1]
     assert "00000000-0000-4000-8000-000000000001" not in logged[-1]
 
     redacted = redact_sensitive(
@@ -132,6 +142,7 @@ def test_metrics_have_fixed_labels_and_never_export_user_values(harness: Harness
         headers={"Authorization": f"Bearer {machine['credential']}"},
         json={"machine_id": machine["machine_id"], "title": private_title},
     )
+    harness.client.get("/v1/runs", headers={"Authorization": f"Bearer {device['credential']}"})
     metrics.record_rate_limit("/v1/pairing-sessions")
     metrics.record_sync("not_modified")
 
@@ -155,6 +166,7 @@ def test_metrics_have_fixed_labels_and_never_export_user_values(harness: Harness
     ):
         assert name in output
     assert 'route="/v1/runs/{run_id}"' in output
+    assert 'runbuoy_sync_requests_total{outcome="hit"} 1' in output
     assert private_installation not in output
     assert private_title not in output
     assert device["credential"] not in output

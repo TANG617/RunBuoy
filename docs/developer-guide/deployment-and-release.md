@@ -120,23 +120,29 @@ gh run list --workflow deploy-server.yml --limit 3
 Verify production after the deployment:
 
 ```bash
-curl --fail --silent --show-error https://api.runbuoy.cloud/healthz
+curl --fail --silent --show-error https://api.runbuoy.cloud/readyz
 ```
 
 Expected response:
 
 ```json
-{"status":"ok","region":"global"}
+{"status":"ready","region":"global","checks":{"database":{"status":"ok"},"migration":{"status":"ok"},"configuration":{"status":"ok"},"worker":{"status":"ok"}}}
 ```
+
+Each check also includes bounded diagnostic fields such as expected/current
+migration revision and worker counts; it never includes config values or
+instance identifiers.
 
 ### Backups
 
 Install `infra/backup-runbuoy` as `/usr/local/sbin/backup-runbuoy` and the two
-`runbuoy-backup.*` units in `/etc/systemd/system`. The daily timer writes a
-custom-format PostgreSQL dump, a root-only archive of `/etc/runbuoy`, and
-SHA-256 checksums under `/var/backups/runbuoy`. Backups default to 14-day local
-retention. Periodically copy encrypted backups off-host and perform a private
-restore test; a local backup alone does not protect against loss of the server.
+`runbuoy-backup.*` units in `/etc/systemd/system`, and install
+`infra/restore-runbuoy` as `/usr/local/sbin/restore-runbuoy`. The daily timer
+writes a custom-format PostgreSQL dump, a root-only archive of `/etc/runbuoy`,
+a versioned manifest with PostgreSQL/Alembic compatibility data, and SHA-256
+checksums under `/var/backups/runbuoy`. Backups default to 14-day local
+retention. Configure restic for encrypted off-host copies and run the disposable
+restore smoke regularly; see [Server operations](operations.md).
 
 Also verify a representative API operation and check the production API,
 worker, migration, and APNs delivery logs when the release changes those

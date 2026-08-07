@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import math
@@ -56,7 +57,7 @@ def configure_request_logging() -> None:
 
 def _request_id(value: str | None) -> str:
     if value is not None and REQUEST_ID_PATTERN.fullmatch(value):
-        return value
+        return "req_" + hashlib.sha256(value.encode()).hexdigest()[:32]
     return uuid.uuid4().hex
 
 
@@ -316,6 +317,7 @@ def _render_database_metrics(session: Session) -> list[str]:
         if row.status == "healthy"
     ]
     heartbeat_age = min(healthy_ages) if healthy_ages else math.inf
+    heartbeat_age_text = f"{heartbeat_age:.6f}" if math.isfinite(heartbeat_age) else "+Inf"
     cleanup_totals: dict[str, int] = defaultdict(int)
     for heartbeat in heartbeats:
         for key, value in (heartbeat.counters_json or {}).items():
@@ -371,7 +373,7 @@ def _render_database_metrics(session: Session) -> list[str]:
             f"runbuoy_active_live_activity_bindings {active_bindings}",
             "# HELP runbuoy_worker_heartbeat_age_seconds Age of the freshest healthy worker.",
             "# TYPE runbuoy_worker_heartbeat_age_seconds gauge",
-            f"runbuoy_worker_heartbeat_age_seconds {heartbeat_age}",
+            f"runbuoy_worker_heartbeat_age_seconds {heartbeat_age_text}",
             "# HELP runbuoy_worker_instances Worker instances by reported status.",
             "# TYPE runbuoy_worker_instances gauge",
             f'runbuoy_worker_instances{{status="healthy"}} {healthy_workers}',
@@ -430,32 +432,40 @@ def readiness_report(session: Session, settings: Settings) -> tuple[bool, dict[s
         checks["worker"] = {"status": "disabled"}
     else:
         now = utcnow()
-        workers = list(
-            session.scalars(
-                select(ServiceHeartbeat).where(ServiceHeartbeat.service_name == WORKER_SERVICE)
+        try:
+            workers = list(
+                session.scalars(
+                    select(ServiceHeartbeat).where(ServiceHeartbeat.service_name == WORKER_SERVICE)
+                )
             )
-        )
-        healthy_ages = [
-            max(0.0, (now - _aware(worker.last_seen_at)).total_seconds())
-            for worker in workers
-            if worker.status == "healthy"
-        ]
-        age = min(healthy_ages) if healthy_ages else None
-        fresh = age is not None and age <= settings.worker_heartbeat_max_age_seconds
-        checks["worker"] = {
-            "status": "ok" if fresh else "failed",
-            "fresh_healthy_instances": sum(
-                worker.status == "healthy"
-                and (now - _aware(worker.last_seen_at)).total_seconds()
-                <= settings.worker_heartbeat_max_age_seconds
+            healthy_ages = [
+                max(0.0, (now - _aware(worker.last_seen_at)).total_seconds())
                 for worker in workers
-            ),
-            "failed_instances": sum(worker.status == "failed" for worker in workers),
-            "freshest_age_seconds": round(age, 3) if age is not None else None,
-            "max_age_seconds": settings.worker_heartbeat_max_age_seconds,
-        }
+                if worker.status == "healthy"
+            ]
+            age = min(healthy_ages) if healthy_ages else None
+            fresh = age is not None and age <= settings.worker_heartbeat_max_age_seconds
+            checks["worker"] = {
+                "status": "ok" if fresh else "failed",
+                "fresh_healthy_instances": sum(
+                    worker.status == "healthy"
+                    and (now - _aware(worker.last_seen_at)).total_seconds()
+                    <= settings.worker_heartbeat_max_age_seconds
+                    for worker in workers
+                ),
+                "failed_instances": sum(worker.status == "failed" for worker in workers),
+                "freshest_age_seconds": round(age, 3) if age is not None else None,
+                "max_age_seconds": settings.worker_heartbeat_max_age_seconds,
+            }
+        except SQLAlchemyError as error:
+            session.rollback()
+            checks["worker"] = {"status": "failed", "error": type(error).__name__}
     ready = all(check["status"] in {"ok", "disabled"} for check in checks.values())
-    return ready, {"status": "ready" if ready else "not_ready", "checks": checks}
+    return ready, {
+        "status": "ready" if ready else "not_ready",
+        "region": settings.region,
+        "checks": checks,
+    }
 
 
 def install_observability(application: FastAPI) -> None:
@@ -467,9 +477,23 @@ def install_observability(application: FastAPI) -> None:
         started = time.perf_counter()
         status_code = 500
         error_class: str | None = None
+        sync_outcome: str | None = None
         try:
             response = await call_next(request)
             status_code = response.status_code
+            route = _route_template(request)
+            if status_code == 429:
+                metrics.record_rate_limit(route)
+            if request.method == "GET" and route in {"/v1/runs", "/v1/runs/{run_id}"}:
+                hinted_outcome = response.headers.get("X-RunBuoy-Sync-Outcome")
+                if hinted_outcome in SYNC_OUTCOMES:
+                    sync_outcome = hinted_outcome
+                elif status_code == 304:
+                    sync_outcome = "not_modified"
+                elif 200 <= status_code < 300:
+                    sync_outcome = "hit"
+                if sync_outcome is not None:
+                    metrics.record_sync(sync_outcome)
             response.headers["X-Request-ID"] = request_id
             return response
         except Exception as error:

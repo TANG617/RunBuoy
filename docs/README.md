@@ -6,7 +6,7 @@
 
 - 普通用户：先读[安装指导](user-guide/installation.md)与[功能总览](features/README.md)，使用 Agent 时参考 [Agent Skill 指南](user-guide/agent-skill.md)。
 - 开发和设计：先读[架构](design/architecture.md)、[事件协议](developer-guide/event-protocol.md)与[开发指南](developer-guide/development.md)。
-- 自建和发布：先读[自托管指南](developer-guide/self-hosting.md)，再按[部署与发布指南](developer-guide/deployment-and-release.md)执行。
+- 自建和发布：先读[自托管指南](developer-guide/self-hosting.md)，再按[服务运维](developer-guide/operations.md)和[部署与发布指南](developer-guide/deployment-and-release.md)执行。
 
 ## 产品
 
@@ -39,6 +39,7 @@
 - [开发与测试](developer-guide/development.md)
 - [事件协议](developer-guide/event-protocol.md)
 - [自托管](developer-guide/self-hosting.md)
+- [服务运维、监控、备份与恢复](developer-guide/operations.md)
 - [APNs 配置](developer-guide/apns-setup.md)
 - [iOS 签名](developer-guide/ios-signing.md)
 - [CLI 分发与 PyPI 发布](developer-guide/cli-distribution.md)

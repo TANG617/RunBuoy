@@ -6,38 +6,103 @@ readonly BACKUP_ROOT="${RUNBUOY_BACKUP_ROOT:-/var/backups/runbuoy}"
 readonly DB_CONTAINER="${RUNBUOY_DB_CONTAINER:-runbuoy-db-1}"
 readonly CONFIG_ROOT="${RUNBUOY_CONFIG_ROOT:-/etc/runbuoy}"
 readonly RETENTION_DAYS="${RUNBUOY_BACKUP_RETENTION_DAYS:-14}"
+readonly RESTIC_REPOSITORY_FILE="${RUNBUOY_RESTIC_REPOSITORY_FILE:-}"
+readonly RESTIC_PASSWORD_FILE="${RUNBUOY_RESTIC_PASSWORD_FILE:-}"
 TIMESTAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 readonly TIMESTAMP
 readonly BACKUP_DIRECTORY="$BACKUP_ROOT/$TIMESTAMP"
+TEMP_DIRECTORY=""
+LOCK_DIRECTORY=""
 
-[[ "$RETENTION_DAYS" =~ ^[0-9]+$ ]] || {
-  echo "RUNBUOY_BACKUP_RETENTION_DAYS must be a non-negative integer" >&2
+fail() {
+  echo "RunBuoy backup refused: $1" >&2
   exit 2
 }
 
+on_exit() {
+  local status="$?"
+  if [[ -n "$TEMP_DIRECTORY" && -d "$TEMP_DIRECTORY" ]]; then
+    rm -r -- "$TEMP_DIRECTORY"
+  fi
+  if [[ -n "$LOCK_DIRECTORY" && -d "$LOCK_DIRECTORY" ]]; then
+    rmdir -- "$LOCK_DIRECTORY" 2>/dev/null || true
+  fi
+  if ((status != 0)); then
+    logger -t runbuoy-backup -- "RunBuoy backup failed with status $status" 2>/dev/null || \
+      echo "RunBuoy backup failed with status $status" >&2
+  fi
+}
+trap on_exit EXIT
+
+if ((EUID != 0)) && [[ "${RUNBUOY_ALLOW_NON_ROOT:-0}" != "1" ]]; then
+  fail "must run as root"
+fi
+[[ "$BACKUP_ROOT" == /* && "$BACKUP_ROOT" != "/" ]] || fail "invalid backup root"
+[[ "$CONFIG_ROOT" == /* && "$CONFIG_ROOT" != "/" ]] || fail "invalid config root"
+[[ "$RETENTION_DAYS" =~ ^[0-9]+$ ]] || fail "retention days must be a non-negative integer"
+if [[ -n "$RESTIC_REPOSITORY_FILE" || -n "$RESTIC_PASSWORD_FILE" ]]; then
+  [[ -n "$RESTIC_REPOSITORY_FILE" && -n "$RESTIC_PASSWORD_FILE" ]] || \
+    fail "restic repository and password files must be configured together"
+  [[ -f "$RESTIC_REPOSITORY_FILE" && ! -L "$RESTIC_REPOSITORY_FILE" ]] || \
+    fail "restic repository file is unavailable"
+  [[ -f "$RESTIC_PASSWORD_FILE" && ! -L "$RESTIC_PASSWORD_FILE" ]] || \
+    fail "restic password file is unavailable"
+  for secret_file in "$RESTIC_REPOSITORY_FILE" "$RESTIC_PASSWORD_FILE"; do
+    if file_mode="$(stat -c '%a' "$secret_file" 2>/dev/null)"; then :; else
+      file_mode="$(stat -f '%Lp' "$secret_file")"
+    fi
+    [[ "$file_mode" =~ ^[0-7]*00$ ]] || fail "restic files must not be group/world accessible"
+    if ((EUID == 0)); then
+      if file_uid="$(stat -c '%u' "$secret_file" 2>/dev/null)"; then :; else
+        file_uid="$(stat -f '%u' "$secret_file")"
+      fi
+      [[ "$file_uid" == "0" ]] || \
+        fail "restic files must be root-owned"
+    fi
+  done
+  command -v restic >/dev/null || fail "restic is configured but unavailable"
+fi
+
 install -d -m 0700 "$BACKUP_ROOT"
-exec 9>"$BACKUP_ROOT/.backup.lock"
-flock -n 9 || {
+chmod 0700 "$BACKUP_ROOT"
+if ((EUID == 0)); then
+  chown 0:0 "$BACKUP_ROOT"
+fi
+LOCK_DIRECTORY="$BACKUP_ROOT/.backup.lock.d"
+mkdir -m 0700 "$LOCK_DIRECTORY" 2>/dev/null || {
   echo "Another RunBuoy backup is running" >&2
   exit 3
 }
 
 docker inspect "$DB_CONTAINER" >/dev/null
-[[ -d "$CONFIG_ROOT" ]]
+[[ "$(docker inspect --format '{{.State.Running}}' "$DB_CONTAINER")" == "true" ]] || \
+  fail "database container is not running"
+[[ -d "$CONFIG_ROOT" && ! -L "$CONFIG_ROOT" ]] || fail "config root is unavailable"
 
-TEMP_DIRECTORY="$(mktemp -d "$BACKUP_ROOT/.tmp.XXXXXX")"
-readonly TEMP_DIRECTORY
-cleanup() {
-  if [[ -d "$TEMP_DIRECTORY" ]]; then
-    rm -r -- "$TEMP_DIRECTORY"
-  fi
-}
-trap cleanup EXIT
+DB_USER="${RUNBUOY_DATABASE_USER:-$(docker exec "$DB_CONTAINER" sh -c 'printf %s "$POSTGRES_USER"')}"
+DB_NAME="${RUNBUOY_DATABASE_NAME:-$(docker exec "$DB_CONTAINER" sh -c 'printf %s "$POSTGRES_DB"')}"
+readonly DB_USER DB_NAME
+[[ "$DB_USER" =~ ^[A-Za-z_][A-Za-z0-9_.-]{0,62}$ ]] || fail "invalid database user"
+[[ "$DB_NAME" =~ ^[A-Za-z_][A-Za-z0-9_.-]{0,62}$ ]] || fail "invalid database name"
 
-docker exec "$DB_CONTAINER" sh -c \
-  'exec pg_dump --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" --format custom' \
+MIGRATION_REVISION="$(
+  docker exec "$DB_CONTAINER" psql \
+    --username "$DB_USER" --dbname "$DB_NAME" --tuples-only --no-align \
+    --command 'SELECT version_num FROM alembic_version LIMIT 1'
+)"
+POSTGRES_VERSION="$(
+  docker exec "$DB_CONTAINER" psql \
+    --username "$DB_USER" --dbname "$DB_NAME" --tuples-only --no-align \
+    --command 'SHOW server_version'
+)"
+readonly MIGRATION_REVISION POSTGRES_VERSION
+[[ "$MIGRATION_REVISION" =~ ^[A-Za-z0-9_]+$ ]] || fail "database migration revision is unavailable"
+[[ "$POSTGRES_VERSION" =~ ^[0-9]+([.][0-9]+)* ]] || fail "PostgreSQL version is unavailable"
+
+TEMP_DIRECTORY="$(mktemp -d "$BACKUP_ROOT/.staging.XXXXXX")"
+docker exec "$DB_CONTAINER" pg_dump \
+  --username "$DB_USER" --dbname "$DB_NAME" --format custom \
   >"$TEMP_DIRECTORY/runbuoy.pg_dump"
-
 test -s "$TEMP_DIRECTORY/runbuoy.pg_dump"
 docker exec -i "$DB_CONTAINER" pg_restore --list \
   <"$TEMP_DIRECTORY/runbuoy.pg_dump" >/dev/null
@@ -45,14 +110,79 @@ docker exec -i "$DB_CONTAINER" pg_restore --list \
 tar --create --gzip \
   --file "$TEMP_DIRECTORY/runbuoy-config.tar.gz" \
   --directory / "${CONFIG_ROOT#/}"
+test -s "$TEMP_DIRECTORY/runbuoy-config.tar.gz"
+
+PG_SHA="$(sha256sum "$TEMP_DIRECTORY/runbuoy.pg_dump" | awk '{print $1}')"
+CONFIG_SHA="$(sha256sum "$TEMP_DIRECTORY/runbuoy-config.tar.gz" | awk '{print $1}')"
+if PG_SIZE="$(stat -c '%s' "$TEMP_DIRECTORY/runbuoy.pg_dump" 2>/dev/null)"; then :; else
+  PG_SIZE="$(stat -f '%z' "$TEMP_DIRECTORY/runbuoy.pg_dump")"
+fi
+if CONFIG_SIZE="$(stat -c '%s' "$TEMP_DIRECTORY/runbuoy-config.tar.gz" 2>/dev/null)"; then :; else
+  CONFIG_SIZE="$(stat -f '%z' "$TEMP_DIRECTORY/runbuoy-config.tar.gz")"
+fi
+readonly PG_SHA CONFIG_SHA PG_SIZE CONFIG_SIZE
+
+python3 - \
+  "$TEMP_DIRECTORY/manifest.json" \
+  "$TIMESTAMP" \
+  "$MIGRATION_REVISION" \
+  "$POSTGRES_VERSION" \
+  "$CONFIG_ROOT" \
+  "$PG_SHA" \
+  "$PG_SIZE" \
+  "$CONFIG_SHA" \
+  "$CONFIG_SIZE" <<'PY'
+import json
+import sys
+
+(
+    output,
+    created_at,
+    migration_revision,
+    postgres_version,
+    config_root,
+    pg_sha,
+    pg_size,
+    config_sha,
+    config_size,
+) = sys.argv[1:]
+manifest = {
+    "schema": "runbuoy-backup/v1",
+    "created_at": created_at,
+    "database": {
+        "engine": "postgresql",
+        "migration_revision": migration_revision,
+        "server_version": postgres_version,
+    },
+    "config_root": config_root,
+    "artifacts": {
+        "runbuoy.pg_dump": {"sha256": pg_sha, "size": int(pg_size)},
+        "runbuoy-config.tar.gz": {"sha256": config_sha, "size": int(config_size)},
+    },
+}
+with open(output, "x", encoding="utf-8") as handle:
+    json.dump(manifest, handle, indent=2, sort_keys=True)
+    handle.write("\n")
+PY
 
 (
   cd "$TEMP_DIRECTORY"
-  sha256sum runbuoy.pg_dump runbuoy-config.tar.gz >SHA256SUMS
+  sha256sum runbuoy.pg_dump runbuoy-config.tar.gz manifest.json >SHA256SUMS
 )
 chmod 0600 "$TEMP_DIRECTORY"/*
+[[ ! -e "$BACKUP_DIRECTORY" ]] || fail "backup destination already exists"
 mv "$TEMP_DIRECTORY" "$BACKUP_DIRECTORY"
-trap - EXIT
+TEMP_DIRECTORY=""
+chmod 0700 "$BACKUP_DIRECTORY"
+if ((EUID == 0)); then
+  chown -R 0:0 "$BACKUP_DIRECTORY"
+fi
+
+if [[ -n "$RESTIC_REPOSITORY_FILE" ]]; then
+  export RESTIC_PASSWORD_FILE
+  restic --repository-file "$RESTIC_REPOSITORY_FILE" \
+    backup --tag runbuoy -- "$BACKUP_DIRECTORY"
+fi
 
 find "$BACKUP_ROOT" \
   -mindepth 1 \

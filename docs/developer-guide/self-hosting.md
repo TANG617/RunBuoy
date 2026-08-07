@@ -12,6 +12,7 @@
 
 ```bash
 cp infra/.env.example infra/.env
+# Set RUNBUOY_ENVIRONMENT=production and replace every placeholder for a real host.
 docker compose --env-file infra/.env -f infra/docker-compose.yml up --build
 ```
 
@@ -37,6 +38,11 @@ Do not put secrets in `.env.example`, images, CI logs, Compose command lines,
 or repository files.
 
 ## Retention and operations
+
+Use `/healthz` only for process liveness and `/readyz` for ingress/deployment
+readiness. The latter verifies PostgreSQL, the Alembic head, required config,
+and a fresh persistent worker heartbeat. See the complete
+[operations, metrics, backup, and recovery runbook](operations.md).
 
 - Configure retention with `EVENT_RETENTION_HOURS` (24), `RUN_RETENTION_DAYS`
   (30), `NOTIFICATION_RETENTION_DAYS` (30), `PUSH_ATTEMPT_RETENTION_DAYS` (7),
