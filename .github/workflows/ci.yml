@@ -219,7 +219,7 @@ jobs:
           --output="$RUNNER_TEMP/RunBuoy-iOS18-simulator-diagnostics"
       - name: Upload iOS 18 test failure artifacts
         if: failure()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: RunBuoy-iOS18-failure-${{ github.run_id }}
           path: |
@@ -293,7 +293,7 @@ jobs:
           --output="$RUNNER_TEMP/RunBuoy-iOS-latest-simulator-diagnostics"
       - name: Upload latest iOS failure artifacts
         if: failure()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: RunBuoy-iOS-latest-failure-${{ github.run_id }}
           path: |
@@ -355,7 +355,7 @@ jobs:
           docker compose --env-file infra/.env.example -f infra/docker-compose.yml logs --no-color > "$RUNNER_TEMP/runbuoy-ops-diagnostics/compose.log" 2>&1
       - name: Upload failure diagnostics
         if: failure()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: runbuoy-operations-${{ github.run_id }}
           path: ${{ runner.temp }}/runbuoy-ops-diagnostics
@@ -395,7 +395,7 @@ jobs:
           uv run python -c
           'import json,pathlib; [json.loads(p.read_text()) for p in pathlib.Path("artifacts").glob("*.json")]'
       - name: Upload release manifests
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: release-manifests-${{ github.sha }}
           path: artifacts/*.json
