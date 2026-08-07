@@ -60,6 +60,11 @@ volumes:
 
 networks:
   default:
+    # Keep the network name versioned. Production hosts may already have the
+    # legacy Compose-managed network without IPAM; a new explicit name lets
+    # Compose migrate containers without deleting the persistent database
+    # volume or trying to attach Caddy's static address to that old network.
+    name: runbuoy-private-v1
     ipam:
       config:
         - subnet: 172.30.77.0/24
