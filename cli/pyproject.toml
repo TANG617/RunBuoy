@@ -39,7 +39,7 @@ Issues = "https://github.com/TANG617/RunBuoy/issues"
 
 [dependency-groups]
 dev = [
-  "mypy>=1.11,<2",
+  "mypy>=1.11,<3",
   "pytest>=8.3,<9",
   "pytest-timeout>=2.3,<3",
   "ruff>=0.6,<1",
