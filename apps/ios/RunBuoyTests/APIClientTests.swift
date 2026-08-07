@@ -37,6 +37,75 @@ final class APIClientTests: XCTestCase {
         XCTAssertEqual(result.3.feed.map(\.sequence), [1, 42])
     }
 
+    func testRevisionedSyncSendsCursorAndETagAndDecodesSnapshot() async throws {
+        var captured: URLRequest?
+        let api = makeAPI { request in
+            captured = request
+            return (
+                200,
+                Data(
+                    #"{"schema_version":1,"next_cursor":42,"server_time":"2026-08-07T10:00:00Z","runs":[],"machines":[],"notifications":[],"history_runs_next_cursor":"runs-next","history_runs_has_more":true,"history_notifications_next_cursor":null,"history_notifications_has_more":false}"#.utf8
+                )
+            )
+        }
+
+        let result = try await api.sync(cursor: 41)
+
+        guard case .snapshot(let snapshot) = result else {
+            return XCTFail("Expected a sync snapshot")
+        }
+        XCTAssertEqual(snapshot.nextCursor, 42)
+        XCTAssertEqual(snapshot.historyRunsNextCursor, "runs-next")
+        XCTAssertTrue(snapshot.historyRunsHasMore)
+        XCTAssertEqual(captured?.url?.path, "/v1/sync")
+        XCTAssertEqual(captured?.url?.query, "cursor=41")
+        XCTAssertEqual(
+            captured?.value(forHTTPHeaderField: "If-None-Match"),
+            "\"sync-workspace_1-41\""
+        )
+    }
+
+    func testRevisionedSyncAcceptsNotModified() async throws {
+        let api = makeAPI { _ in (304, Data()) }
+
+        let result = try await api.sync(cursor: 9)
+
+        XCTAssertEqual(result, .notModified)
+    }
+
+    func testHistoryPageCarriesStableCursorAndMachineFilter() async throws {
+        var captured: URLRequest?
+        let api = makeAPI { request in
+            captured = request
+            return (200, Data(#"{"items":[],"next_cursor":"next","has_more":true}"#.utf8))
+        }
+
+        let page = try await api.historyRuns(
+            cursor: "opaque cursor",
+            limit: 50,
+            machineID: "machine/one"
+        )
+
+        XCTAssertEqual(page.nextCursor, "next")
+        XCTAssertTrue(page.hasMore)
+        XCTAssertEqual(captured?.url?.path, "/v1/history/runs")
+        let components = try XCTUnwrap(
+            captured?.url.flatMap { URLComponents(url: $0, resolvingAgainstBaseURL: false) }
+        )
+        XCTAssertEqual(
+            Dictionary(uniqueKeysWithValues: (components.queryItems ?? []).map { ($0.name, $0.value) })[
+                "cursor"
+            ],
+            "opaque cursor"
+        )
+        XCTAssertEqual(
+            Dictionary(uniqueKeysWithValues: (components.queryItems ?? []).map { ($0.name, $0.value) })[
+                "machine_id"
+            ],
+            "machine/one"
+        )
+    }
+
     func testActivityTokenRegistrationCarriesOwnershipAndGeneration() async throws {
         var captured: URLRequest?
         let api = makeAPI { request in
@@ -116,6 +185,9 @@ final class APIClientTests: XCTestCase {
             .run(UUID()),
             .machines,
             .messages,
+            .sync,
+            .historyRuns,
+            .historyMessages,
             .claimPairing("pair"),
             .notificationToken("device"),
             .pushToStartToken("device"),
@@ -125,8 +197,8 @@ final class APIClientTests: XCTestCase {
             .subscription("subscription")
         ]
 
-        XCTAssertEqual(endpoints.count, 12)
-        XCTAssertEqual(endpoints.filter { $0.method == "GET" }.count, 4)
+        XCTAssertEqual(endpoints.count, 15)
+        XCTAssertEqual(endpoints.filter { $0.method == "GET" }.count, 7)
         XCTAssertTrue(endpoints.allSatisfy { $0.path.hasPrefix("/v1/") })
     }
 

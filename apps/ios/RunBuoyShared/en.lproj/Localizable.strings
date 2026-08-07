@@ -95,6 +95,8 @@
 "history.all" = "All";
 "history.filtered_empty" = "No history for %@";
 "history.filtered_empty_description" = "Completed runs and messages from this machine will appear here.";
+"history.load_more" = "Load More";
+"history.loading_more" = "Loading…";
 "history.show_less" = "Show Less";
 "history.show_remaining" = "Show Remaining (%d)";
 "history.title" = "History";

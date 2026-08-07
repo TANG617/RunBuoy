@@ -30,6 +30,7 @@ class Workspace(Base):
 
     id: Mapped[str] = mapped_column(String(64), primary_key=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    revision: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
 
 
 class WorkspaceDeletionChallenge(Base):

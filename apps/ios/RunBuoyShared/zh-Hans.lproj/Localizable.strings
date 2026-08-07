@@ -95,6 +95,8 @@
 "history.all" = "全部";
 "history.filtered_empty" = "%@ 暂无历史记录";
 "history.filtered_empty_description" = "这台电脑完成的运行和消息会显示在这里。";
+"history.load_more" = "加载更多";
+"history.loading_more" = "正在加载…";
 "history.show_less" = "收起";
 "history.show_remaining" = "显示其余 %d 条";
 "history.title" = "历史";

@@ -118,6 +118,72 @@ paths:
               schema:
                 type: array
                 items: { $ref: "#/components/schemas/RunProjection" }
+  /v1/sync:
+    get:
+      operationId: syncDeviceSnapshot
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: cursor
+          in: query
+          schema: { type: integer, minimum: 0 }
+        - name: If-None-Match
+          in: header
+          schema: { type: string }
+      responses:
+        "200":
+          description: Bounded workspace snapshot at one persistent revision
+          headers:
+            ETag: { schema: { type: string } }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SyncSnapshot" }
+        "304":
+          description: The workspace revision has not changed
+          headers:
+            ETag: { schema: { type: string } }
+        "409": { description: Cursor is ahead of the workspace revision }
+  /v1/history/runs:
+    get:
+      operationId: listRunHistory
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { $ref: "#/components/parameters/HistoryCursor" }
+        - { $ref: "#/components/parameters/HistoryLimit" }
+        - { $ref: "#/components/parameters/MachineFilter" }
+      responses:
+        "200":
+          description: Stable keyset page containing terminal Runs only
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - { $ref: "#/components/schemas/HistoryPage" }
+                  - type: object
+                    properties:
+                      items:
+                        type: array
+                        items: { $ref: "#/components/schemas/RunProjection" }
+  /v1/history/notifications:
+    get:
+      operationId: listNotificationHistory
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { $ref: "#/components/parameters/HistoryCursor" }
+        - { $ref: "#/components/parameters/HistoryLimit" }
+        - { $ref: "#/components/parameters/MachineFilter" }
+      responses:
+        "200":
+          description: Stable keyset page of notifications
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - { $ref: "#/components/schemas/HistoryPage" }
+                  - type: object
+                    properties:
+                      items:
+                        type: array
+                        items: { $ref: "#/components/schemas/NotificationProjection" }
   /v1/runs/{run_id}:
     put:
       operationId: upsertRun
@@ -357,6 +423,18 @@ components:
       in: path
       required: true
       schema: { type: string }
+    HistoryCursor:
+      name: cursor
+      in: query
+      schema: { type: string }
+    HistoryLimit:
+      name: limit
+      in: query
+      schema: { type: integer, minimum: 1, maximum: 100, default: 50 }
+    MachineFilter:
+      name: machine_id
+      in: query
+      schema: { type: string, maxLength: 64 }
   headers:
     RateLimitBucket:
       description: Stable application rate-limit bucket name.
@@ -506,6 +584,76 @@ components:
         events:
           type: array
           items: { type: object, additionalProperties: true }
+      additionalProperties: false
+    MachineProjection:
+      type: object
+      required: [id, display_name, last_seen_at, paired_at, is_subscribed]
+      properties:
+        id: { type: string }
+        display_name: { type: string, maxLength: 120 }
+        platform: { type: [string, "null"], maxLength: 64 }
+        architecture: { type: [string, "null"], maxLength: 64 }
+        cli_version: { type: [string, "null"], maxLength: 64 }
+        last_seen_at: { type: string, format: date-time }
+        paired_at: { type: string, format: date-time }
+        subscription_id: { type: [string, "null"] }
+        is_subscribed: { type: boolean }
+      additionalProperties: false
+    NotificationProjection:
+      type: object
+      required: [id, title, body, level, fields, created_at]
+      properties:
+        id: { type: string }
+        machine_id: { type: [string, "null"] }
+        run_id: { type: [string, "null"] }
+        title: { type: string, maxLength: 200 }
+        subtitle: { type: [string, "null"], maxLength: 200 }
+        body: { type: string, maxLength: 2000 }
+        level: { enum: [info, success, warning, error] }
+        fields: { type: array, items: { type: object, additionalProperties: true } }
+        safe_link: { type: [string, "null"], format: uri }
+        created_at: { type: string, format: date-time }
+        expires_at: { type: [string, "null"], format: date-time }
+      additionalProperties: false
+    SyncSnapshot:
+      type: object
+      required:
+        - schema_version
+        - next_cursor
+        - server_time
+        - runs
+        - machines
+        - notifications
+        - history_runs_has_more
+        - history_notifications_has_more
+      properties:
+        schema_version: { const: 1 }
+        next_cursor: { type: integer, minimum: 0 }
+        server_time: { type: string, format: date-time }
+        runs:
+          type: array
+          maxItems: 200
+          items: { $ref: "#/components/schemas/RunProjection" }
+        machines:
+          type: array
+          maxItems: 200
+          items: { $ref: "#/components/schemas/MachineProjection" }
+        notifications:
+          type: array
+          maxItems: 200
+          items: { $ref: "#/components/schemas/NotificationProjection" }
+        history_runs_next_cursor: { type: [string, "null"] }
+        history_runs_has_more: { type: boolean }
+        history_notifications_next_cursor: { type: [string, "null"] }
+        history_notifications_has_more: { type: boolean }
+      additionalProperties: false
+    HistoryPage:
+      type: object
+      required: [items, next_cursor, has_more]
+      properties:
+        items: { type: array }
+        next_cursor: { type: [string, "null"] }
+        has_more: { type: boolean }
       additionalProperties: false
     RunEvent:
       type: object

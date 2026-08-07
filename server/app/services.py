@@ -24,6 +24,7 @@ from .models import (
 from .schemas import NotificationCreate
 from .schemas import RunEvent as RunEventInput
 from .security import new_id
+from .sync import bump_workspace_revision
 
 TERMINAL_STATUSES = frozenset({"SUCCEEDED", "FAILED", "CANCELLED", "LOST"})
 LIVE_ACTIVITY_DELIVERABLE_STATES = frozenset({"active", "stale"})
@@ -326,6 +327,7 @@ def create_notification(
     )
     session.add(notification)
     session.flush()
+    bump_workspace_revision(session, workspace_id)
     _schedule_notification_push(session, notification)
     return notification
 

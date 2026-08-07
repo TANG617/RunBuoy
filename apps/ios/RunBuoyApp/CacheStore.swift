@@ -4,7 +4,71 @@ struct CachedSnapshot: Codable, Equatable, Sendable {
     let runs: [RunSnapshot]
     let machines: [MachineSnapshot]
     let messages: [RichMessage]
+    let syncCursor: Int?
+    let serverTime: Date?
+    let historyRunsNextCursor: String?
+    let historyRunsHasMore: Bool
+    let historyMessagesNextCursor: String?
+    let historyMessagesHasMore: Bool
     let savedAt: Date
+
+    init(
+        runs: [RunSnapshot],
+        machines: [MachineSnapshot],
+        messages: [RichMessage],
+        syncCursor: Int? = nil,
+        serverTime: Date? = nil,
+        historyRunsNextCursor: String? = nil,
+        historyRunsHasMore: Bool = false,
+        historyMessagesNextCursor: String? = nil,
+        historyMessagesHasMore: Bool = false,
+        savedAt: Date
+    ) {
+        self.runs = runs
+        self.machines = machines
+        self.messages = messages
+        self.syncCursor = syncCursor
+        self.serverTime = serverTime
+        self.historyRunsNextCursor = historyRunsNextCursor
+        self.historyRunsHasMore = historyRunsHasMore
+        self.historyMessagesNextCursor = historyMessagesNextCursor
+        self.historyMessagesHasMore = historyMessagesHasMore
+        self.savedAt = savedAt
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case runs
+        case machines
+        case messages
+        case syncCursor
+        case serverTime
+        case historyRunsNextCursor
+        case historyRunsHasMore
+        case historyMessagesNextCursor
+        case historyMessagesHasMore
+        case savedAt
+    }
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        runs = try values.decode([RunSnapshot].self, forKey: .runs)
+        machines = try values.decode([MachineSnapshot].self, forKey: .machines)
+        messages = try values.decode([RichMessage].self, forKey: .messages)
+        syncCursor = try values.decodeIfPresent(Int.self, forKey: .syncCursor)
+        serverTime = try values.decodeIfPresent(Date.self, forKey: .serverTime)
+        historyRunsNextCursor = try values.decodeIfPresent(String.self, forKey: .historyRunsNextCursor)
+        historyRunsHasMore = try values.decodeIfPresent(Bool.self, forKey: .historyRunsHasMore)
+            ?? (historyRunsNextCursor != nil)
+        historyMessagesNextCursor = try values.decodeIfPresent(
+            String.self,
+            forKey: .historyMessagesNextCursor
+        )
+        historyMessagesHasMore = try values.decodeIfPresent(
+            Bool.self,
+            forKey: .historyMessagesHasMore
+        ) ?? (historyMessagesNextCursor != nil)
+        savedAt = try values.decode(Date.self, forKey: .savedAt)
+    }
 }
 
 actor LocalCacheStore {
