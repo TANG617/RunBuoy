@@ -9,7 +9,7 @@ description = "RunBuoy read-only projection, pairing, and APNs service"
 requires-python = ">=3.12"
 dependencies = [
   "alembic>=1.13,<2",
-  "cryptography>=43,<46",
+  "cryptography>=43,<51",
   "fastapi>=0.115,<1",
   "httpx[http2]>=0.27,<1",
   "pyjwt[crypto]>=2.9,<3",
