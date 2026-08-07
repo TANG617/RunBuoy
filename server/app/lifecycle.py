@@ -11,6 +11,7 @@ from sqlalchemy.engine import CursorResult
 from sqlalchemy.orm import Session
 from sqlalchemy.sql.elements import ColumnElement
 
+from .abuse import anonymized_key
 from .auth import Principal, authenticate
 from .config import Settings
 from .database import get_session
@@ -26,6 +27,8 @@ from .models import (
     PairingSession,
     PushAttempt,
     PushOutbox,
+    QuotaLock,
+    RateLimitBucket,
     Run,
     RunEvent,
     Webhook,
@@ -459,17 +462,28 @@ def delete_workspace(
         _error(status.HTTP_404_NOT_FOUND, "workspace_not_found", "workspace not found")
     challenge.consumed_at = utcnow()
     session.flush()
-    _delete_workspace_rows(session, workspace_id)
+    _delete_workspace_rows(session, _settings(request), workspace_id)
     session.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
-def _delete_workspace_rows(session: Session, workspace_id: str) -> None:
+def _delete_workspace_rows(session: Session, settings: Settings, workspace_id: str) -> None:
     """Delete a workspace and every bearer/data row in the caller transaction."""
 
     device_ids = list(session.scalars(select(Device.id).where(Device.workspace_id == workspace_id)))
+    installation_ids = list(
+        session.scalars(select(Device.installation_id).where(Device.workspace_id == workspace_id))
+    )
     machine_ids = list(
         session.scalars(select(Machine.id).where(Machine.workspace_id == workspace_id))
+    )
+    webhook_ids = list(
+        session.scalars(select(Webhook.id).where(Webhook.workspace_id == workspace_id))
+    )
+    pairing_ids = list(
+        session.scalars(
+            select(PairingSession.id).where(PairingSession.workspace_id == workspace_id)
+        )
     )
     run_ids = list(session.scalars(select(Run.id).where(Run.workspace_id == workspace_id)))
     binding_ids = (
@@ -500,6 +514,35 @@ def _delete_workspace_rows(session: Session, workspace_id: str) -> None:
         if outbox_filters
         else []
     )
+
+    # Remove only derived abuse-control rows that can be attributed exactly to
+    # this Workspace. Anonymous IP buckets/locks may be shared and are retained.
+    rate_subject_keys = {
+        anonymized_key(settings, "workspace", workspace_id),
+        *(anonymized_key(settings, "machine", machine_id) for machine_id in machine_ids),
+        *(anonymized_key(settings, "webhook", webhook_id) for webhook_id in webhook_ids),
+        *(anonymized_key(settings, "pairing_session", pairing_id) for pairing_id in pairing_ids),
+    }
+    quota_lock_keys = {
+        f"{namespace}:{anonymized_key(settings, namespace, workspace_id)}"
+        for namespace in (
+            "workspace_machines",
+            "workspace_webhooks",
+            "workspace_notifications",
+        )
+    }
+    quota_lock_keys.update(
+        f"machine_active_runs:{anonymized_key(settings, 'machine_active_runs', machine_id)}"
+        for machine_id in machine_ids
+    )
+    quota_lock_keys.update(
+        f"device_bootstrap:{anonymized_key(settings, 'device_bootstrap', installation_id)}"
+        for installation_id in installation_ids
+    )
+    session.execute(
+        delete(RateLimitBucket).where(RateLimitBucket.subject_key.in_(rate_subject_keys))
+    )
+    session.execute(delete(QuotaLock).where(QuotaLock.lock_key.in_(quota_lock_keys)))
 
     if outbox_ids:
         session.execute(delete(PushAttempt).where(PushAttempt.outbox_id.in_(outbox_ids)))

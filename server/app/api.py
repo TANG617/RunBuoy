@@ -6,7 +6,7 @@ from datetime import timedelta
 from typing import Any
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Response, status
-from sqlalchemy import case, func, or_, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from .abuse import (
@@ -214,28 +214,36 @@ def bootstrap_device(
         limit=settings.rate_limit_device_bootstrap_per_hour,
         window_seconds=60 * 60,
     )
+    acquire_quota_lock(
+        session,
+        settings,
+        namespace="device_bootstrap",
+        subject=body.installation_id,
+    )
     device = session.scalar(select(Device).where(Device.installation_id == body.installation_id))
-    now = utcnow()
-    if device is None:
-        workspace = Workspace(id=new_id("wsp"))
-        session.add(workspace)
-        session.flush()
-        device = Device(
-            id=new_id("dev"),
-            workspace_id=workspace.id,
-            installation_id=body.installation_id,
-            app_version=body.app_version,
-            os_version=body.os_version,
+    if device is not None:
+        # installation_id is an idempotency/collision identifier, never a
+        # recovery credential. Anonymous replay must not rotate an existing
+        # Device credential or resurrect a reset Device.
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            detail={
+                "code": "installation_already_registered",
+                "message": "generate a new installation identifier",
+            },
         )
-        session.add(device)
-        session.flush()
-    else:
-        device.app_version = body.app_version
-        device.os_version = body.os_version
-        device.last_seen_at = now
-        for credential in device.credentials:
-            if credential.revoked_at is None:
-                credential.revoked_at = now
+    workspace = Workspace(id=new_id("wsp"))
+    session.add(workspace)
+    session.flush()
+    device = Device(
+        id=new_id("dev"),
+        workspace_id=workspace.id,
+        installation_id=body.installation_id,
+        app_version=body.app_version,
+        os_version=body.os_version,
+    )
+    session.add(device)
+    session.flush()
 
     raw_token = new_bearer_token("rbd")
     session.add(
@@ -569,7 +577,11 @@ def claim_pairing_session(
     session: Session = Depends(get_session),
     principal: Principal = Depends(require_scope("pairing:claim")),
 ) -> dict[str, Any]:
-    pairing = session.get(PairingSession, session_id)
+    # Pairing is a single-use handoff. Lock the row before checking/claiming so
+    # concurrent Devices cannot both attach it to different Workspaces.
+    pairing = session.scalar(
+        select(PairingSession).where(PairingSession.id == session_id).with_for_update()
+    )
     if pairing is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "pairing session not found")
     if is_expired(pairing.expires_at):
@@ -656,7 +668,11 @@ def exchange_pairing_session(
     session: Session = Depends(get_session),
 ) -> dict[str, Any]:
     settings = settings_for(request)
-    pairing = session.get(PairingSession, session_id)
+    # Serialize exchange against both a concurrent claim and another exchange.
+    # The second waiter observes exchanged_at after the first transaction commits.
+    pairing = session.scalar(
+        select(PairingSession).where(PairingSession.id == session_id).with_for_update()
+    )
     if pairing is None or pairing.exchange_secret_hash != token_hash(
         body.exchange_secret, settings.credential_pepper
     ):
@@ -709,7 +725,7 @@ def upsert_run(
     if body.cli_version is not None:
         machine.cli_version = body.cli_version
     key = str(run_id)
-    run = session.get(Run, key)
+    run = session.scalar(select(Run).where(Run.id == key).with_for_update())
     if run is None:
         acquire_quota_lock(
             session,
@@ -717,6 +733,10 @@ def upsert_run(
             namespace="machine_active_runs",
             subject=body.machine_id,
         )
+        # Another registration for the same ID may have committed while this
+        # transaction waited on the per-Machine quota lock.
+        run = session.scalar(select(Run).where(Run.id == key).with_for_update())
+    if run is None:
         active_count = session.scalar(
             select(func.count())
             .select_from(Run)
@@ -794,7 +814,9 @@ def ingest_run_events(
                 "actual": len(body.events),
             },
         )
-    run = session.get(Run, str(run_id))
+    # Ordered events update one mutable projection. Serialize every batch on
+    # the Run row so last_seq and state transitions cannot regress.
+    run = session.scalar(select(Run).where(Run.id == str(run_id)).with_for_update())
     if run is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "run not found")
     _machine_owned(session, principal, run.machine_id)
@@ -812,6 +834,7 @@ def ingest_run_events(
 @router.get("/sync")
 def sync_snapshot(
     response: Response,
+    request: Request,
     cursor: int | None = Query(default=None, ge=0),
     if_none_match: str | None = Header(default=None, alias="If-None-Match"),
     session: Session = Depends(get_session),
@@ -836,24 +859,40 @@ def sync_snapshot(
     if cursor == revision or _etag_matches(if_none_match, etag):
         return Response(status_code=status.HTTP_304_NOT_MODIFIED, headers=cache_headers)
 
-    runs = list(
+    settings = settings_for(request)
+    # Active Runs have no history endpoint, so every Run allowed by the active
+    # quota must fit in the bounded sync projection. Terminal history remains a
+    # fixed-size window and can be paged through /history/runs.
+    active_run_limit = settings.max_machines_per_workspace * settings.max_active_runs_per_machine
+    active_runs = list(
         session.scalars(
             select(Run)
-            .where(Run.workspace_id == workspace.id)
-            .order_by(
-                case((Run.execution_status.in_(TERMINAL_STATUSES), 1), else_=0),
-                Run.updated_at.desc(),
-                Run.id.desc(),
+            .where(
+                Run.workspace_id == workspace.id,
+                ~Run.execution_status.in_(TERMINAL_STATUSES),
             )
+            .order_by(Run.updated_at.desc(), Run.id.desc())
+            .limit(active_run_limit)
+        )
+    )
+    terminal_runs = list(
+        session.scalars(
+            select(Run)
+            .where(
+                Run.workspace_id == workspace.id,
+                Run.execution_status.in_(TERMINAL_STATUSES),
+            )
+            .order_by(Run.updated_at.desc(), Run.id.desc())
             .limit(SYNC_SNAPSHOT_LIMIT)
         )
     )
+    runs = [*active_runs, *terminal_runs]
     machines = list(
         session.scalars(
             select(Machine)
             .where(Machine.workspace_id == workspace.id, Machine.revoked_at.is_(None))
             .order_by(Machine.paired_at.desc(), Machine.id.desc())
-            .limit(SYNC_SNAPSHOT_LIMIT)
+            .limit(settings.max_machines_per_workspace)
         )
     )
     notifications = list(
@@ -870,7 +909,6 @@ def sync_snapshot(
         machine_ids=[machine.id for machine in machines],
     )
 
-    terminal_runs = [run for run in runs if run.execution_status in TERMINAL_STATUSES]
     history_runs_cursor = None
     if terminal_runs:
         oldest_run = terminal_runs[-1]
@@ -1271,14 +1309,16 @@ def webhook_run_upsert(
     if body.machine_id != webhook.machine_id:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "webhook machine mismatch")
     run_id = deterministic_webhook_run_id(hook_id, external_run_id)
-    run = session.get(Run, run_id)
-    if run is None and body.execution_status not in TERMINAL_STATUSES:
+    run = session.scalar(select(Run).where(Run.id == run_id).with_for_update())
+    if run is None:
         acquire_quota_lock(
             session,
             settings,
             namespace="machine_active_runs",
             subject=webhook.machine_id,
         )
+        run = session.scalar(select(Run).where(Run.id == run_id).with_for_update())
+    if run is None and body.execution_status not in TERMINAL_STATUSES:
         active_count = session.scalar(
             select(func.count())
             .select_from(Run)
@@ -1341,7 +1381,7 @@ def webhook_run_event(
         window_seconds=60,
     )
     run_id = deterministic_webhook_run_id(hook_id, external_run_id)
-    run = session.get(Run, run_id)
+    run = session.scalar(select(Run).where(Run.id == run_id).with_for_update())
     if run is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "webhook run not found")
     event_uuid = (

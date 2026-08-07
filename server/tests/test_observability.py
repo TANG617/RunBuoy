@@ -87,6 +87,16 @@ def test_readyz_rejects_stale_worker_revision_and_bad_config(harness: Harness) -
     assert invalid.credential_pepper not in serialized
     assert invalid.token_encryption_key not in serialized
 
+    predictable_rate_pepper = replace(
+        harness.settings,
+        deployment_environment="production",
+        database_url="postgresql+psycopg://database/runbuoy",
+        credential_pepper="c" * 32,
+        token_encryption_key="ZmFrZS1idXQtdW5pcXVlLWZlcm5ldC1rZXktMTIzNDU2Nzg5MA==",
+        rate_limit_ip_pepper="runbuoy-development-only-rate-limit-ip-pepper",
+    )
+    assert "RATE_LIMIT_IP_PEPPER" in predictable_rate_pepper.configuration_errors()
+
 
 def test_readyz_returns_503_when_heartbeat_table_is_not_migrated(harness: Harness) -> None:
     with harness.session_factory() as session:

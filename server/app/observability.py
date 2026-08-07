@@ -290,14 +290,21 @@ def _render_database_metrics(session: Session) -> list[str]:
         )
         or 0
     )
-    attempts = session.execute(select(PushAttempt.status_code, PushAttempt.reason)).all()
     apns_counts: dict[tuple[str, str], int] = defaultdict(int)
     invalid_tokens = 0
-    for status_code, reason in attempts:
+    # Aggregate in SQL so a metrics scrape is bounded by the APNs outcome
+    # vocabulary rather than materializing every retained attempt row.
+    attempts = session.execute(
+        select(PushAttempt.status_code, PushAttempt.reason, func.count()).group_by(
+            PushAttempt.status_code, PushAttempt.reason
+        )
+    )
+    for status_code, reason, count in attempts:
         status_class = f"{status_code // 100}xx" if 200 <= status_code <= 599 else "other"
         reason_class = classify_apns_reason(status_code, reason)
-        apns_counts[(status_class, reason_class)] += 1
-        invalid_tokens += int(reason_class == "invalid_token")
+        apns_counts[(status_class, reason_class)] += int(count)
+        if reason_class == "invalid_token":
+            invalid_tokens += int(count)
     queue_sum, queue_count, provider_sum, provider_count = session.execute(
         select(
             func.coalesce(func.sum(PushAttempt.queue_latency_ms), 0),

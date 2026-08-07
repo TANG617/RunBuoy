@@ -68,8 +68,9 @@ HMAC IP 10 个未 claim 且未过期 pairing session、每 Workspace 50 个未�
 数据库行锁避免并发绕过。100-event batch 与 240 batches/minute 允许合法 offline outbox 高速恢复，15 秒
 heartbeat 仅占每分钟 4 个事件。
 
-Caddy 可继续负责 TLS、连接数和基础传输保护；request ownership、业务 bucket 和资源配额必须由 App 层执行，
-不依赖定制 Caddy 插件。
+生产 Compose 将 Caddy 固定在专用容器地址并只信任该地址追加的转发链，同时对公网 `/metrics` 返回 404；监控
+应从私有 API/Compose 网络采集。Caddy 可继续负责 TLS、连接数和基础传输保护；request ownership、业务
+bucket 和资源配额必须由 App 层执行，不依赖定制 Caddy 插件。
 
 ## 身份、凭证和 Scope
 
@@ -125,7 +126,7 @@ Machine 可用自己的 bearer 调用 `revoke-self`；成功后该 bearer 和它
 
 | 方法和路径 | 调用者 | 功能 |
 | --- | --- | --- |
-| `POST /v1/devices/bootstrap` | 匿名 iOS | 创建/恢复 installation 对应 Device/Workspace，轮换 Device credential |
+| `POST /v1/devices/bootstrap` | 匿名 iOS | 仅创建新的 Device/Workspace；重复 installation ID 返回 409，不具备 credential 恢复能力 |
 | `PUT /v1/devices/{id}/notification-token` | owner Device | 注册普通 APNs token，支持 generation |
 | `PUT /v1/devices/{id}/push-to-start-token` | owner Device | 注册 ActivityKit push-to-start token |
 | `POST /v1/devices/{id}/activity-sync` | owner Device | 同步当前 Activity lifecycle、sequence、token 和 frequent push 设置 |

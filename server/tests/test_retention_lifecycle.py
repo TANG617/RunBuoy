@@ -294,3 +294,59 @@ def test_retention_batch_limit_requires_multiple_safe_passes(harness: Harness) -
             list(session.scalars(select(Notification).where(Notification.id.like("ntf_batch_%"))))
             == []
         )
+
+
+def test_event_only_retention_advances_workspace_revision(harness: Harness) -> None:
+    device, machine = harness.pair()
+    now = datetime(2026, 8, 7, 12, 0, tzinfo=UTC)
+    run_id = "20000000-0000-4000-8000-000000000099"
+    with harness.session_factory() as session:
+        session.add(
+            Run(
+                id=run_id,
+                workspace_id=device["workspace_id"],
+                machine_id=machine["machine_id"],
+                title="event-only cleanup",
+                execution_status="SUCCEEDED",
+                ended_at=now,
+                updated_at=now,
+            )
+        )
+        session.add(
+            RunEvent(
+                id="evt_event_only_cleanup",
+                schema_version=1,
+                event_id="30000000-0000-4000-8000-000000000099",
+                run_id=run_id,
+                machine_id=machine["machine_id"],
+                seq=1,
+                type="run.succeeded",
+                occurred_at=now - timedelta(hours=2),
+                received_at=now - timedelta(hours=2),
+                payload={},
+            )
+        )
+        session.commit()
+        before = session.scalar(
+            select(Workspace.revision).where(Workspace.id == device["workspace_id"])
+        )
+
+        result = cleanup_retention(
+            session,
+            replace(
+                harness.settings,
+                event_retention_hours=1,
+                run_retention_days=30,
+                notification_retention_days=30,
+                safe_log_tail_retention_hours=24,
+            ),
+            now,
+        )
+        session.commit()
+        after = session.scalar(
+            select(Workspace.revision).where(Workspace.id == device["workspace_id"])
+        )
+
+        assert result["events"] == 1
+        assert before is not None and after is not None and after > before
+        assert session.get(Run, run_id) is not None

@@ -366,6 +366,12 @@ class Settings:
                 "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
             }:
                 errors.append("TOKEN_ENCRYPTION_KEY")
+            if (
+                len(self.rate_limit_ip_pepper) < 32
+                or self.rate_limit_ip_pepper.startswith("runbuoy-development-only")
+                or self.rate_limit_ip_pepper.startswith("replace-with-")
+            ):
+                errors.append("RATE_LIMIT_IP_PEPPER")
         return sorted(set(errors))
 
     def validate(self) -> None:

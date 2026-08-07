@@ -67,6 +67,21 @@ def test_healthz_reports_data_region(harness: Harness) -> None:
     assert response.json() == {"status": "ok", "region": "global"}
 
 
+def test_anonymous_bootstrap_cannot_rotate_existing_device_credential(
+    harness: Harness,
+) -> None:
+    first = harness.bootstrap("installation-replay-protected")
+
+    replay = harness.client.post(
+        "/v1/devices/bootstrap",
+        json={"installation_id": "installation-replay-protected"},
+    )
+
+    assert replay.status_code == 409
+    assert replay.json()["detail"]["code"] == "installation_already_registered"
+    assert harness.client.get("/v1/machines", headers=auth(first["credential"])).status_code == 200
+
+
 def test_pairing_create_poll_claim_exchange_and_replay(harness: Harness) -> None:
     device = harness.bootstrap()
     created = harness.client.post(

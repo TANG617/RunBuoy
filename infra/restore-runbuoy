@@ -12,6 +12,7 @@ PRODUCTION_RESTORE=0
 TEMP_DIRECTORY=""
 STAGED_CONFIG=""
 LOCK_DIRECTORY=""
+STAGING_DATABASE=""
 
 usage() {
   cat >&2 <<'EOF'
@@ -31,6 +32,10 @@ fail() {
 }
 
 cleanup() {
+  if [[ -n "$STAGING_DATABASE" ]]; then
+    docker exec "$DB_CONTAINER" dropdb \
+      --username "$DB_USER" --if-exists --force "$STAGING_DATABASE" >/dev/null 2>&1 || true
+  fi
   if [[ -n "$STAGED_CONFIG" && -d "$STAGED_CONFIG" ]]; then
     rm -r -- "$STAGED_CONFIG"
   fi
@@ -208,30 +213,106 @@ if ((EUID == 0)); then
   chown -R 0:0 "$STAGED_CONFIG"
 fi
 
+STAGING_DATABASE="${TARGET_DATABASE:0:36}_runbuoy_stage_$$"
+PREVIOUS_DATABASE="${TARGET_DATABASE:0:36}_runbuoy_previous_$$"
+readonly PREVIOUS_DATABASE
 docker exec "$DB_CONTAINER" dropdb \
-  --username "$DB_USER" --if-exists --force "$TARGET_DATABASE"
-docker exec "$DB_CONTAINER" createdb --username "$DB_USER" "$TARGET_DATABASE"
+  --username "$DB_USER" --if-exists --force "$STAGING_DATABASE"
+docker exec "$DB_CONTAINER" createdb --username "$DB_USER" "$STAGING_DATABASE"
 if ! docker exec -i "$DB_CONTAINER" pg_restore \
   --username "$DB_USER" \
-  --dbname "$TARGET_DATABASE" \
+  --dbname "$STAGING_DATABASE" \
   --exit-on-error \
   --no-owner \
   --no-privileges \
   <"$BACKUP_DIRECTORY/runbuoy.pg_dump"; then
   docker exec "$DB_CONTAINER" dropdb \
-    --username "$DB_USER" --if-exists --force "$TARGET_DATABASE" || true
-  fail "database restore failed; the incomplete target was removed"
+    --username "$DB_USER" --if-exists --force "$STAGING_DATABASE" || true
+  STAGING_DATABASE=""
+  fail "database restore failed; the original target was left unchanged"
 fi
+restored_revision="$(docker exec "$DB_CONTAINER" psql \
+  --username "$DB_USER" --dbname "$STAGING_DATABASE" --tuples-only --no-align \
+  --command 'SELECT version_num FROM alembic_version')"
+[[ "$restored_revision" == "$MIGRATION_REVISION" ]] || \
+  fail "restored database migration revision does not match the manifest"
 
+target_exists="$(docker exec "$DB_CONTAINER" psql \
+  --username "$DB_USER" --dbname postgres --tuples-only --no-align \
+  --command "SELECT 1 FROM pg_database WHERE datname = '$TARGET_DATABASE'")"
+if [[ -n "$target_exists" ]]; then
+  previous_exists="$(docker exec "$DB_CONTAINER" psql \
+    --username "$DB_USER" --dbname postgres --tuples-only --no-align \
+    --command "SELECT 1 FROM pg_database WHERE datname = '$PREVIOUS_DATABASE'")"
+  [[ -z "$previous_exists" ]] || fail "database safety name already exists"
+  docker exec "$DB_CONTAINER" psql \
+    --username "$DB_USER" --dbname postgres --set=ON_ERROR_STOP=1 \
+    --command "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '$TARGET_DATABASE' AND pid <> pg_backend_pid()" \
+    >/dev/null
+  docker exec "$DB_CONTAINER" psql \
+    --username "$DB_USER" --dbname postgres --set=ON_ERROR_STOP=1 \
+    --command "ALTER DATABASE \"$TARGET_DATABASE\" RENAME TO \"$PREVIOUS_DATABASE\""
+fi
+if ! docker exec "$DB_CONTAINER" psql \
+  --username "$DB_USER" --dbname postgres --set=ON_ERROR_STOP=1 \
+  --command "ALTER DATABASE \"$STAGING_DATABASE\" RENAME TO \"$TARGET_DATABASE\""; then
+  database_rollback_ok=1
+  if [[ -n "$target_exists" ]]; then
+    if ! docker exec "$DB_CONTAINER" psql \
+      --username "$DB_USER" --dbname postgres --set=ON_ERROR_STOP=1 \
+      --command "ALTER DATABASE \"$PREVIOUS_DATABASE\" RENAME TO \"$TARGET_DATABASE\""; then
+      database_rollback_ok=0
+    fi
+  fi
+  if ((database_rollback_ok)); then
+    fail "database cutover failed; the original target was restored"
+  fi
+  fail "database cutover and automatic rollback failed; the original remains in $PREVIOUS_DATABASE"
+fi
+STAGING_DATABASE=""
+
+rollback_database_cutover() {
+  if ! docker exec "$DB_CONTAINER" dropdb \
+    --username "$DB_USER" --if-exists --force "$TARGET_DATABASE"; then
+    return 1
+  fi
+  if [[ -n "$target_exists" ]] && ! docker exec "$DB_CONTAINER" psql \
+    --username "$DB_USER" --dbname postgres --set=ON_ERROR_STOP=1 \
+    --command "ALTER DATABASE \"$PREVIOUS_DATABASE\" RENAME TO \"$TARGET_DATABASE\""; then
+    return 1
+  fi
+  return 0
+}
+
+PREVIOUS_CONFIG=""
 if [[ -e "$TARGET_CONFIG_ROOT" ]]; then
   PREVIOUS_CONFIG="$TARGET_CONFIG_ROOT.pre-restore.$(date -u +%Y%m%dT%H%M%SZ)"
-  readonly PREVIOUS_CONFIG
   [[ ! -e "$PREVIOUS_CONFIG" ]] || fail "previous-config safety path already exists"
-  mv "$TARGET_CONFIG_ROOT" "$PREVIOUS_CONFIG"
+  if ! mv "$TARGET_CONFIG_ROOT" "$PREVIOUS_CONFIG"; then
+    if rollback_database_cutover; then
+      fail "config cutover failed; the original database and config were restored"
+    fi
+    fail "config cutover and database rollback failed; the original database remains in $PREVIOUS_DATABASE"
+  fi
 fi
-mv "$STAGED_CONFIG" "$TARGET_CONFIG_ROOT"
+readonly PREVIOUS_CONFIG
+if ! mv "$STAGED_CONFIG" "$TARGET_CONFIG_ROOT"; then
+  config_rollback_ok=1
+  if [[ -n "$PREVIOUS_CONFIG" ]] && ! mv "$PREVIOUS_CONFIG" "$TARGET_CONFIG_ROOT"; then
+    config_rollback_ok=0
+  fi
+  if rollback_database_cutover && ((config_rollback_ok)); then
+    fail "config activation failed; the original database and config were restored"
+  fi
+  fail "config activation and automatic rollback failed; safety copies were retained"
+fi
 STAGED_CONFIG=""
 rm -r -- "$TEMP_DIRECTORY"
 TEMP_DIRECTORY=""
+
+if [[ -n "$target_exists" ]]; then
+  docker exec "$DB_CONTAINER" dropdb \
+    --username "$DB_USER" --if-exists --force "$PREVIOUS_DATABASE"
+fi
 
 echo "RunBuoy restore completed and validated at migration $MIGRATION_REVISION"

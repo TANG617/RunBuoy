@@ -23,8 +23,10 @@ post-deploy workflow all use `/readyz`. Load balancers should do the same.
 
 ## Metrics, logs, and alerts
 
-`GET /metrics` uses Prometheus text exposition. Restrict it to the monitoring
-network at the ingress. Labels are deliberately bounded to HTTP method, route
+`GET /metrics` uses Prometheus text exposition. The bundled production Caddy
+returns 404 for this path; scrape it over the private Compose/API network or an
+authenticated monitoring sidecar. A custom ingress must enforce the same
+private boundary. Labels are deliberately bounded to HTTP method, route
 template, status/reason class, outbox state, cleanup table, and sync outcome.
 Run titles, safe messages, machine/device/workspace/user identifiers, tokens,
 and arbitrary APNs reasons are never labels.

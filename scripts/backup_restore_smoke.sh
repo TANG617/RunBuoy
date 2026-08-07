@@ -79,9 +79,6 @@ set -e
   exit 1
 }
 
-docker exec "$db_container" dropdb \
-  --username "$db_user" --if-exists --force "$database_name"
-
 restored_config="$smoke_root/restored-config"
 RUNBUOY_ALLOW_NON_ROOT=1 \
 RUNBUOY_DB_CONTAINER="$db_container" \

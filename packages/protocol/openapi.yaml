@@ -14,6 +14,8 @@ paths:
       responses:
         "201":
           description: Anonymous workspace and scoped device credential
+        "409":
+          description: Installation identifier was already registered and cannot recover a credential
         "413": { $ref: "#/components/responses/RequestBodyTooLarge" }
         "429": { $ref: "#/components/responses/RateLimitExceeded" }
   /v1/devices/{device_id}/notification-token:

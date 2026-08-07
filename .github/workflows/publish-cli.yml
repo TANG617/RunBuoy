@@ -6,6 +6,7 @@ on:
       - "cli-v*"
 
 permissions:
+  actions: read
   contents: read
 
 jobs:
@@ -16,6 +17,33 @@ jobs:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           persist-credentials: false
+
+      - name: Verify release source is an exactly tested main commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          release_sha="$(git rev-parse "${GITHUB_SHA}^{commit}")"
+          ancestry="$(
+            gh api "repos/$GITHUB_REPOSITORY/compare/${release_sha}...main" --jq '.status'
+          )"
+          if [[ "$ancestry" != "ahead" && "$ancestry" != "identical" ]]; then
+            echo "::error::Release commit is not an ancestor of main."
+            exit 1
+          fi
+          successful_runs="$(
+            gh api --method GET \
+              "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs" \
+              -f head_sha="$release_sha" \
+              -f event=push \
+              -f status=completed \
+              -f per_page=100 \
+              --jq '[.workflow_runs[] | select(.conclusion == "success" and .head_branch == "main")] | length'
+          )"
+          if (( successful_runs < 1 )); then
+            echo "::error::No successful main push CI run exists for $release_sha."
+            exit 1
+          fi
 
       - name: Install uv
         uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0

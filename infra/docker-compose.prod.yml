@@ -7,6 +7,10 @@ services:
       - ${RUNBUOY_ENV_FILE:-.env.example}
     ports: !override
       - "127.0.0.1:8000:8000"
+    environment:
+      # The bundled ingress has a fixed address so only its sanitized/appended
+      # X-Forwarded-For chain is trusted. Direct API callers remain untrusted.
+      TRUSTED_PROXY_CIDRS: "172.30.77.10/32"
     healthcheck:
       test:
         - CMD
@@ -46,7 +50,16 @@ services:
       - runbuoy-caddy-data:/data
       - runbuoy-caddy-config:/config
     restart: unless-stopped
+    networks:
+      default:
+        ipv4_address: 172.30.77.10
 
 volumes:
   runbuoy-caddy-data:
   runbuoy-caddy-config:
+
+networks:
+  default:
+    ipam:
+      config:
+        - subnet: 172.30.77.0/24

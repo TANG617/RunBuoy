@@ -54,6 +54,7 @@ final class RunBuoyStore {
     @ObservationIgnored private var runModelsByID: [UUID: RunSummaryModel] = [:]
     @ObservationIgnored private var historyRunCursors: [String: HistoryCursorState] = [:]
     @ObservationIgnored private var historyMessageCursors: [String: HistoryCursorState] = [:]
+    private static let pendingLocalResetKey = "runbuoy.pending-local-reset"
 
     init(
         api: any RunBuoyAPI,
@@ -115,6 +116,9 @@ final class RunBuoyStore {
 
     @discardableResult
     func bootstrapDevice() async throws -> DeviceIdentity {
+        if userDefaults.bool(forKey: Self.pendingLocalResetKey) {
+            try await clearLocalIdentityAndData()
+        }
         if let deviceIdentity {
             return deviceIdentity
         }
@@ -129,11 +133,26 @@ final class RunBuoyStore {
         }
 
         let appVersion = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1"
-        let identity = try await api.bootstrap(
-            installationID: installationID,
-            appVersion: appVersion,
-            osVersion: UIDevice.current.systemVersion
-        )
+        let osVersion = UIDevice.current.systemVersion
+        let identity: DeviceIdentity
+        do {
+            identity = try await api.bootstrap(
+                installationID: installationID,
+                appVersion: appVersion,
+                osVersion: osVersion
+            )
+        } catch APIError.httpStatus(409) {
+            // The Server deliberately treats anonymous bootstrap as create-only:
+            // an installation identifier can never recover or rotate a credential.
+            // A stale identifier after Keychain loss is replaced locally once.
+            let replacement = UUID().uuidString.lowercased()
+            userDefaults.set(replacement, forKey: installationKey)
+            identity = try await api.bootstrap(
+                installationID: replacement,
+                appVersion: appVersion,
+                osVersion: osVersion
+            )
+        }
         try identityStore.save(identity)
         deviceIdentity = identity
         return identity
@@ -217,16 +236,21 @@ final class RunBuoyStore {
     }
 
     private func apply(_ snapshot: SyncSnapshot) {
-        runs = Self.mergeRuns(current: runs, incoming: snapshot.runs, retainsOlderHistory: true)
+        // A changed sync snapshot is authoritative. Keeping items that vanished
+        // from it would make server-side retention and revocation impossible to
+        // converge on-device. Older history can be paged back in explicitly.
+        runs = Self.mergeRuns(current: runs, incoming: snapshot.runs, retainsOlderHistory: false)
         reconcileRunModels(with: runs)
         machines = snapshot.machines.sorted { $0.lastSeenAt > $1.lastSeenAt }
         messages = Self.mergeMessages(
-            current: messages,
+            current: [],
             incoming: snapshot.notifications,
             serverTime: snapshot.serverTime
         )
         syncCursor = snapshot.nextCursor
         serverTime = snapshot.serverTime
+        historyRunCursors = [:]
+        historyMessageCursors = [:]
         historyRunCursors[Self.historyKey(nil)] = HistoryCursorState(
             cursor: snapshot.historyRunsNextCursor,
             hasMore: snapshot.historyRunsHasMore
@@ -394,25 +418,23 @@ final class RunBuoyStore {
     }
 
     private func clearLocalIdentityAndData() async throws {
-        var firstError: Error?
-        do {
-            try await cache.clear()
-        } catch {
-            firstError = error
-        }
+        // Persist the intent before touching Keychain/cache. If either removal
+        // fails, the next bootstrap retries cleanup instead of loading a
+        // Server-revoked credential forever.
+        userDefaults.set(true, forKey: Self.pendingLocalResetKey)
         do {
             try identityStore.remove()
+            try await cache.clear()
         } catch {
-            firstError = firstError ?? error
+            clearInMemoryState()
+            deviceIdentity = nil
+            throw error
         }
         for key in userDefaults.dictionaryRepresentation().keys where key.hasPrefix("runbuoy.") {
             userDefaults.removeObject(forKey: key)
         }
         clearInMemoryState()
         deviceIdentity = nil
-        if let firstError {
-            throw firstError
-        }
     }
 
     private func clearInMemoryState() {

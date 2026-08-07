@@ -33,8 +33,10 @@ deploys the exact commit SHA that passed CI.
 6. Deploy backward-compatible Server and protocol changes before releasing
    clients that depend on them.
 
-The tag workflows do not independently wait for the `main` CI workflow.
-Following the third and fourth rules is therefore the human release gate.
+The PyPI and TestFlight workflows enforce the third and fourth rules before
+they access a publishing environment: the release commit must be an ancestor
+of `main`, and GitHub Actions must report a successful `CI` push run for that
+exact SHA. Human review remains required by the publishing environments.
 
 ## Normal development flow
 

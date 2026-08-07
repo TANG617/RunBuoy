@@ -6,6 +6,7 @@ from typing import Any
 import pytest
 from sqlalchemy import func, select
 
+from app.abuse import anonymized_key
 from app.models import (
     AuditLog,
     Device,
@@ -17,6 +18,8 @@ from app.models import (
     Notification,
     PushAttempt,
     PushOutbox,
+    QuotaLock,
+    RateLimitBucket,
     Run,
     Workspace,
     WorkspaceDeletionChallenge,
@@ -346,6 +349,7 @@ def test_workspace_deletion_removes_all_workspace_data_and_bearers(harness: Harn
     run_id = "10000000-0000-4000-8000-000000000004"
     harness.register_run(machine, run_id)
     with harness.session_factory() as session:
+        now = datetime.now(UTC)
         session.add(
             Notification(
                 id="ntf_workspace_delete",
@@ -368,6 +372,28 @@ def test_workspace_deletion_removes_all_workspace_data_and_bearers(harness: Harn
                 status="sent",
                 coalesce_key="delete-workspace",
             )
+        )
+        session.add_all(
+            [
+                RateLimitBucket(
+                    bucket_name="notification_daily_quota",
+                    subject_key=anonymized_key(
+                        harness.settings, "workspace", device["workspace_id"]
+                    ),
+                    window_start=1,
+                    request_count=1,
+                    expires_at=now + timedelta(hours=1),
+                    updated_at=now,
+                ),
+                RateLimitBucket(
+                    bucket_name="event_batch",
+                    subject_key=anonymized_key(harness.settings, "machine", machine["machine_id"]),
+                    window_start=1,
+                    request_count=1,
+                    expires_at=now + timedelta(hours=1),
+                    updated_at=now,
+                ),
+            ]
         )
         session.flush()
         session.add(
@@ -411,6 +437,22 @@ def test_workspace_deletion_removes_all_workspace_data_and_bearers(harness: Harn
         assert session.get(Notification, "ntf_workspace_delete") is None
         assert session.get(PushOutbox, "out_workspace_delete") is None
         assert session.get(PushAttempt, "pat_workspace_delete") is None
+        identifiable_rate_keys = {
+            anonymized_key(harness.settings, "workspace", device["workspace_id"]),
+            anonymized_key(harness.settings, "machine", machine["machine_id"]),
+        }
+        assert (
+            session.scalar(
+                select(func.count())
+                .select_from(RateLimitBucket)
+                .where(RateLimitBucket.subject_key.in_(identifiable_rate_keys))
+            )
+            == 0
+        )
+        assert session.scalar(select(func.count()).select_from(QuotaLock)) == 1
+        remaining_lock = session.scalar(select(QuotaLock))
+        assert remaining_lock is not None
+        assert remaining_lock.lock_key.startswith("pending_pairings:")
         assert (
             session.scalar(select(AuditLog).where(AuditLog.workspace_id == device["workspace_id"]))
             is None
@@ -430,7 +472,7 @@ def test_workspace_deletion_rolls_back_as_one_transaction(
         json={"confirmation": "DELETE"},
     ).json()["challenge"]
 
-    def fail_after_partial_delete(session: Any, workspace_id: str) -> None:
+    def fail_after_partial_delete(session: Any, _settings: Any, workspace_id: str) -> None:
         session.execute(
             # A forced exception after a write verifies the request-scoped transaction rolls back.
             __import__("sqlalchemy")

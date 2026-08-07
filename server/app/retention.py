@@ -87,6 +87,14 @@ def cleanup_retention(
         .order_by(RunEvent.received_at, RunEvent.id),
         batch_size,
     )
+    if event_ids:
+        changed_workspace_ids.update(
+            session.scalars(
+                select(Run.workspace_id)
+                .join(RunEvent, RunEvent.run_id == Run.id)
+                .where(RunEvent.id.in_(event_ids))
+            )
+        )
     old_events = _delete_ids(session, RunEvent, event_ids)
 
     safe_tail_cutoff = current - timedelta(hours=settings.safe_log_tail_retention_hours)

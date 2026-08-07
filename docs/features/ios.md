@@ -33,8 +33,9 @@
 App 生成一个持久 installation ID，向 `/v1/devices/bootstrap` 发送 installation ID、App 版本和 OS 版本。
 Server 返回 Device ID、Workspace ID 和 Device Bearer credential；credential 保存到 Keychain。
 
-如果本地已有 Keychain identity，App 不重复 bootstrap。Server 端若对同一 installation ID 再次 bootstrap，
-会撤销旧 Device credentials 并签发新 credential。
+如果本地已有 Keychain identity，App 不重复 bootstrap。匿名 bootstrap 是 create-only：同一 installation ID
+再次提交会返回 409，绝不会找回 Workspace、轮换 credential 或复活已重置的 Device。若 Keychain 已丢失，
+App 丢弃旧 installation ID，生成新值并创建新的匿名 Workspace。
 
 ### 区域事实
 

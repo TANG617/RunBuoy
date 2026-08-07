@@ -182,6 +182,53 @@ final class CacheStoreTests: XCTestCase {
         XCTAssertEqual(store.runs.first?.sequence, current.sequence)
     }
 
+    func testChangedSyncSnapshotRemovesServerDeletedHistoryAndMessages() async {
+        let initial = CachedSnapshot(
+            runs: [PreviewFixtures.failedRun],
+            machines: [],
+            messages: [PreviewFixtures.message],
+            syncCursor: 4,
+            savedAt: PreviewFixtures.baseDate
+        )
+        let api = StoreAPIStub(
+            syncResult: .snapshot(
+                SyncSnapshot(
+                    nextCursor: 5,
+                    serverTime: PreviewFixtures.baseDate.addingTimeInterval(60),
+                    runs: [],
+                    machines: [],
+                    notifications: []
+                )
+            )
+        )
+        let store = makeStore(api: api, cache: makeCache(), initialSnapshot: initial)
+
+        let succeeded = await store.refresh()
+        XCTAssertTrue(succeeded)
+        XCTAssertTrue(store.runs.isEmpty)
+        XCTAssertTrue(store.messages.isEmpty)
+    }
+
+    func testBootstrapCollisionGeneratesNewAnonymousInstallationIdentifier() async throws {
+        let api = StoreAPIStub(bootstrapConflictCount: 1)
+        let defaults = UserDefaults(suiteName: "runbuoy-bootstrap-\(UUID().uuidString)")!
+        defaults.set("already-registered", forKey: "runbuoy.installation-id")
+        let store = RunBuoyStore(
+            api: api,
+            identityStore: CacheTestIdentityStore(identity: nil),
+            cache: makeCache(),
+            userDefaults: defaults
+        )
+
+        _ = try await store.bootstrapDevice()
+
+        let identifiers = await api.bootstrapInstallationIDs()
+        XCTAssertEqual(identifiers.count, 2)
+        XCTAssertEqual(identifiers.first, "already-registered")
+        XCTAssertNotEqual(identifiers.last, identifiers.first)
+        XCTAssertEqual(defaults.string(forKey: "runbuoy.installation-id"), identifiers.last)
+    }
+
     func testHistoryLoadMoreMergesWithoutDuplicates() async {
         let initial = CachedSnapshot(
             runs: [PreviewFixtures.failedRun],
@@ -289,6 +336,50 @@ final class CacheStoreTests: XCTestCase {
         XCTAssertTrue(store.runs.isEmpty)
     }
 
+    func testLocalResetFailureIsRetriedBeforeNextBootstrap() async throws {
+        let cache = makeCache()
+        try await cache.save(
+            CachedSnapshot(
+                runs: [PreviewFixtures.activeRun],
+                machines: [PreviewFixtures.machine],
+                messages: [],
+                savedAt: PreviewFixtures.baseDate
+            )
+        )
+        let identityStore = CacheTestIdentityStore(removeFailuresRemaining: 1)
+        let defaults = UserDefaults(suiteName: "runbuoy-reset-retry-\(UUID().uuidString)")!
+        defaults.set("stale-installation", forKey: "runbuoy.installation-id")
+        let api = StoreAPIStub()
+        let store = RunBuoyStore(
+            api: api,
+            identityStore: identityStore,
+            cache: cache,
+            userDefaults: defaults,
+            initialSnapshot: try await cache.load()
+        )
+
+        do {
+            try await store.resetDevice()
+            XCTFail("Expected Keychain cleanup failure")
+        } catch {
+            XCTAssertEqual(error as? CacheIdentityError, .removeFailed)
+        }
+
+        XCTAssertTrue(defaults.bool(forKey: "runbuoy.pending-local-reset"))
+        XCTAssertNotNil(try identityStore.load())
+        let retainedCache = try await cache.load()
+        XCTAssertNotNil(retainedCache)
+
+        _ = try await store.bootstrapDevice()
+
+        XCTAssertFalse(defaults.bool(forKey: "runbuoy.pending-local-reset"))
+        XCTAssertNotNil(try identityStore.load())
+        let clearedCache = try await cache.load()
+        XCTAssertNil(clearedCache)
+        let bootstrapIDs = await api.bootstrapInstallationIDs()
+        XCTAssertEqual(bootstrapIDs.count, 1)
+    }
+
     private func makeCache() -> LocalCacheStore {
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent("runbuoy-store-test-\(UUID().uuidString)")
@@ -338,13 +429,26 @@ final class CacheStoreTests: XCTestCase {
     }
 }
 
+private enum CacheIdentityError: Error, Equatable {
+    case removeFailed
+}
+
 private final class CacheTestIdentityStore: DeviceIdentityStoring, @unchecked Sendable {
     private let lock = NSLock()
-    private var identity: DeviceIdentity? = DeviceIdentity(
-        deviceID: "device",
-        workspaceID: "workspace",
-        credential: "credential"
-    )
+    private var identity: DeviceIdentity?
+    private var removeFailuresRemaining: Int
+
+    init(
+        identity: DeviceIdentity? = DeviceIdentity(
+            deviceID: "device",
+            workspaceID: "workspace",
+            credential: "credential"
+        ),
+        removeFailuresRemaining: Int = 0
+    ) {
+        self.identity = identity
+        self.removeFailuresRemaining = removeFailuresRemaining
+    }
 
     func load() throws -> DeviceIdentity? {
         lock.withLock { identity }
@@ -353,7 +457,13 @@ private final class CacheTestIdentityStore: DeviceIdentityStoring, @unchecked Se
         lock.withLock { self.identity = identity }
     }
     func remove() throws {
-        lock.withLock { identity = nil }
+        try lock.withLock {
+            if removeFailuresRemaining > 0 {
+                removeFailuresRemaining -= 1
+                throw CacheIdentityError.removeFailed
+            }
+            identity = nil
+        }
     }
 }
 
@@ -367,8 +477,10 @@ private actor StoreAPIStub: RunBuoyAPI {
     private let historyMessagePage: HistoryPage<RichMessage>
     private let delayNanoseconds: UInt64
     private let resetErrorStatus: Int?
+    private let bootstrapConflictCount: Int
     private var syncCalls = 0
     private var legacyCalls = 0
+    private var bootstrapIDs: [String] = []
 
     init(
         syncResult: SyncResult = .notModified,
@@ -383,7 +495,8 @@ private actor StoreAPIStub: RunBuoyAPI {
             items: [], nextCursor: nil, hasMore: false
         ),
         delayNanoseconds: UInt64 = 0,
-        resetErrorStatus: Int? = nil
+        resetErrorStatus: Int? = nil,
+        bootstrapConflictCount: Int = 0
     ) {
         self.syncResult = syncResult
         self.syncErrorStatus = syncErrorStatus
@@ -394,14 +507,27 @@ private actor StoreAPIStub: RunBuoyAPI {
         self.historyMessagePage = historyMessagePage
         self.delayNanoseconds = delayNanoseconds
         self.resetErrorStatus = resetErrorStatus
+        self.bootstrapConflictCount = bootstrapConflictCount
     }
 
     func callCounts() -> (sync: Int, legacy: Int) {
         (syncCalls, legacyCalls)
     }
 
+    func bootstrapInstallationIDs() -> [String] {
+        bootstrapIDs
+    }
+
     func bootstrap(installationID: String, appVersion: String, osVersion: String) async throws -> DeviceIdentity {
-        DeviceIdentity(deviceID: "device", workspaceID: "workspace", credential: "credential")
+        bootstrapIDs.append(installationID)
+        if bootstrapIDs.count <= bootstrapConflictCount {
+            throw APIError.httpStatus(409)
+        }
+        return DeviceIdentity(
+            deviceID: "device",
+            workspaceID: "workspace",
+            credential: "credential"
+        )
     }
 
     func sync(cursor: Int?) async throws -> SyncResult {

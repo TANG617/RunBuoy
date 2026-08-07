@@ -38,6 +38,7 @@ access.
 | Local socket spoofing | Per-Run path permissions and ephemeral token |
 | Server outage kills a Run | Upload failure is isolated from execution |
 | Anonymous bootstrap or pairing flood | PostgreSQL-backed HMAC-keyed IP limits, bounded pending pairings, request-body limits, and cleanup |
+| Installation ID replay takes over a Device | Anonymous bootstrap is create-only; duplicate IDs return 409 and cannot rotate or resurrect credentials |
 | Stolen Device or Machine credential | Narrow scopes, workspace ownership checks, Device reset, Machine revoke/revoke-self, and credential revocation timestamps |
 | Destructive request by the wrong tenant | Owner-scoped endpoints, rotating short-lived deletion challenge, Device-owner confirmation, and transactional deletion |
 | Backup disclosure or tampering | Restricted files, versioned manifest and checksum validation, optional encrypted restic copy, and documented retention |

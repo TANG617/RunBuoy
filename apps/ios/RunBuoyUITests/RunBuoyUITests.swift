@@ -143,17 +143,32 @@ final class RunBuoyUITests: XCTestCase {
                 "Only this iPhone’s subscription is removed. The computer stays paired and other devices are unaffected."
             ].waitForExistence(timeout: 2)
         )
-        app.buttons["Cancel"].tap()
+
+        // Relaunch instead of relying on the system action sheet's cancel
+        // accessibility node, which differs across iOS 18 and the latest SDK.
+        app.terminate()
+        launch()
+        openMachines()
+        element("machine.row.machine_mac_studio").tap()
+        XCTAssertTrue(element("screen.machineDetail").waitForExistence(timeout: 3))
 
         let revoke = element("machine.revoke")
-        XCTAssertTrue(revoke.waitForExistence(timeout: 2))
+        if !revoke.isHittable {
+            element("screen.machineDetail").swipeUp()
+        }
+        waitForHittable(revoke)
         revoke.tap()
         XCTAssertTrue(
-            app.staticTexts[
-                "This immediately invalidates the computer and webhook credentials and removes every receiving subscription for it. Historical Runs remain."
-            ].waitForExistence(timeout: 2)
+            app.staticTexts
+                .matching(
+                    NSPredicate(
+                        format: "label CONTAINS %@",
+                        "immediately invalidates the computer and webhook credentials"
+                    )
+                )
+                .firstMatch
+                .waitForExistence(timeout: 2)
         )
-        app.buttons["Cancel"].tap()
     }
 
     func testManualPairingCodeCanBeConfirmed() {

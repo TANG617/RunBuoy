@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import uuid
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from sqlalchemy import select
 
-from app.models import Notification, Workspace
+from app.models import Machine, Notification, Run, Workspace
 from app.security import new_id
 from tests.conftest import Harness
 from tests.test_api import auth, event, post_events
@@ -236,6 +237,55 @@ def test_sync_snapshot_is_bounded(harness: Harness) -> None:
     assert len(response.json()["notifications"]) == 200
     assert response.json()["history_notifications_has_more"] is True
     assert response.json()["history_notifications_next_cursor"] is not None
+
+
+def test_sync_contains_every_active_run_allowed_by_workspace_quota(harness: Harness) -> None:
+    device, machine = harness.pair()
+    run_ids = [str(uuid.uuid4()) for _ in range(205)]
+    with harness.session_factory() as session:
+        session.add_all(
+            [
+                Run(
+                    id=run_id,
+                    workspace_id=device["workspace_id"],
+                    machine_id=machine["machine_id"],
+                    title=f"Active {index}",
+                )
+                for index, run_id in enumerate(run_ids)
+            ]
+        )
+        session.commit()
+
+    response = harness.client.get("/v1/sync", headers=auth(device["credential"]))
+
+    assert response.status_code == 200
+    assert {item["id"] for item in response.json()["runs"]} == set(run_ids)
+
+
+def test_sync_contains_every_machine_allowed_by_configured_quota(harness: Harness) -> None:
+    device = harness.bootstrap()
+    harness.client.app.state.settings = replace(
+        harness.settings,
+        max_machines_per_workspace=205,
+    )
+    machine_ids = [f"machine-sync-{index}" for index in range(205)]
+    with harness.session_factory() as session:
+        session.add_all(
+            [
+                Machine(
+                    id=machine_id,
+                    workspace_id=device["workspace_id"],
+                    display_name=machine_id,
+                )
+                for machine_id in machine_ids
+            ]
+        )
+        session.commit()
+
+    response = harness.client.get("/v1/sync", headers=auth(device["credential"]))
+
+    assert response.status_code == 200
+    assert {item["id"] for item in response.json()["machines"]} == set(machine_ids)
 
 
 def test_terminal_run_history_cursor_is_stable_and_filterable(harness: Harness) -> None:
