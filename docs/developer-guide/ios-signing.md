@@ -1,6 +1,8 @@
 # iOS signing
 
-The checked-in Xcode project targets iOS 26 and builds without signing in CI:
+The checked-in Xcode project requires iOS 18 or later and builds without
+signing in CI. iOS 26+ enables the guarded Liquid Glass enhancement; iOS 18–25
+uses the complete standard SwiftUI fallback:
 
 ```bash
 xcodebuild \

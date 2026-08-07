@@ -1,6 +1,7 @@
 # RunBuoy for iOS
 
-RunBuoy is a native iOS 26+ read-only presentation client. Execution data flows
+RunBuoy is a native read-only presentation client. It requires iOS 18 or later.
+Execution data flows
 from a paired machine through the RunBuoy server to the iPhone. The app contains
 no command, process, terminal, approval, or agent-response surface.
 
@@ -22,7 +23,10 @@ The shared `RunBuoy` scheme builds the app and widget and runs `RunBuoyTests`.
 
 ## Build and test
 
-Xcode 26 or newer with the iOS 26 SDK is required:
+Xcode 26 or newer is recommended so the iOS 26 Liquid Glass enhancement and
+Icon Composer asset are built as shipped. The deployment target remains iOS
+18.0, and iOS 18–25 receive complete Material, standard button, tab,
+navigation, onboarding, pairing, settings, and run-detail fallbacks:
 
 ```sh
 xcodebuild \
@@ -33,13 +37,13 @@ xcodebuild \
   build
 ```
 
-With an iOS 26 simulator available:
+With a current simulator available:
 
 ```sh
 xcodebuild \
   -project apps/ios/RunBuoy.xcodeproj \
   -scheme RunBuoy \
-  -destination 'platform=iOS Simulator,name=iPhone 16' \
+  -destination 'platform=iOS Simulator,name=iPhone 17,OS=latest' \
   CODE_SIGNING_ALLOWED=NO \
   test
 ```
@@ -63,6 +67,13 @@ scenarios are `loaded`, `empty`, `offline`, and `failed`; the test-only launch
 arguments are parsed by `UITestConfiguration.swift`. Every UI test attaches a
 final screenshot that Xcode retains when the test fails.
 
+CI also selects Xcode 16.4 and an iOS 18.5 simulator for the compatibility
+lane. Because Xcode 16 predates Icon Composer and Liquid Glass, that lane
+excludes `icon.icon`, clears `ASSETCATALOG_COMPILER_APPICON_NAME`, and compiles
+only the standard SwiftUI fallback. The latest-Xcode lane compiles Liquid
+Glass, runs unit tests, creates an unsigned App + Widget archive, and verifies
+both privacy manifests in the archive.
+
 The `RUNBUOY_API_BASE_URL` build setting selects the HTTPS API and is expanded
 into `RunBuoyApp/Info.plist`. Override the setting per build environment when
 the checked-in deployment is not the desired server.
@@ -75,6 +86,16 @@ into frequent Live Activity updates for the 15-second heartbeat cadence.
 Debug uses the development APNs environment; Release uses production.
 Provisioning profiles must contain the matching entitlements. No App Group is
 required by the MVP.
+
+## Privacy manifests
+
+The App and Widget each own a `PrivacyInfo.xcprivacy` in their Resources build
+phase. The App declares only
+`NSPrivacyAccessedAPICategoryUserDefaults` / `CA92.1`, because its
+`UserDefaults` and `@AppStorage` values are app-local. The Widget does not use a
+Required Reason API and therefore declares an empty accessed-API list. Run
+`python3 scripts/check_ios_privacy_manifests.py --archive <path>` to validate
+the reason codes, target membership, archive membership, and iOS 18.0 minimum.
 
 The implementation follows Apple’s current documentation for
 [ActivityKit](https://developer.apple.com/documentation/activitykit/),
@@ -99,4 +120,5 @@ The following cannot be validated with a generic simulator build alone:
 
 These paths have injectable/network mocks, JSON fixtures, previews, and unit
 coverage, but final verification requires Apple Developer credentials, matching
-server APNs configuration, code signing, and a physical iPhone.
+server APNs configuration, code signing, and a physical iPhone running iOS 18
+or later.

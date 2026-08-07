@@ -2,7 +2,7 @@
 
 ## Summary
 
-This is a code-backed audit of the iOS 26 SwiftUI client. No high-impact
+This is a code-backed audit of the iOS 18+ SwiftUI client. No high-impact
 rendering blocker remains in the reviewed paths. Runtime CPU, hitch, and memory
 metrics were not collected because there was no reported performance symptom;
 the next validation step is a Release-build Instruments capture on a physical
@@ -41,9 +41,10 @@ device while progress events arrive at production frequency.
 4. Liquid Glass and animation cost is bounded
    - Risk: Glass on every list row or broad animation modifiers would increase
      compositing cost and hitching.
-   - Evidence: Custom glass is limited to the read-only navigation/tool strips
-     and primary controls. Task cards remain ordinary system list rows.
-     Onboarding animation is value-scoped and disabled for Reduce Motion.
+   - Evidence: iOS 26+ custom glass is limited to the read-only action strip
+     and primary controls. iOS 18–25 uses standard bordered buttons and Material.
+     Task cards remain ordinary system list rows. Onboarding animation is
+     value-scoped and disabled for Reduce Motion.
    - Resolution: Keep glass out of repeated task and message cells.
    - Validation: Profile scrolling with Core Animation and SwiftUI Instruments
      on an older supported iPhone.
@@ -58,8 +59,10 @@ device while progress events arrive at production frequency.
 
 ## Verification
 
-- iOS deployment target: 26.0
-- Debug simulator build: passed
-- Unit tests: 17 passed, 0 failed
+- iOS deployment target: 18.0 for App, Widget, unit-test, and UI-test targets
+- Debug generic simulator build: passed with the latest SDK
+- Release unsigned App + Widget archive: passed; both privacy manifests present
+- Unit tests: 46 passed, 0 failed, 0 skipped
+- Critical UI smoke: 2 passed, 0 failed, 0 skipped
 - Read-only boundary script: passed
 - `git diff --check`: passed

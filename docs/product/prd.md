@@ -80,7 +80,8 @@ normal notification.
 
 ### Native iOS
 
-The native iOS 26 app provides Active, History, and Settings tabs, active Run
+The native app requires iOS 18 or later and provides Active, History, and
+Settings tabs, active Run
 and recent Run/message sections, offline cache states, read-only Run detail and feed, Machines,
 pairing, notification preferences, deep links, and Live Activities. The
 widget has no buttons and uses the system-managed Live Activity background so

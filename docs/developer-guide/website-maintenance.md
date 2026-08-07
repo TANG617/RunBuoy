@@ -98,7 +98,7 @@ Open Graph 图片为 `https://www.runbuoy.cloud/og.png`。
 
 官网文案应先复用[产品功能总览](../features/README.md)，再按目标读者压缩。尤其不要超前承诺：
 
-- iOS 26 以下支持；当前 Xcode 部署目标是 iOS 26.0；
+- iOS 18 以下支持；当前 Xcode 部署目标是 iOS 18.0；
 - 中国大陆独立托管区域；当前 App 只开放 Global；
 - 手机取消、重试、批准、输入或远程终端；产品是单向只读投影；
 - 自动推测百分比或 ETA；RunBuoy 只展示真实上报的数据；

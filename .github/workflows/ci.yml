@@ -42,6 +42,7 @@ jobs:
       - run: uv run python scripts/generate_protocol_fixtures.py --check
       - run: uv run pytest packages/protocol/tests skills/runbuoy/tests
       - run: uv run python scripts/check_read_only_boundary.py
+      - run: uv run python scripts/check_ios_privacy_manifests.py
       - run: uvx openapi-spec-validator packages/protocol/openapi.yaml
       - name: License and provenance
         run: test -s LICENSE && test -s THIRD_PARTY_NOTICES.md && test -s docs/code-provenance.md
@@ -135,44 +136,151 @@ jobs:
           uv sync --all-groups
           uv run pytest
 
-  ios-build:
-    runs-on: macos-26
+  ios-18-tests:
+    name: iOS 18 build, unit tests, and UI smoke
+    runs-on: macos-15
+    timeout-minutes: 45
+    env:
+      IOS_RESULT_DIR: RunBuoy-iOS18-results
     steps:
       - uses: actions/checkout@v4
-      - name: Build app and widget without signing
+      - name: Select Xcode 16.4 and iOS 18.5
+        run: |
+          sudo xcode-select --switch /Applications/Xcode_16.4.app
+          xcodebuild -version
+          xcrun simctl list runtimes | grep 'iOS 18.5'
+          mkdir -p "$RUNNER_TEMP/$IOS_RESULT_DIR"
+      - name: Validate deployment targets and privacy manifests
+        run: python3 scripts/check_ios_privacy_manifests.py
+      - name: Build the iOS 18 fallback app and widget
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -project apps/ios/RunBuoy.xcodeproj \
+            -scheme RunBuoy \
+            -destination 'platform=iOS Simulator,name=iPhone 16,OS=18.5' \
+            -derivedDataPath "$RUNNER_TEMP/RunBuoy-iOS18-DerivedData" \
+            -resultBundlePath "$RUNNER_TEMP/$IOS_RESULT_DIR/RunBuoyBuild.xcresult" \
+            CODE_SIGNING_ALLOWED=NO \
+            ASSETCATALOG_COMPILER_APPICON_NAME= \
+            EXCLUDED_SOURCE_FILE_NAMES=icon.icon \
+            build
+      - name: Run iOS 18 unit tests
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -project apps/ios/RunBuoy.xcodeproj \
+            -scheme RunBuoy \
+            -destination 'platform=iOS Simulator,name=iPhone 16,OS=18.5' \
+            -derivedDataPath "$RUNNER_TEMP/RunBuoy-iOS18-DerivedData" \
+            -resultBundlePath "$RUNNER_TEMP/$IOS_RESULT_DIR/RunBuoyUnitTests.xcresult" \
+            CODE_SIGNING_ALLOWED=NO \
+            ASSETCATALOG_COMPILER_APPICON_NAME= \
+            EXCLUDED_SOURCE_FILE_NAMES=icon.icon \
+            -only-testing:RunBuoyTests \
+            test
+      - name: Run iOS 18 onboarding and run-detail UI smoke
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -project apps/ios/RunBuoy.xcodeproj \
+            -scheme RunBuoy \
+            -destination 'platform=iOS Simulator,name=iPhone 16,OS=18.5' \
+            -derivedDataPath "$RUNNER_TEMP/RunBuoy-iOS18-DerivedData" \
+            -resultBundlePath "$RUNNER_TEMP/$IOS_RESULT_DIR/RunBuoyUISmoke.xcresult" \
+            CODE_SIGNING_ALLOWED=NO \
+            ASSETCATALOG_COMPILER_APPICON_NAME= \
+            EXCLUDED_SOURCE_FILE_NAMES=icon.icon \
+            -only-testing:RunBuoyUITests/RunBuoyUITests/testOnboardingCompletesWithSeededPairingCode \
+            -only-testing:RunBuoyUITests/RunBuoyUITests/testActiveRunOpensDetailAndNavigatesBack \
+            test
+      - name: Collect iOS 18 simulator diagnostics
+        if: failure()
+        continue-on-error: true
         run: >-
-          xcodebuild
-          -project apps/ios/RunBuoy.xcodeproj
-          -scheme RunBuoy
-          -destination 'generic/platform=iOS Simulator'
-          CODE_SIGNING_ALLOWED=NO
-          build
-      # - name: Run iOS unit tests
-      #   run: >-
-      #     xcodebuild
-      #     -project apps/ios/RunBuoy.xcodeproj
-      #     -scheme RunBuoy
-      #     -destination 'platform=iOS Simulator,name=iPhone 17,OS=latest'
-      #     CODE_SIGNING_ALLOWED=NO
-      #     -only-testing:RunBuoyTests
-      #     test
-      # - name: Run iOS UI tests
-      #   run: >-
-      #     xcodebuild
-      #     -project apps/ios/RunBuoy.xcodeproj
-      #     -scheme RunBuoy
-      #     -destination 'platform=iOS Simulator,name=iPhone 17,OS=latest'
-      #     -resultBundlePath "$RUNNER_TEMP/RunBuoyUITests.xcresult"
-      #     CODE_SIGNING_ALLOWED=NO
-      #     -only-testing:RunBuoyUITests
-      #     test
-      - name: Upload UI test failure screenshots and diagnostics
+          xcrun simctl diagnose
+          --output "$RUNNER_TEMP/RunBuoy-iOS18-simulator-diagnostics"
+      - name: Upload iOS 18 test failure artifacts
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: RunBuoyUITests-${{ github.run_id }}
-          path: ${{ runner.temp }}/RunBuoyUITests.xcresult
-          if-no-files-found: ignore
+          name: RunBuoy-iOS18-failure-${{ github.run_id }}
+          path: |
+            ${{ runner.temp }}/${{ env.IOS_RESULT_DIR }}
+            ${{ runner.temp }}/RunBuoy-iOS18-simulator-diagnostics*
+          if-no-files-found: warn
+          retention-days: 14
+
+  ios-latest-tests:
+    name: Latest iOS build, unit tests, and archive
+    runs-on: macos-26
+    timeout-minutes: 45
+    env:
+      IOS_RESULT_DIR: RunBuoy-iOS-latest-results
+    steps:
+      - uses: actions/checkout@v4
+      - name: Record latest Xcode and simulator runtime
+        run: |
+          xcodebuild -version
+          xcrun simctl list runtimes
+          mkdir -p "$RUNNER_TEMP/$IOS_RESULT_DIR"
+      - name: Validate deployment targets and privacy manifests
+        run: python3 scripts/check_ios_privacy_manifests.py
+      - name: Build app and widget without signing
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -project apps/ios/RunBuoy.xcodeproj \
+            -scheme RunBuoy \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath "$RUNNER_TEMP/RunBuoy-iOS-latest-DerivedData" \
+            -resultBundlePath "$RUNNER_TEMP/$IOS_RESULT_DIR/RunBuoyBuild.xcresult" \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+      - name: Run latest iOS unit tests
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -project apps/ios/RunBuoy.xcodeproj \
+            -scheme RunBuoy \
+            -destination 'platform=iOS Simulator,name=iPhone 17,OS=latest' \
+            -derivedDataPath "$RUNNER_TEMP/RunBuoy-iOS-latest-DerivedData" \
+            -resultBundlePath "$RUNNER_TEMP/$IOS_RESULT_DIR/RunBuoyUnitTests.xcresult" \
+            CODE_SIGNING_ALLOWED=NO \
+            -only-testing:RunBuoyTests \
+            test
+      - name: Archive app and embedded widget without signing
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -project apps/ios/RunBuoy.xcodeproj \
+            -scheme RunBuoy \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -archivePath "$RUNNER_TEMP/RunBuoy.xcarchive" \
+            -derivedDataPath "$RUNNER_TEMP/RunBuoy-iOS-latest-ArchiveData" \
+            -resultBundlePath "$RUNNER_TEMP/$IOS_RESULT_DIR/RunBuoyArchive.xcresult" \
+            CODE_SIGNING_ALLOWED=NO \
+            archive
+      - name: Verify privacy manifests in the archive
+        run: >-
+          python3 scripts/check_ios_privacy_manifests.py
+          --archive "$RUNNER_TEMP/RunBuoy.xcarchive"
+      - name: Collect latest iOS simulator diagnostics
+        if: failure()
+        continue-on-error: true
+        run: >-
+          xcrun simctl diagnose
+          --output "$RUNNER_TEMP/RunBuoy-iOS-latest-simulator-diagnostics"
+      - name: Upload latest iOS failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: RunBuoy-iOS-latest-failure-${{ github.run_id }}
+          path: |
+            ${{ runner.temp }}/${{ env.IOS_RESULT_DIR }}
+            ${{ runner.temp }}/RunBuoy-iOS-latest-simulator-diagnostics*
+          if-no-files-found: warn
           retention-days: 14
 
   e2e-mock-apns:

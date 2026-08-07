@@ -7,14 +7,17 @@
 
 ## 当前平台基线
 
-- Xcode 工程 `IPHONEOS_DEPLOYMENT_TARGET = 26.0`。
-- App 使用 iOS 26 的 SwiftUI Tab、Glass button/container 等 API。
+- App、Widget、unit-test 和 UI-test target 的
+  `IPHONEOS_DEPLOYMENT_TARGET = 18.0`；App 需要 iOS 18 或更高版本。
+- iOS 26+ 使用 availability-guarded Liquid Glass button/container 和滚动边缘效果。
+- iOS 18–25 使用标准 SwiftUI Material、bordered button、Tab 和 Navigation 组件；引导、通知权限、
+  QR/手动配对、Runs、History、Machines、详情、离线缓存、设置、本机功能体验和 Live Activity 均保留。
 - App 和 Widget 示例 bundle ID 分别为 `dev.runbuoy.app`、`dev.runbuoy.app.widgets`。
 - App 支持竖屏和左右横屏。
 - 支持英文与简体中文。
 - Info.plist 启用 Push Notifications、后台 remote notification、Live Activities 和 Frequent Updates。
 
-因此当前官网应写 **iOS 26+**，而不是旧文档中的 iOS 18+。
+因此所有用户文案应写 **需要 iOS 18 或更高版本**。
 
 ## 第一次启动和引导
 
@@ -410,4 +413,5 @@ UI 测试覆盖引导、主页面、深链、过滤、偏好持久化、配对�
 - 真正的锁定屏幕/灵动岛表现；
 - 生产签名、entitlements 和 App Store 接受。
 
-这些路径虽有注入、Mock、fixture 和单测，发布前仍需 iOS 26 真机、Apple Developer 配置和生产 Server 验证。
+这些路径虽有注入、Mock、fixture 和单测，发布前仍需 iOS 18 或更高版本真机、Apple Developer 配置和
+生产 Server 验证。
