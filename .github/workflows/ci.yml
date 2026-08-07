@@ -216,7 +216,7 @@ jobs:
         continue-on-error: true
         run: >-
           xcrun simctl diagnose
-          --output "$RUNNER_TEMP/RunBuoy-iOS18-simulator-diagnostics"
+          --output="$RUNNER_TEMP/RunBuoy-iOS18-simulator-diagnostics"
       - name: Upload iOS 18 test failure artifacts
         if: failure()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
@@ -290,7 +290,7 @@ jobs:
         continue-on-error: true
         run: >-
           xcrun simctl diagnose
-          --output "$RUNNER_TEMP/RunBuoy-iOS-latest-simulator-diagnostics"
+          --output="$RUNNER_TEMP/RunBuoy-iOS-latest-simulator-diagnostics"
       - name: Upload latest iOS failure artifacts
         if: failure()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2

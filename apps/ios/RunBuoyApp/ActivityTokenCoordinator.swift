@@ -149,7 +149,9 @@ final class ActivityTokenCoordinator {
 
     private func stateName(_ state: ActivityState) -> String {
         switch state {
+#if compiler(>=6.2)
         case .pending: "active"
+#endif
         case .active: "active"
         case .dismissed: "dismissed"
         case .ended: "ended"
