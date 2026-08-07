@@ -29,4 +29,4 @@ The RunBuoy Worker starts the original command from a protected manifest instead
 
 The complete security design, threat model, and automated boundary tests are available in the [GitHub repository](https://github.com/TANG617/RunBuoy/tree/main/docs).
 
-To report a security issue, follow the repository’s [security policy](https://github.com/TANG617/RunBuoy/security/policy) and contact the maintainer privately.
+To report a security issue, follow the repository’s [security policy](https://github.com/TANG617/RunBuoy/security/policy) and use [GitHub private vulnerability reporting](https://github.com/TANG617/RunBuoy/security/advisories/new). Do not include vulnerability details in a public issue. For non-security help, use [Support](/en/support).

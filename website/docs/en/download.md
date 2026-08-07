@@ -4,7 +4,7 @@ description: Check the current availability, system requirement, and source-buil
 
 # iOS app
 
-The RunBuoy iOS app requires **iOS 26 or later**. Its App Store release is being prepared and is not yet available for public download or pre-order.
+The RunBuoy iOS app requires **iOS 18 or later**. Its App Store release is being prepared and is not yet available for public download or pre-order.
 
 This page will link to Apple’s official download or pre-order page when it becomes available. For now, you can:
 

@@ -222,6 +222,7 @@
 "settings.region_locked" = "选定的数据区域不可更改。";
 "settings.server" = "服务器";
 "settings.storage" = "存储";
+"settings.support" = "支持";
 "settings.title" = "设置";
 "settings.website" = "官网";
 "status.cancelled" = "已在电脑端结束";

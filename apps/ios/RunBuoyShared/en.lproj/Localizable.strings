@@ -222,6 +222,7 @@
 "settings.region_locked" = "The selected data region cannot be changed.";
 "settings.server" = "Server";
 "settings.storage" = "Storage";
+"settings.support" = "Support";
 "settings.title" = "Settings";
 "settings.website" = "Website";
 "status.cancelled" = "Ended locally";

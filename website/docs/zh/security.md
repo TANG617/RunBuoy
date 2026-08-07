@@ -29,4 +29,4 @@ RunBuoy Worker 通过受保护的 manifest 启动原命令，不把用户命令�
 
 完整的安全设计、威胁模型和自动化边界测试位于 [GitHub 仓库](https://github.com/TANG617/RunBuoy/tree/main/docs)。
 
-发现安全问题时，请按照 [安全报告说明](https://github.com/TANG617/RunBuoy/security/policy) 私下联系维护者。
+发现安全问题时，请遵循[安全报告说明](https://github.com/TANG617/RunBuoy/security/policy)，并使用 [GitHub 私密漏洞报告](https://github.com/TANG617/RunBuoy/security/advisories/new)。不要在公开 Issue 中披露漏洞细节。非安全问题请前往[支持](/support)。

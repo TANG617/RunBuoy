@@ -59,6 +59,14 @@ if (existsSync(outputRoot)) {
   const enDownload = html('en/download.html');
   const zhSelfHosting = html('self-hosting.html');
   const enSelfHosting = html('en/self-hosting.html');
+  const zhPrivacy = html('privacy.html');
+  const enPrivacy = html('en/privacy.html');
+  const zhSecurity = html('security.html');
+  const enSecurity = html('en/security.html');
+  const zhStatus = html('status.html');
+  const enStatus = html('en/status.html');
+  const zhSupport = html('support.html');
+  const enSupport = html('en/support.html');
   const zhProgress = html('guide/progress.html');
   const enProgress = html('en/guide/progress.html');
   const enRun = html('en/guide/run.html');
@@ -131,11 +139,37 @@ if (existsSync(outputRoot)) {
     expect(source.includes('Use $runbuoy to monitor this command safely from my iPhone.'), `${name} is missing the default usage example.`);
   }
 
-  expect(zhDownload.includes('iOS 26') && enDownload.includes('iOS 26'), 'Download pages must state the iOS 26+ requirement.');
+  expect(zhDownload.includes('iOS 18') && enDownload.includes('iOS 18'), 'Download pages must state the iOS 18+ requirement.');
   expect(zhDownload.includes('Global') && enDownload.includes('Global'), 'Download pages must state the current Global-only availability.');
   expect(zhSelfHosting.includes('RUNBUOY_API_BASE_URL') && enSelfHosting.includes('RUNBUOY_API_BASE_URL'), 'Self-hosting pages must configure the iOS Server URL.');
   expect(zhProgressText.includes('uv add --optional runbuoy runbuoy') && enProgressText.includes('uv add --optional runbuoy runbuoy'), 'Progress pages must install the project SDK as an optional extra.');
   expect(zhProgressText.includes('runbuoy emit') && enProgressText.includes('runbuoy emit'), 'Progress pages must include the emit fallback.');
+
+  for (const [name, source] of [
+    ['Chinese privacy', zhPrivacy],
+    ['English privacy', enPrivacy],
+  ]) {
+    const pageText = textContent(source);
+    expect(pageText.includes('24') && pageText.includes('30') && pageText.includes('90'), `${name} is missing retention windows.`);
+    expect(pageText.toLowerCase().includes('live activit'), `${name} is missing the active Live Activity retention exclusion.`);
+  }
+
+  for (const [name, source] of [
+    ['Chinese status', zhStatus],
+    ['English status', enStatus],
+  ]) {
+    expect(source.includes('/healthz') && source.includes('/readyz'), `${name} is missing health/readiness definitions.`);
+    expect(source.includes('api.runbuoy.cloud'), `${name} is missing the Global endpoint.`);
+  }
+
+  for (const [name, source] of [
+    ['Chinese security', zhSecurity],
+    ['English security', enSecurity],
+    ['Chinese support', zhSupport],
+    ['English support', enSupport],
+  ]) {
+    expect(source.includes('security/advisories/new'), `${name} is missing private vulnerability reporting.`);
+  }
 
   const generatedFiles = new Set(walk(outputRoot).map(file => path.relative(outputRoot, file)));
   for (const file of [...generatedFiles].filter(item => item.endsWith('.html'))) {

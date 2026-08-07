@@ -2,10 +2,11 @@
 
 ## Reporting
 
-Do not open a public issue for a suspected vulnerability. Use GitHub's
-**Report a vulnerability** private security advisory flow for this repository
-and include affected commit, configuration, reproduction, impact, and any
-known mitigation. Do not include live credentials or personal data.
+Do not open a public issue for a suspected vulnerability. Use
+[GitHub private vulnerability reporting](https://github.com/TANG617/RunBuoy/security/advisories/new)
+for this repository and include affected commit, configuration, reproduction,
+impact, and any known mitigation. Do not include live credentials or personal
+data.
 
 ## Supported version
 

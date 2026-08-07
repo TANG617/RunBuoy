@@ -92,6 +92,11 @@ struct SettingsView: View {
                         .foregroundStyle(.primary)
                 }
                 .tint(.primary)
+                Link(destination: RunBuoyLinks.support) {
+                    Label("settings.support", systemImage: "questionmark.circle")
+                        .foregroundStyle(.primary)
+                }
+                .tint(.primary)
                 Link(destination: RunBuoyLinks.privateDeployment) {
                     Label("settings.private_deployment", systemImage: "server.rack")
                         .foregroundStyle(.primary)
@@ -132,6 +137,7 @@ struct SettingsView: View {
 enum RunBuoyLinks {
     static let website = URL(string: "https://www.runbuoy.cloud")!
     static let privacy = URL(string: "https://www.runbuoy.cloud/privacy")!
+    static let support = URL(string: "https://www.runbuoy.cloud/support")!
     static let privateDeployment = URL(string: "https://www.runbuoy.cloud/self-hosting")!
 }
 

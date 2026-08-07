@@ -15,6 +15,8 @@ const copy = {
     docs: '使用文档',
     privacy: '隐私',
     security: '安全',
+    status: '服务状态',
+    support: '支持',
     selfHosting: '自托管',
     github: 'GitHub',
     copyright: '© 2026 RunBuoy。开源、可审计，并以隐私为先。',
@@ -28,6 +30,8 @@ const copy = {
     docs: 'Docs',
     privacy: 'Privacy',
     security: 'Security',
+    status: 'Service status',
+    support: 'Support',
     selfHosting: 'Self-hosting',
     github: 'GitHub',
     copyright: '© 2026 RunBuoy. Open source, auditable, and privacy-first.',
@@ -70,11 +74,13 @@ function HomeFooter() {
             <Link href={localizeHref('/guide/', lang)}>{value.quickStart}</Link>
             <Link href={localizeHref('/download', lang)}>{value.download}</Link>
             <Link href={localizeHref('/privacy', lang)}>{value.privacy}</Link>
+            <Link href={localizeHref('/status', lang)}>{value.status}</Link>
           </div>
           <div>
             <strong>{value.resources}</strong>
             <Link href={localizeHref('/docs/', lang)}>{value.docs}</Link>
             <Link href={localizeHref('/security', lang)}>{value.security}</Link>
+            <Link href={localizeHref('/support', lang)}>{value.support}</Link>
             <Link href={localizeHref('/self-hosting', lang)}>
               {value.selfHosting}
             </Link>

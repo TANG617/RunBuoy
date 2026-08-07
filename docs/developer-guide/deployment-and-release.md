@@ -1,5 +1,9 @@
 # RunBuoy deployment and release guide
 
+See the [compatibility matrix](../release/compatibility-matrix.md) and
+[coordinated rollout and rollback](../release/release-process.md) before a
+multi-component release.
+
 This guide describes how repository changes reach the production Server,
 TestFlight, and PyPI. The three delivery paths use different GitHub Actions
 triggers:

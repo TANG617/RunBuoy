@@ -19,8 +19,10 @@ jobs:
       run:
         working-directory: website
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: "22"
           cache: npm
@@ -33,8 +35,10 @@ jobs:
   protocol-and-security:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v6
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
         with:
           python-version: "3.12"
           enable-cache: true
@@ -43,6 +47,8 @@ jobs:
       - run: uv run pytest packages/protocol/tests skills/runbuoy/tests
       - run: uv run python scripts/check_read_only_boundary.py
       - run: uv run python scripts/check_ios_privacy_manifests.py
+      - run: uv run python scripts/check_workflow_pins.py
+      - run: uv run python scripts/check_markdown_links.py
       - run: uvx openapi-spec-validator packages/protocol/openapi.yaml
       - name: License and provenance
         run: test -s LICENSE && test -s THIRD_PARTY_NOTICES.md && test -s docs/code-provenance.md
@@ -50,8 +56,10 @@ jobs:
   python-lint-typecheck:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v6
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
         with:
           python-version: "3.12"
           enable-cache: true
@@ -96,8 +104,10 @@ jobs:
       CREDENTIAL_PEPPER: ci-only-pepper
       TOKEN_ENCRYPTION_KEY: 9G0Q7EN-bipfrNClR7aoX_E6IlWzzKwriC2aUn7-G_0=
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v6
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
         with:
           python-version: "3.12"
           enable-cache: true
@@ -111,9 +121,11 @@ jobs:
   cli-linux:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
       - run: sudo apt-get update && sudo apt-get install -y tmux
-      - uses: astral-sh/setup-uv@v6
+      - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
         with:
           python-version: "3.12"
           enable-cache: true
@@ -125,9 +137,11 @@ jobs:
   cli-macos:
     runs-on: macos-15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
       - run: brew install tmux
-      - uses: astral-sh/setup-uv@v6
+      - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
         with:
           python-version: "3.12"
           enable-cache: true
@@ -143,7 +157,9 @@ jobs:
     env:
       IOS_RESULT_DIR: RunBuoy-iOS18-results
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
       - name: Select Xcode 16.4 and iOS 18.5
         run: |
           sudo xcode-select --switch /Applications/Xcode_16.4.app
@@ -202,7 +218,7 @@ jobs:
           --output "$RUNNER_TEMP/RunBuoy-iOS18-simulator-diagnostics"
       - name: Upload iOS 18 test failure artifacts
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: RunBuoy-iOS18-failure-${{ github.run_id }}
           path: |
@@ -218,7 +234,9 @@ jobs:
     env:
       IOS_RESULT_DIR: RunBuoy-iOS-latest-results
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
       - name: Record latest Xcode and simulator runtime
         run: |
           xcodebuild -version
@@ -274,7 +292,7 @@ jobs:
           --output "$RUNNER_TEMP/RunBuoy-iOS-latest-simulator-diagnostics"
       - name: Upload latest iOS failure artifacts
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: RunBuoy-iOS-latest-failure-${{ github.run_id }}
           path: |
@@ -286,9 +304,11 @@ jobs:
   e2e-mock-apns:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
       - run: sudo apt-get update && sudo apt-get install -y tmux
-      - uses: astral-sh/setup-uv@v6
+      - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
         with:
           python-version: "3.12"
           enable-cache: true
@@ -302,8 +322,10 @@ jobs:
   operations-smoke:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v6
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
         with:
           python-version: "3.12"
           enable-cache: true
@@ -332,7 +354,7 @@ jobs:
           docker compose --env-file infra/.env.example -f infra/docker-compose.yml logs --no-color > "$RUNNER_TEMP/runbuoy-ops-diagnostics/compose.log" 2>&1
       - name: Upload failure diagnostics
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: runbuoy-operations-${{ github.run_id }}
           path: ${{ runner.temp }}/runbuoy-ops-diagnostics
@@ -340,3 +362,41 @@ jobs:
           retention-days: 14
       - if: always()
         run: docker compose --env-file infra/.env.example -f infra/docker-compose.yml down -v
+
+  release-manifests:
+    name: Generate release manifests and container SBOM
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+        with:
+          python-version: "3.12"
+      - name: Generate CLI SBOM and iOS source manifest
+        run: >-
+          uv run --no-project python scripts/generate_release_manifests.py
+          --output-dir artifacts
+          --source-revision "$GITHUB_SHA"
+      - name: Build Server container for inventory
+        run: docker build --file infra/Dockerfile.api --tag runbuoy-api:sbom .
+      - name: Generate Server container SBOM
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
+        with:
+          image: runbuoy-api:sbom
+          format: cyclonedx-json
+          output-file: artifacts/runbuoy-server-container.cdx.json
+          syft-version: v1.50.0
+          upload-artifact: false
+          upload-release-assets: false
+      - name: Validate generated JSON
+        run: >-
+          uv run python -c
+          'import json,pathlib; [json.loads(p.read_text()) for p in pathlib.Path("artifacts").glob("*.json")]'
+      - name: Upload release manifests
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: release-manifests-${{ github.sha }}
+          path: artifacts/*.json
+          if-no-files-found: error
+          retention-days: 30
